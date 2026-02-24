@@ -27,15 +27,31 @@ function LoginPage() {
       : null
   }, [ location.search ] )
 
-  const nextPath = useMemo( () => state?.from?.pathname ?? '/app', [ state ] )
+  const nextPath = useMemo( () => {
+    if( !state?.from ) {
+      return '/app'
+    }
+    const pathname = state.from.pathname ?? ''
+    const search = state.from.search ?? ''
+    const hash = state.from.hash ?? ''
+    return `${pathname}${search}${hash}` || '/app'
+  }, [ state ] )
 
   const handleSubmit = async ( event: FormEvent<HTMLFormElement> ) => {
     event.preventDefault()
+    const normalizedEmail = email.trim()
+    if( !normalizedEmail ) {
+      openError( 'Enter your email before logging in.', [
+        { label: '(email is provided)', ok: false },
+        { label: '(password is provided)', ok: password.trim().length > 0 },
+      ] )
+      return
+    }
     clearError()
     setResetNotice( null )
     setIsBusy( true )
     try {
-      await signInWithEmailAndPassword( auth, email, password )
+      await signInWithEmailAndPassword( auth, normalizedEmail, password )
       setPassword( '' )
       navigate( nextPath, { replace: true } )
     } catch( err ) {

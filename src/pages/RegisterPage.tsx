@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth'
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore'
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { Link, useNavigate } from 'react-router-dom'
 import AppBrand from '../components/AppBrand'
 import ErrorChecklistModal from '../components/ErrorChecklistModal'
@@ -19,10 +19,17 @@ function RegisterPage() {
 
   const handleSubmit = async ( event: FormEvent<HTMLFormElement> ) => {
     event.preventDefault()
+    const normalizedEmail = email.trim()
+    if( !normalizedEmail ) {
+      openError( 'Enter a valid email address.', [
+        { label: '(email is provided)', ok: false },
+      ] )
+      return
+    }
     clearError()
     setIsBusy( true )
     try {
-      const result = await createUserWithEmailAndPassword( auth, email, password )
+      const result = await createUserWithEmailAndPassword( auth, normalizedEmail, password )
       if( displayName.trim() ) {
         await updateProfile( result.user, { displayName: displayName.trim() } )
       }
@@ -40,19 +47,33 @@ function RegisterPage() {
         { merge: true },
       )
       if( authEmail ) {
-        await setDoc(
-          doc( db, 'userDirectory', authEmail ),
-          {
-            userId: result.user.uid,
-            email: authEmail,
-            emailKey: authEmail,
-            emailLower: authEmailLower,
-            displayName: displayName.trim() || null,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true },
-        )
+        const userDirectoryRef = doc( db, 'userDirectory', authEmail )
+        const userDirectorySnapshot = await getDoc( userDirectoryRef )
+        if( userDirectorySnapshot.exists() ) {
+          await setDoc(
+            userDirectoryRef,
+            {
+              userId: result.user.uid,
+              emailLower: authEmailLower,
+              displayName: displayName.trim() || null,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true },
+          )
+        } else {
+          await setDoc(
+            userDirectoryRef,
+            {
+              userId: result.user.uid,
+              email: authEmail,
+              emailKey: authEmail,
+              emailLower: authEmailLower,
+              displayName: displayName.trim() || null,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            },
+          )
+        }
       }
       await logAudit( {
         actorId: result.user.uid,
