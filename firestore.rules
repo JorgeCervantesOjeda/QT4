@@ -1,0 +1,558 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function userProfile(userId) {
+      return get(/databases/$(database)/documents/userProfiles/$(userId));
+    }
+
+    function isAdmin() {
+      return isSignedIn() && userProfile(request.auth.uid).data.isAdmin == true;
+    }
+
+    function projectMemberDoc(projectId) {
+      return get(/databases/$(database)/documents/projectMembers/$(projectId + '_' + request.auth.uid));
+    }
+
+    function projectMemberDocByUser(projectId, userId) {
+      return get(/databases/$(database)/documents/projectMembers/$(projectId + '_' + userId));
+    }
+
+    function isProjectMember(projectId) {
+      return isSignedIn() && projectMemberDoc(projectId).data.role in ['leader', 'member'];
+    }
+
+    function isProjectMemberById(projectId, userId) {
+      return isSignedIn()
+        && projectMemberDocByUser(projectId, userId).data.role in ['leader', 'member'];
+    }
+
+    function isProjectLeader(projectId) {
+      return isSignedIn() && projectMemberDoc(projectId).data.role == 'leader';
+    }
+
+    function isDocumentAuthor() {
+      return isSignedIn() && resource.data.createdBy == request.auth.uid;
+    }
+
+    function isShortIdAssignment() {
+      return isAdmin()
+        && resource.data.shortId == null
+        && request.resource.data.shortId is int
+        && request.resource.data.shortId > 0
+        && request.resource.data.projectId == resource.data.projectId
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'shortId',
+          'updatedAt',
+          'updatedBy'
+        ]);
+    }
+
+    function versionDoc(versionId) {
+      return get(/databases/$(database)/documents/versions/$(versionId));
+    }
+
+    function versionAfter(versionId) {
+      return getAfter(/databases/$(database)/documents/versions/$(versionId));
+    }
+
+    function threadDoc(threadId) {
+      return get(/databases/$(database)/documents/threads/$(threadId));
+    }
+
+    function threadAfter(threadId) {
+      return getAfter(/databases/$(database)/documents/threads/$(threadId));
+    }
+
+    function documentDoc(docId) {
+      return get(/databases/$(database)/documents/documents/$(docId));
+    }
+
+    function documentAfter(docId) {
+      return getAfter(/databases/$(database)/documents/documents/$(docId));
+    }
+
+    function isVersionAuthorById(versionId) {
+      return isSignedIn() && versionDoc(versionId).data.createdBy == request.auth.uid;
+    }
+
+    function isVersionReviewerById(versionId) {
+      return isSignedIn() && request.auth.uid in versionDoc(versionId).data.reviewerIds;
+    }
+
+    function isVersionAuthor(resourceData) {
+      return isSignedIn() && resourceData.createdBy == request.auth.uid;
+    }
+
+    function isVersionReviewer(resourceData) {
+      return isSignedIn()
+        && resourceData.reviewerIds is list
+        && request.auth.uid in resourceData.reviewerIds;
+    }
+
+    function hasReviewEvidence(versionData) {
+      return versionData.hasFile == true
+        && versionData.stats is map
+        && versionData.stats.numThreads is int
+        && versionData.stats.numComments is int
+        && versionData.stats.numOpenThreads is int
+        && versionData.stats.numThreadsWithTwoPlusComments is int
+        && versionData.stats.numThreads > 0
+        && versionData.stats.numThreadsWithTwoPlusComments > 0
+        && versionData.stats.numOpenThreads == 0;
+    }
+
+    function isStartReviewTransition() {
+      return resource.data.status == 'In Creation'
+        && request.resource.data.status == 'In Review'
+        && resource.data.hasFile == true
+        && request.resource.data.number == resource.data.number;
+    }
+
+    function isAcceptTransition() {
+      return resource.data.status == 'In Review'
+        && request.resource.data.status == 'Accepted'
+        && hasReviewEvidence(resource.data)
+        && request.resource.data.number
+          == resource.data.number + (100 - (resource.data.number % 100));
+    }
+
+    function isRejectTransition() {
+      return resource.data.status == 'In Review'
+        && request.resource.data.status == 'Rejected'
+        && hasReviewEvidence(resource.data)
+        && request.resource.data.number == resource.data.number;
+    }
+
+    function isReviewedTransition() {
+      return resource.data.status == 'In Review'
+        && request.resource.data.status == 'Reviewed'
+        && request.resource.data.number == resource.data.number;
+    }
+
+    function isReviewStatsOnlyUpdate(versionId) {
+      return request.resource.data.status == resource.data.status
+        && resource.data.status == 'In Review'
+        && request.resource.data.number == resource.data.number
+        && request.resource.data.projectId == resource.data.projectId
+        && request.resource.data.docId == resource.data.docId
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.reviewerIds == resource.data.reviewerIds
+        && request.resource.data.hasFile == resource.data.hasFile
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'stats',
+          'numThreads',
+          'numOpenThreads',
+          'numComments',
+          'numThreadsWithTwoPlusComments',
+          'updatedAt',
+          'updatedBy'
+        ])
+        && canReviewAccess(resource.data.projectId, versionId);
+    }
+
+    function isAdminStatsBackfill() {
+      return isAdmin()
+        && request.resource.data.projectId == resource.data.projectId
+        && request.resource.data.docId == resource.data.docId
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.number == resource.data.number
+        && request.resource.data.status == resource.data.status
+        && request.resource.data.reviewerIds == resource.data.reviewerIds
+        && request.resource.data.hasFile == resource.data.hasFile
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'stats',
+          'numThreads',
+          'numOpenThreads',
+          'numComments',
+          'numThreadsWithTwoPlusComments',
+          'updatedAt',
+          'updatedBy'
+        ]);
+    }
+
+    function isThreadCreateWithVersionStatIncrement(versionId) {
+      return versionAfter(versionId).data.stats.numThreads == versionDoc(versionId).data.stats.numThreads + 1
+        && versionAfter(versionId).data.stats.numOpenThreads == versionDoc(versionId).data.stats.numOpenThreads + 1
+        && versionAfter(versionId).data.stats.numComments == versionDoc(versionId).data.stats.numComments
+        && versionAfter(versionId).data.stats.numThreadsWithTwoPlusComments == versionDoc(versionId).data.stats.numThreadsWithTwoPlusComments
+        && versionAfter(versionId).data.numThreads == versionDoc(versionId).data.numThreads + 1
+        && versionAfter(versionId).data.numOpenThreads == versionDoc(versionId).data.numOpenThreads + 1
+        && versionAfter(versionId).data.numComments == versionDoc(versionId).data.numComments
+        && versionAfter(versionId).data.numThreadsWithTwoPlusComments == versionDoc(versionId).data.numThreadsWithTwoPlusComments;
+    }
+
+    function isCommentCreateWithVersionStatIncrement(versionId, threadId) {
+      let incrementTwoPlus = (
+        threadDoc(threadId).data.commentCount < 2
+        && threadAfter(threadId).data.commentCount >= 2
+      ) ? 1 : 0;
+      return versionAfter(versionId).data.stats.numThreads == versionDoc(versionId).data.stats.numThreads
+        && versionAfter(versionId).data.stats.numOpenThreads == versionDoc(versionId).data.stats.numOpenThreads
+        && versionAfter(versionId).data.stats.numComments == versionDoc(versionId).data.stats.numComments + 1
+        && versionAfter(versionId).data.stats.numThreadsWithTwoPlusComments
+          == versionDoc(versionId).data.stats.numThreadsWithTwoPlusComments + incrementTwoPlus
+        && versionAfter(versionId).data.numThreads == versionDoc(versionId).data.numThreads
+        && versionAfter(versionId).data.numOpenThreads == versionDoc(versionId).data.numOpenThreads
+        && versionAfter(versionId).data.numComments == versionDoc(versionId).data.numComments + 1
+        && versionAfter(versionId).data.numThreadsWithTwoPlusComments
+          == versionDoc(versionId).data.numThreadsWithTwoPlusComments + incrementTwoPlus;
+    }
+
+    function isAdminProjectIdBackfill() {
+      return isAdmin()
+        && (resource.data.projectId == null || resource.data.projectId == '')
+        && request.resource.data.projectId is string
+        && request.resource.data.projectId.size() > 0
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'projectId',
+          'updatedAt',
+          'updatedBy'
+        ]);
+    }
+
+    function isThreadStatusWithVersionOpenCounter(versionId, isClosing) {
+      return versionAfter(versionId).data.stats.numThreads == versionDoc(versionId).data.stats.numThreads
+        && versionAfter(versionId).data.stats.numComments == versionDoc(versionId).data.stats.numComments
+        && versionAfter(versionId).data.stats.numThreadsWithTwoPlusComments == versionDoc(versionId).data.stats.numThreadsWithTwoPlusComments
+        && versionAfter(versionId).data.numThreads == versionDoc(versionId).data.numThreads
+        && versionAfter(versionId).data.numComments == versionDoc(versionId).data.numComments
+        && versionAfter(versionId).data.numThreadsWithTwoPlusComments == versionDoc(versionId).data.numThreadsWithTwoPlusComments
+        && (
+          (isClosing
+            && versionAfter(versionId).data.stats.numOpenThreads == versionDoc(versionId).data.stats.numOpenThreads - 1
+            && versionAfter(versionId).data.numOpenThreads == versionDoc(versionId).data.numOpenThreads - 1)
+          ||
+          (!isClosing
+            && versionAfter(versionId).data.stats.numOpenThreads == versionDoc(versionId).data.stats.numOpenThreads + 1
+            && versionAfter(versionId).data.numOpenThreads == versionDoc(versionId).data.numOpenThreads + 1)
+        );
+    }
+
+    function isSameStatusUpdateAllowed() {
+      return request.resource.data.status == resource.data.status
+        && (
+          resource.data.status == 'In Creation'
+          || request.resource.data.reviewerIds == resource.data.reviewerIds
+        )
+        && (
+          resource.data.status == 'In Creation'
+          || request.resource.data.hasFile == resource.data.hasFile
+        );
+    }
+
+    function isAuthorReassignmentAllowed() {
+      return resource.data.status == 'In Creation'
+        && request.resource.data.status == 'In Creation'
+        && request.resource.data.createdBy is string
+        && request.resource.data.createdBy.size() > 0
+        && request.resource.data.createdBy != resource.data.createdBy
+        && request.resource.data.reviewerIds is list
+        && !(request.resource.data.createdBy in request.resource.data.reviewerIds)
+        && isProjectMemberById(resource.data.projectId, request.resource.data.createdBy)
+        && request.resource.data.docId == resource.data.docId
+        && request.resource.data.projectId == resource.data.projectId
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'createdBy',
+          'reviewerIds',
+          'updatedAt',
+          'updatedBy'
+        ]);
+    }
+
+    function canManageVersionByDocId(projectId, docId) {
+      return isProjectLeader(projectId)
+        || (isSignedIn()
+          && (
+            documentDoc(docId).data.createdBy == request.auth.uid
+            || documentAfter(docId).data.createdBy == request.auth.uid
+          ))
+        || isAdmin();
+    }
+
+    function canReviewAccess(projectId, versionId) {
+      return isAdmin()
+        || isProjectLeader(projectId)
+        || isVersionAuthorById(versionId)
+        || isVersionReviewerById(versionId);
+    }
+
+    function canReviewAccessByVersionId(versionId) {
+      return isAdmin()
+        || isProjectLeader(versionDoc(versionId).data.projectId)
+        || isVersionAuthorById(versionId)
+        || isVersionReviewerById(versionId);
+    }
+
+    function canReviewContribute(projectId, versionId) {
+      return isAdmin()
+        || isProjectLeader(projectId)
+        || isVersionAuthorById(versionId)
+        || isVersionReviewerById(versionId);
+    }
+
+    function isValidVersionState(state) {
+      return state in [
+        'In Creation',
+        'In Review',
+        'Reviewed',
+        'Rejected',
+        'Replaced',
+        'Accepted'
+      ];
+    }
+
+    match /userProfiles/{userId} {
+      allow read: if isSelf(userId) || isAdmin();
+      allow create: if isSelf(userId)
+        && request.resource.data.isAdmin == false;
+      allow update: if isSelf(userId)
+        && request.resource.data.isAdmin == resource.data.isAdmin;
+      allow delete: if false;
+    }
+
+    match /userDirectory/{emailKey} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.auth.token.email is string
+        && request.resource.data.email is string
+        && request.resource.data.emailKey is string
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.emailKey == request.auth.token.email
+        && emailKey == request.auth.token.email;
+      allow update, delete: if false;
+    }
+
+    match /projects/{projectId} {
+      allow read: if isProjectMember(projectId) || isAdmin();
+      allow create: if isSignedIn()
+        && request.resource.data.leaderId == request.auth.uid
+        && request.resource.data.shortId is int
+        && request.resource.data.shortId > 0;
+      allow update: if isProjectLeader(projectId) || isAdmin();
+      allow delete: if false;
+    }
+
+    match /projectMembers/{memberId} {
+      allow read: if (isSignedIn() && resource.data.userId == request.auth.uid)
+        || isProjectMember(resource.data.projectId)
+        || isAdmin();
+      allow create: if ((isAdmin() || isProjectLeader(request.resource.data.projectId))
+          && request.resource.data.role in ['leader', 'member']
+          && memberId == request.resource.data.projectId + '_' + request.resource.data.userId)
+        || (isSignedIn()
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.role == 'leader'
+          && memberId == request.resource.data.projectId + '_' + request.auth.uid);
+      allow update: if isProjectLeader(resource.data.projectId) || isAdmin();
+      allow delete: if false;
+    }
+
+    match /documents/{docId} {
+      allow read: if isProjectMember(resource.data.projectId)
+        || isAdmin()
+        || (isSignedIn() && resource.data.createdBy == request.auth.uid);
+      allow create: if (isProjectMember(request.resource.data.projectId) || isAdmin())
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update: if (
+          (isProjectLeader(resource.data.projectId) || isDocumentAuthor() || isAdmin())
+          && request.resource.data.projectId == resource.data.projectId
+          && request.resource.data.createdBy == resource.data.createdBy
+        )
+        || isShortIdAssignment();
+      allow delete: if false;
+    }
+
+    match /files/{fileId} {
+      allow read: if isAdmin()
+        || isProjectMember(resource.data.projectId)
+        || (resource.data.versionId is string
+          && resource.data.versionId.size() > 0
+          && canReviewAccessByVersionId(resource.data.versionId));
+      allow create: if (isProjectMember(request.resource.data.projectId) || isAdmin())
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.projectId is string
+        && request.resource.data.docId is string
+        && request.resource.data.versionId is string
+        && request.resource.data.fileKey is string
+        && request.resource.data.fileName is string
+        && request.resource.data.sizeBytes is int
+        && request.resource.data.storageProvider == 'files-api';
+      allow update, delete: if false;
+    }
+
+    match /counters/{counterId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn()
+        && (counterId in ['documents', 'projects'] || counterId.matches('documents_.*'))
+        && request.resource.data.nextNumber is int
+        && request.resource.data.nextNumber > 0
+        && (
+          resource == null
+          || request.resource.data.nextNumber == resource.data.nextNumber + 1
+          || isAdmin()
+        );
+      allow delete: if false;
+    }
+
+    match /versions/{versionId} {
+      allow read: if isProjectMember(resource.data.projectId)
+        || (isSignedIn()
+          && documentDoc(resource.data.docId).data.createdBy == request.auth.uid)
+        || isVersionAuthor(resource.data)
+        || isVersionReviewer(resource.data)
+        || isAdmin();
+      allow create: if canManageVersionByDocId(request.resource.data.projectId, request.resource.data.docId)
+        && request.resource.data.docId is string
+        && request.resource.data.projectId is string
+        && request.resource.data.number is int
+        && request.resource.data.number > 0
+        && request.resource.data.status == 'In Creation'
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.reviewerIds is list
+        && isValidVersionState(request.resource.data.status);
+      allow update: if (
+          (isProjectLeader(resource.data.projectId)
+            || isVersionAuthor(resource.data)
+            || isAdmin())
+          && request.resource.data.projectId == resource.data.projectId
+        && request.resource.data.docId == resource.data.docId
+        && (request.resource.data.createdBy == resource.data.createdBy || isAuthorReassignmentAllowed())
+        && request.resource.data.keys().hasAll(resource.data.keys())
+          && (
+            isSameStatusUpdateAllowed()
+            || isStartReviewTransition()
+            || isReviewedTransition()
+            || isAcceptTransition()
+            || isRejectTransition()
+          )
+        )
+        || isReviewStatsOnlyUpdate(versionId)
+        || isAdminStatsBackfill();
+      allow delete: if false;
+    }
+
+    match /threads/{threadId} {
+      allow read: if canReviewAccess(resource.data.projectId, resource.data.versionId)
+        || canReviewAccessByVersionId(resource.data.versionId);
+      allow create: if canReviewContribute(request.resource.data.projectId, request.resource.data.versionId)
+        && request.resource.data.status == 'open'
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && isThreadCreateWithVersionStatIncrement(request.resource.data.versionId);
+      allow update: if canReviewContribute(resource.data.projectId, resource.data.versionId)
+        && request.resource.data.projectId == resource.data.projectId
+        && request.resource.data.versionId == resource.data.versionId
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.keys().hasAll(resource.data.keys())
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'status',
+          'closedBy',
+          'closedAt',
+          'reopenedBy',
+          'reopenedAt',
+          'commentCount',
+          'lastCommentAt',
+          'lastCommentBy',
+          'updatedAt',
+          'updatedBy'
+        ])
+        && (
+          (resource.data.status == 'open'
+            && request.resource.data.status == 'closed'
+            && isThreadStatusWithVersionOpenCounter(resource.data.versionId, true))
+          ||
+          (resource.data.status == 'closed'
+            && request.resource.data.status == 'open'
+            && isThreadStatusWithVersionOpenCounter(resource.data.versionId, false))
+          ||
+          (request.resource.data.status == resource.data.status)
+        )
+        || isAdminProjectIdBackfill();
+      allow delete: if false;
+    }
+
+    match /comments/{commentId} {
+      allow read: if canReviewAccess(resource.data.projectId, resource.data.versionId)
+        || canReviewAccessByVersionId(resource.data.versionId)
+        || (isSignedIn() && resource.data.createdBy == request.auth.uid)
+        || (isSignedIn()
+          && request.query != null
+          && request.query.where != null
+          && request.query.where.size() > 0
+          && request.query.where[0].field == 'createdBy'
+          && request.query.where[0].op == '=='
+          && request.query.where[0].value == request.auth.uid);
+      allow create: if canReviewContribute(request.resource.data.projectId, request.resource.data.versionId)
+        && request.resource.data.body is string
+        && request.resource.data.body.size() > 0
+        && isCommentCreateWithVersionStatIncrement(request.resource.data.versionId, request.resource.data.threadId);
+      allow update: if isAdminProjectIdBackfill();
+      allow delete: if false;
+    }
+
+    match /changeRequests/{crId} {
+      allow read: if isProjectMember(resource.data.projectId) || isAdmin();
+      allow create: if isProjectMember(request.resource.data.projectId) || isAdmin();
+      allow update: if isProjectLeader(resource.data.projectId) || isAdmin();
+      allow delete: if false;
+    }
+
+    match /testProcedures/{docId} {
+      allow read: if isProjectMember(resource.data.projectId) || isAdmin();
+      allow create: if isProjectMember(request.resource.data.projectId) || isAdmin();
+      allow update: if isProjectLeader(resource.data.projectId) || isAdmin();
+      allow delete: if false;
+    }
+
+    match /testLogs/{docId} {
+      allow read: if isProjectMember(resource.data.projectId) || isAdmin();
+      allow create: if isProjectMember(request.resource.data.projectId) || isAdmin();
+      allow update: if isProjectLeader(resource.data.projectId) || isAdmin();
+      allow delete: if false;
+    }
+
+    match /testDesigns/{docId} {
+      allow read: if isProjectMember(resource.data.projectId) || isAdmin();
+      allow create: if isProjectMember(request.resource.data.projectId) || isAdmin();
+      allow update: if isProjectLeader(resource.data.projectId) || isAdmin();
+      allow delete: if false;
+    }
+
+    match /testCases/{docId} {
+      allow read: if isProjectMember(resource.data.projectId) || isAdmin();
+      allow create: if isProjectMember(request.resource.data.projectId) || isAdmin();
+      allow update: if isProjectLeader(resource.data.projectId) || isAdmin();
+      allow delete: if false;
+    }
+
+    match /dashboard/{userId} {
+      allow read, write: if isSelf(userId);
+    }
+
+    match /auditLogs/{logId} {
+      allow read: if isAdmin() || resource.data.actorId == request.auth.uid;
+      allow create: if isSignedIn()
+        && request.resource.data.actorId == request.auth.uid
+        && request.resource.data.action is string
+        && request.resource.data.entityType is string
+        && request.resource.data.entityId is string;
+      allow update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

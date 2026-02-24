@@ -1,73 +1,136 @@
-# React + TypeScript + Vite
+# QT4 (React + Vite + Firebase)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+QT4 is the migration project for QualiTeam built with React, TypeScript, Vite, Firebase Auth, and Firestore.
 
-Currently, two official plugins are available:
+## Local development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Run all commands from `QT4/`.
 
-## React Compiler
+1. Install dependencies.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+2. Create `QT4/.env.local` with Firebase and Files API values.
+3. Start the dev server.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run dev
 ```
+
+For local Files API development, use proxy mode in `.env.local`:
+
+```env
+VITE_FILES_API_MODE=proxy
+VITE_FILES_API_PROXY_PATH=/files-api
+QT4_FILES_API_BASE_URL=http://localhost:42873/api/v1
+QT4_FILES_API_KEY=<64-hex-key>
+```
+
+## Build
+
+```bash
+npm run build
+```
+
+## Environment variables
+
+### Firebase (Vite env)
+
+```env
+VITE_FIREBASE_API_KEY=
+VITE_FIREBASE_AUTH_DOMAIN=
+VITE_FIREBASE_PROJECT_ID=
+VITE_FIREBASE_STORAGE_BUCKET=
+VITE_FIREBASE_MESSAGING_SENDER_ID=
+VITE_FIREBASE_APP_ID=
+VITE_FIREBASE_MEASUREMENT_ID=
+```
+
+### Files API
+
+```env
+# Frontend mode: proxy (recommended for local dev) or direct
+VITE_FILES_API_MODE=proxy
+
+# Used by frontend only when mode=direct
+VITE_FILES_API_BASE_URL=
+VITE_FILES_API_CLIENT_KEY=
+
+# Optional proxy mount path for frontend when mode=proxy
+VITE_FILES_API_PROXY_PATH=/files-api
+
+# Used by Vite dev server proxy target
+QT4_FILES_API_BASE_URL=http://localhost:42873/api/v1
+QT4_FILES_API_KEY=<64-hex-key>
+```
+
+Modes:
+
+- `proxy`: frontend calls `/files-api`, and Vite forwards to `QT4_FILES_API_BASE_URL` adding `QT4_FILES_API_KEY`.
+- `direct`: frontend calls `VITE_FILES_API_BASE_URL` directly (optionally sends `VITE_FILES_API_CLIENT_KEY`).
+
+Production recommendation:
+
+- Use `direct` mode and set `VITE_FILES_API_BASE_URL=https://archivos.dmas.cua.uam.mx/api/v1`.
+- Keep `VITE_FILES_API_CLIENT_KEY` empty unless your security model explicitly allows a public client key.
+- Do not rely on `QT4_FILES_API_*` in production builds; those are for Vite dev proxy only.
+
+### Giphy (optional)
+
+```env
+VITE_GIPHY_API_KEY=
+```
+
+If omitted, the app uses built-in fallback behavior.
+
+## Current routes
+
+- `/login`
+- `/register`
+- `/app` (dashboard)
+- `/projects`
+- `/projects/:projectId/documents`
+- `/documents/:docId/versions`
+- `/admin/audit`
+
+## Current implemented modules
+
+- Authentication with Firebase Auth (login, register, reset password).
+- Project management (create, list, add members by email from `userDirectory`).
+- Project documents (create, filter all/mine, short IDs, latest status summary).
+- Versions and review workflow:
+  - create initial/next version
+  - assign author and reviewers (In Creation)
+  - upload/replace/download file
+  - start review (stores `reviewStartAt` and `reviewEndAt`)
+  - create issues (threads), add comments, close/reopen issues
+  - after review expiration, comments remain allowed only while the selected thread latest comment is under 1 hour old
+  - versions in `In Review` move automatically to `Reviewed` when expiration is reached and there are no comments, or after 1 hour from the latest version comment
+  - comments area shows an approximate countdown of remaining comment window time
+  - accept/reject latest version with rule-based checks
+  - create error report documents from accepted versions
+- Dashboard with user tasks (`dashboard/{userId}`), per-section refresh, card/table views.
+- Admin audit page:
+  - activity report with table/calendar views
+  - Files API connectivity check (`/files-api/me`)
+  - data model backfill/update action
+
+## Data model maintenance
+
+The Admin Audit page includes a "Data model update" action that backfills and normalizes existing data:
+
+- Missing project short IDs
+- Missing document short IDs
+- Thread counters and last-comment metadata
+- Version counters (`numThreads`, `numOpenThreads`, `numComments`, `numThreadsWithTwoPlusComments`)
+
+This action requires admin access and relies on `QT4/firestore.rules`.
+
+## Notes
+
+- File uploads are limited to 20 MB and are allowed only when the selected version is in `In Creation`.
+- Session persistence uses browser session scope (logout or browser close ends the session).
+- Firestore rules and indexes are versioned in `QT4/firestore.rules` and `QT4/firestore.indexes.json`.
+- Full deployment and switch guide: `QT4/FILES_API_DEPLOYMENT.md`.
