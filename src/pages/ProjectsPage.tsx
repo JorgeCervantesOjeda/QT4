@@ -56,9 +56,13 @@ function ProjectsPage() {
   const [memberEmails, setMemberEmails] = useState<Record<string, string>>( {} )
   const [memberErrors, setMemberErrors] = useState<Record<string, string | null>>( {} )
   const [memberBusyProjectId, setMemberBusyProjectId] = useState<string | null>( null )
+  const [selectedLeaderProjectId, setSelectedLeaderProjectId] = useState<string>( '' )
   const [membersByProject, setMembersByProject] = useState<Record<string, ProjectMember[]>>( {} )
   const [userDirectoryById, setUserDirectoryById] = useState<Record<string, { email?: string | null; displayName?: string | null }>>( {} )
   const successOkButtonRef = useRef<HTMLButtonElement | null>( null )
+  const projectNameInputRef = useRef<HTMLInputElement | null>( null )
+  const memberInputRefs = useRef<Record<string, HTMLInputElement | null>>( {} )
+  const pendingSuccessFocusRef = useRef<{ type: 'projectName' | 'member'; projectId?: string } | null>( null )
 
   const userId = user?.uid ?? ''
   const userEmail = user?.email ?? null
@@ -141,6 +145,11 @@ function ProjectsPage() {
     return desc ? sorted.reverse() : sorted
   }, [ projectTableRows, sorting ] )
 
+  const leaderProjectOptions = useMemo(
+    () => projectTableRows.filter( ( project ) => project.leaderId === userId ),
+    [ projectTableRows, userId ],
+  )
+
   useEffect( () => {
     const storedSorting = window.localStorage.getItem( 'qt4_projects_sorting' )
     if( storedSorting ) {
@@ -169,6 +178,33 @@ function ProjectsPage() {
     }
   }, [ successMessage ] )
 
+  useEffect( () => {
+    if( leaderProjectOptions.length === 0 ) {
+      if( selectedLeaderProjectId ) {
+        setSelectedLeaderProjectId( '' )
+      }
+      return
+    }
+    const exists = leaderProjectOptions.some( ( option ) => option.id === selectedLeaderProjectId )
+    if( !exists ) {
+      setSelectedLeaderProjectId( leaderProjectOptions[0]?.id ?? '' )
+    }
+  }, [ leaderProjectOptions, selectedLeaderProjectId ] )
+
+  const handleCloseSuccessMessage = () => {
+    const target = pendingSuccessFocusRef.current
+    setSuccessMessage( null )
+    window.setTimeout( () => {
+      if( target?.type === 'projectName' ) {
+        projectNameInputRef.current?.focus()
+      }
+      if( target?.type === 'member' && target.projectId ) {
+        memberInputRefs.current[target.projectId]?.focus()
+      }
+      pendingSuccessFocusRef.current = null
+    }, 0 )
+  }
+
   const loadProjects = useCallback( async (membersSnapshot: QuerySnapshot) => {
     if( !userId ) {
       return
@@ -176,9 +212,19 @@ function ProjectsPage() {
     clearError()
     setIsLoadingProjects( true )
     try {
-      const projectIds = membersSnapshot.docs.map( ( docSnapshot ) =>
-        docSnapshot.data().projectId as string,
+      const projectIds = Array.from(
+        new Set(
+          membersSnapshot.docs
+            .map( ( docSnapshot ) => ( docSnapshot.data().projectId as string | undefined ) ?? '' )
+            .filter( ( projectId ) => projectId.trim().length > 0 ),
+        ),
       )
+      if( projectIds.length === 0 ) {
+        setProjects( [] )
+        setMembersByProject( {} )
+        setUserDirectoryById( {} )
+        return
+      }
       const projectDocs = await Promise.all(
         projectIds.map( ( projectId ) => getDoc( doc( db, 'projects', projectId ) ) ),
       )
@@ -322,6 +368,16 @@ function ProjectsPage() {
   const handleCreateProject = async ( event: React.FormEvent<HTMLFormElement> ) => {
     event.preventDefault()
     if( !userId ) {
+      openError( 'Sign in before creating a project.', [
+        { label: '(user is signed in)', ok: false },
+      ] )
+      return
+    }
+    if( name.trim().length === 0 ) {
+      openError( 'Project name cannot be empty.', [
+        { label: '(project name is provided)', ok: false },
+        { label: '(user is signed in)', ok: Boolean( userId ) },
+      ] )
       return
     }
     clearError()
@@ -339,6 +395,7 @@ function ProjectsPage() {
           counterRef,
           {
             nextNumber: nextNumber + 1,
+            lastProjectId: projectRef.id,
           },
           { merge: true },
         )
@@ -361,6 +418,7 @@ function ProjectsPage() {
       } )
       const projectRefId = projectRef.id
       setName( '' )
+      pendingSuccessFocusRef.current = { type: 'projectName' }
       setSuccessMessage( 'Project created successfully.' )
       void ( async () => {
         try {
@@ -404,6 +462,10 @@ function ProjectsPage() {
 
   const handleAddMember = async ( projectId: string ) => {
     if( !userId ) {
+      setMemberErrors( ( prev ) => ( {
+        ...prev,
+        [projectId]: 'Sign in before adding a member.',
+      } ) )
       return
     }
     const rawEmail = memberEmails[projectId] ?? ''
@@ -413,20 +475,30 @@ function ProjectsPage() {
       setMemberErrors( ( prev ) => ( { ...prev, [projectId]: 'Provide an email address.' } ) )
       return
     }
-    let directorySnapshot = await getDoc( doc( db, 'userDirectory', memberEmailInput ) )
-    if( !directorySnapshot.exists() && memberEmailInput !== memberEmailLower ) {
-      directorySnapshot = await getDoc( doc( db, 'userDirectory', memberEmailLower ) )
-    }
-    if( !directorySnapshot.exists() ) {
-      const directoryQuery = query(
-        collection( db, 'userDirectory' ),
-        where( 'emailLower', '==', memberEmailLower ),
-        limit( 1 ),
-      )
-      const directoryMatches = await getDocs( directoryQuery )
-      if( directoryMatches.docs.length > 0 ) {
-        directorySnapshot = directoryMatches.docs[0]
+    let directorySnapshot
+    try {
+      directorySnapshot = await getDoc( doc( db, 'userDirectory', memberEmailInput ) )
+      if( !directorySnapshot.exists() && memberEmailInput !== memberEmailLower ) {
+        directorySnapshot = await getDoc( doc( db, 'userDirectory', memberEmailLower ) )
       }
+      if( !directorySnapshot.exists() ) {
+        const directoryQuery = query(
+          collection( db, 'userDirectory' ),
+          where( 'emailLower', '==', memberEmailLower ),
+          limit( 1 ),
+        )
+        const directoryMatches = await getDocs( directoryQuery )
+        if( directoryMatches.docs.length > 0 ) {
+          directorySnapshot = directoryMatches.docs[0]
+        }
+      }
+    } catch( err ) {
+      const message = err instanceof Error ? err.message : 'Unexpected error'
+      setMemberErrors( ( prev ) => ( {
+        ...prev,
+        [projectId]: `Member lookup failed: ${message}`,
+      } ) )
+      return
     }
     if( !directorySnapshot.exists() ) {
       setMemberErrors( ( prev ) => ( {
@@ -495,6 +567,7 @@ function ProjectsPage() {
         { merge: true },
       )
       setMemberEmails( ( prev ) => ( { ...prev, [projectId]: '' } ) )
+      pendingSuccessFocusRef.current = { type: 'member', projectId }
       setSuccessMessage( 'Member added successfully.' )
       void ( async () => {
         try {
@@ -547,6 +620,7 @@ function ProjectsPage() {
             <label className="field">
               <span>Name</span>
               <input
+                ref={projectNameInputRef}
                 type="text"
                 name="name"
                 required
@@ -583,7 +657,7 @@ function ProjectsPage() {
                   <GiphyInline reason="good_job" mode="inline" showLabel={false} />
                   <p className="muted">{successMessage}</p>
                   <div className="actions">
-                    <button ref={successOkButtonRef} type="button" onClick={() => setSuccessMessage( null )}>
+                    <button ref={successOkButtonRef} type="button" onClick={handleCloseSuccessMessage}>
                       OK
                     </button>
                   </div>
@@ -611,6 +685,67 @@ function ProjectsPage() {
                 </div>
               </label>
             </div>
+            {leaderProjectOptions.length > 0 ? (
+              <form
+                className="form"
+                onSubmit={( event ) => {
+                  event.preventDefault()
+                  if( selectedLeaderProjectId ) {
+                    void handleAddMember( selectedLeaderProjectId )
+                  }
+                }}
+              >
+                <div className="actions actions--capture-row">
+                  <label className="field">
+                    <span>Project</span>
+                    <select
+                      value={selectedLeaderProjectId}
+                      onChange={( event ) => setSelectedLeaderProjectId( event.target.value )}
+                      disabled={isBusy}
+                    >
+                      {leaderProjectOptions.map( ( project ) => (
+                        <option key={project.id} value={project.id}>
+                          {`${project.shortId ?? 'Unassigned'} - ${project.name}`}
+                        </option>
+                      ) )}
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>Add member (email)</span>
+                    <input
+                      ref={( element ) => {
+                        if( selectedLeaderProjectId ) {
+                          memberInputRefs.current[selectedLeaderProjectId] = element
+                        }
+                      }}
+                      type="text"
+                      value={selectedLeaderProjectId ? ( memberEmails[selectedLeaderProjectId] ?? '' ) : ''}
+                      onChange={( event ) => {
+                        const targetProjectId = selectedLeaderProjectId
+                        if( !targetProjectId ) {
+                          return
+                        }
+                        setMemberEmails( ( prev ) => ( {
+                          ...prev,
+                          [targetProjectId]: event.target.value,
+                        } ) )
+                      }}
+                      placeholder="user@example.com"
+                      disabled={isBusy}
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    disabled={!selectedLeaderProjectId || memberBusyProjectId === selectedLeaderProjectId || isBusy}
+                  >
+                    Add member
+                  </button>
+                </div>
+                {selectedLeaderProjectId && memberErrors[selectedLeaderProjectId] ? (
+                  <p className="error">{memberErrors[selectedLeaderProjectId]}</p>
+                ) : null}
+              </form>
+            ) : null}
             {!isLoadingProjects && projectTableRows.length === 0 ? (
               <p className="muted">You do not have any assigned projects yet.</p>
             ) : viewMode === 'table' ? (
@@ -673,6 +808,9 @@ function ProjectsPage() {
                         <label className="field">
                           <span>Add member (email)</span>
                           <input
+                            ref={( element ) => {
+                              memberInputRefs.current[project.id] = element
+                            }}
                             type="text"
                             name={`member-${project.id}`}
                             value={memberEmails[project.id] ?? ''}

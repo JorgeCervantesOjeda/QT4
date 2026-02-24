@@ -9,7 +9,9 @@ import { useAuth } from '../auth/useAuth'
 import AppBrand from '../components/AppBrand'
 import BackStack from '../components/BackStack'
 import DataTable from '../components/DataTable'
+import ErrorChecklistModal from '../components/ErrorChecklistModal'
 import { GiphyInline } from '../giphy/GiphyProvider'
+import { useErrorChecklistModal } from '../hooks/useErrorChecklistModal'
 import { db } from '../lib/firebase'
 import {
   refreshDashboard,
@@ -23,12 +25,14 @@ function DashboardPage() {
   const { user } = useAuth()
   const userId = user?.uid ?? ''
   const navigate = useNavigate()
-  const [error, setError] = useState<string | null>( null )
+  const { error, errorChecklist, openError, clearError } = useErrorChecklistModal()
   const [tasks, setTasks] = useState<DashboardTask[]>([] )
   const [activeRefreshScope, setActiveRefreshScope] = useState<DashboardRefreshScope | null>( null )
   const [dashboardUpdatedAt, setDashboardUpdatedAt] = useState<Date | null>( null )
   const loadInFlightRef = useRef( false )
   const loadQueuedScopeRef = useRef<DashboardRefreshScope | null>( null )
+  const pendingFocusScopeRef = useRef<DashboardRefreshScope | null>( null )
+  const refreshButtonRefs = useRef<Partial<Record<DashboardRefreshScope, HTMLButtonElement | null>>>( {} )
   const [viewMode, setViewMode] = useState<'card' | 'table'>( () => {
     const storedView = window.localStorage.getItem( 'qt4_dashboard_view' )
     return storedView === 'table' || storedView === 'card' ? storedView : 'card'
@@ -99,6 +103,7 @@ function DashboardPage() {
   )
 
   const triggerLoadTasks = (scope: DashboardRefreshScope = 'all') => {
+    pendingFocusScopeRef.current = scope
     if( loadInFlightRef.current ) {
       if( scope === 'all' || loadQueuedScopeRef.current === null ) {
         loadQueuedScopeRef.current = scope
@@ -108,17 +113,23 @@ function DashboardPage() {
     loadInFlightRef.current = true
     void (async () => {
       if( !userId ) {
+        openError( 'Sign in before refreshing dashboard tasks.', [
+          { label: '(user is signed in)', ok: false },
+        ] )
         loadInFlightRef.current = false
         return
       }
-      setError( null )
+      clearError()
       setActiveRefreshScope( scope )
       try {
         const refreshOptions = scope === 'all' ? {} : { types: [ scope ] as DashboardTaskType[] }
         await refreshDashboard( userId, refreshOptions )
       } catch( err ) {
         const message = err instanceof Error ? err.message : 'Unexpected error'
-        setError( `Dashboard tasks failed: ${message}` )
+        openError( `Dashboard tasks failed: ${message}`, [
+          { label: '(user is signed in)', ok: Boolean( userId ) },
+          { label: '(network connection is available)', ok: typeof navigator !== 'undefined' ? navigator.onLine : true },
+        ] )
       } finally {
         setActiveRefreshScope( null )
       }
@@ -129,6 +140,27 @@ function DashboardPage() {
         triggerLoadTasks( queuedScope )
       }
     })()
+  }
+
+  useEffect( () => {
+    if( activeRefreshScope !== null ) {
+      return
+    }
+    const scope = pendingFocusScopeRef.current
+    if( !scope ) {
+      return
+    }
+    const target = refreshButtonRefs.current[scope]
+    if( target ) {
+      window.setTimeout( () => {
+        target.focus()
+      }, 0 )
+    }
+    pendingFocusScopeRef.current = null
+  }, [ activeRefreshScope ] )
+
+  const bindRefreshButtonRef = (scope: DashboardRefreshScope) => (element: HTMLButtonElement | null) => {
+    refreshButtonRefs.current[scope] = element
   }
 
   useEffect( () => {
@@ -156,23 +188,26 @@ function DashboardPage() {
       },
       ( err ) => {
         const message = err instanceof Error ? err.message : 'Unexpected error'
-        setError( `Dashboard failed to load: ${message}` )
+        openError( `Dashboard failed to load: ${message}`, [
+          { label: '(user is signed in)', ok: Boolean( userId ) },
+          { label: '(network connection is available)', ok: typeof navigator !== 'undefined' ? navigator.onLine : true },
+        ] )
       },
     )
     return () => {
       unsubscribe()
     }
-  }, [ userId ] )
+  }, [ userId, openError ] )
 
   useEffect( () => {
-    if( !userId ) {
-      return
-    }
     setDashboardUpdatedAt( null )
     setTasks( [] )
     setActiveRefreshScope( null )
     loadQueuedScopeRef.current = null
-  }, [ userId ] )
+    if( !userId ) {
+      clearError()
+    }
+  }, [ userId, clearError ] )
 
   useEffect( () => {
     const storedSorting = window.localStorage.getItem( 'qt4_dashboard_sorting' )
@@ -229,6 +264,7 @@ function DashboardPage() {
         <button
           type="button"
           className="ghost"
+          ref={bindRefreshButtonRef( scope )}
           onClick={() => triggerLoadTasks( scope )}
           disabled={isLoadingTasks}
         >
@@ -261,23 +297,31 @@ function DashboardPage() {
 
       <main className="app-main">
         <section className="panel">
-          <p className="muted">User: {user?.email ?? 'no email'}</p>
+          <p className="muted">User: {user?.email ?? 'No email'}</p>
           <p className="dashboard-refresh">
             Last refresh: {dashboardUpdatedAt ? formatTimeAgo( dashboardUpdatedAt ) : 'Not refreshed yet'}
           </p>
-          <div className="actions">
+          <div className="actions actions--dashboard-primary">
             <Link className="link" to="/projects">
               Go to Projects
             </Link>
             <Link className="link" to="/admin/audit">
               Activity log
             </Link>
-            <button type="button" className="ghost" onClick={() => triggerLoadTasks( 'all' )} disabled={isLoadingTasks}>
+            <button
+              type="button"
+              className="ghost"
+              ref={bindRefreshButtonRef( 'all' )}
+              onClick={() => triggerLoadTasks( 'all' )}
+              disabled={isLoadingTasks}
+            >
               Refresh all sections
             </button>
           </div>
-          {error ? <p className="error">{error}</p> : null}
         </section>
+        {error ? (
+          <ErrorChecklistModal error={error} checklist={errorChecklist} onClose={clearError} />
+        ) : null}
 
         {isLoadingTasks ? (
           <section className="panel">
@@ -315,16 +359,40 @@ function DashboardPage() {
             {viewMode === 'table' ? (
               <>
                 <div className="actions">
-                  <button type="button" className="ghost" onClick={() => triggerLoadTasks( 'authoring' )} disabled={isLoadingTasks}>
+                  <button
+                    type="button"
+                    className="ghost"
+                    ref={bindRefreshButtonRef( 'authoring' )}
+                    onClick={() => triggerLoadTasks( 'authoring' )}
+                    disabled={isLoadingTasks}
+                  >
                     Refresh In Creation
                   </button>
-                  <button type="button" className="ghost" onClick={() => triggerLoadTasks( 'reply' )} disabled={isLoadingTasks}>
+                  <button
+                    type="button"
+                    className="ghost"
+                    ref={bindRefreshButtonRef( 'reply' )}
+                    onClick={() => triggerLoadTasks( 'reply' )}
+                    disabled={isLoadingTasks}
+                  >
                     Refresh Replies
                   </button>
-                  <button type="button" className="ghost" onClick={() => triggerLoadTasks( 'reviewer' )} disabled={isLoadingTasks}>
+                  <button
+                    type="button"
+                    className="ghost"
+                    ref={bindRefreshButtonRef( 'reviewer' )}
+                    onClick={() => triggerLoadTasks( 'reviewer' )}
+                    disabled={isLoadingTasks}
+                  >
                     Refresh In Review
                   </button>
-                  <button type="button" className="ghost" onClick={() => triggerLoadTasks( 'acceptedReport' )} disabled={isLoadingTasks}>
+                  <button
+                    type="button"
+                    className="ghost"
+                    ref={bindRefreshButtonRef( 'acceptedReport' )}
+                    onClick={() => triggerLoadTasks( 'acceptedReport' )}
+                    disabled={isLoadingTasks}
+                  >
                     Refresh Accepted Reports
                   </button>
                 </div>

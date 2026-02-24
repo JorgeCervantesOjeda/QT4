@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ColumnDef, SortingState } from '@tanstack/react-table'
 import { addDays } from 'date-fns/addDays'
 import { addMonths } from 'date-fns/addMonths'
@@ -101,7 +101,15 @@ const parseLocalDateInput = (value: string): Date | null => {
   if( month < 1 || month > 12 || day < 1 || day > 31 ) {
     return null
   }
-  return new Date( year, month - 1, day, 0, 0, 0, 0 )
+  const parsed = new Date( year, month - 1, day, 0, 0, 0, 0 )
+  if(
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day
+  ) {
+    return null
+  }
+  return parsed
 }
 
 const chunkArray = <T,>(items: T[], size: number): T[][] => {
@@ -162,6 +170,8 @@ function AdminAuditPage() {
   const [modelUpdateMessage, setModelUpdateMessage] = useState<string>( '' )
   const [modelUpdateSummary, setModelUpdateSummary] = useState<string>( '' )
   const [confirmModelUpdate, setConfirmModelUpdate] = useState( false )
+  const runReportButtonRef = useRef<HTMLButtonElement | null>( null )
+  const shouldRestoreRunReportFocusRef = useRef( false )
   const reportUserId = isAdmin ? selectedUserId : userId
 
   const errorChecklist = useMemo( () => buildAdminAuditErrorChecklist( error, {
@@ -987,21 +997,27 @@ function AdminAuditPage() {
   }, [] )
 
   useEffect( () => {
-    if( isAdmin && selectedUserId ) {
-      window.localStorage.setItem( 'qt4_audit_user', selectedUserId )
+    if( !isAdmin || !selectedUserId ) {
+      window.localStorage.removeItem( 'qt4_audit_user' )
+      return
     }
+    window.localStorage.setItem( 'qt4_audit_user', selectedUserId )
   }, [ isAdmin, selectedUserId ] )
 
   useEffect( () => {
     if( startDate ) {
       window.localStorage.setItem( 'qt4_audit_start', startDate )
+      return
     }
+    window.localStorage.removeItem( 'qt4_audit_start' )
   }, [ startDate ] )
 
   useEffect( () => {
     if( endDate ) {
       window.localStorage.setItem( 'qt4_audit_end', endDate )
+      return
     }
+    window.localStorage.removeItem( 'qt4_audit_end' )
   }, [ endDate ] )
 
   useEffect( () => {
@@ -1085,6 +1101,25 @@ function AdminAuditPage() {
     })()
   }, [ userId, isAdmin ] )
 
+  useEffect( () => {
+    if( !isAdmin ) {
+      if( selectedUserId ) {
+        setSelectedUserId( '' )
+      }
+      return
+    }
+    if( sortedUsers.length === 0 ) {
+      if( selectedUserId ) {
+        setSelectedUserId( '' )
+      }
+      return
+    }
+    const selectedExists = sortedUsers.some( ( entry ) => entry.userId === selectedUserId )
+    if( !selectedExists ) {
+      setSelectedUserId( sortedUsers[0]?.userId ?? '' )
+    }
+  }, [ isAdmin, selectedUserId, sortedUsers ] )
+
   const handleRunReport = async () => {
     if( !reportUserId ) {
       setError( 'Sign in before running the audit report.' )
@@ -1097,11 +1132,23 @@ function AdminAuditPage() {
       const fallbackStart = new Date( now )
       fallbackStart.setDate( fallbackStart.getDate() - 30 )
       const parsedStart = startDate ? parseLocalDateInput( startDate ) : null
+      if( startDate && !parsedStart ) {
+        setError( 'Start date is invalid. Use a valid date in YYYY-MM-DD format.' )
+        return
+      }
       const start = parsedStart ?? fallbackStart
       start.setHours( 0, 0, 0, 0 )
       const parsedEnd = endDate ? parseLocalDateInput( endDate ) : null
+      if( endDate && !parsedEnd ) {
+        setError( 'End date is invalid. Use a valid date in YYYY-MM-DD format.' )
+        return
+      }
       const end = parsedEnd ?? now
       end.setHours( 23, 59, 59, 999 )
+      if( start.getTime() > end.getTime() ) {
+        setError( 'Start date must be on or before end date.' )
+        return
+      }
       const rangeLabel = `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`
 
       if( isAdmin && !selectedUserId ) {
@@ -1257,6 +1304,12 @@ function AdminAuditPage() {
       setError( message )
     } finally {
       setIsBusy( false )
+      if( shouldRestoreRunReportFocusRef.current ) {
+        window.setTimeout( () => {
+          runReportButtonRef.current?.focus()
+        }, 0 )
+        shouldRestoreRunReportFocusRef.current = false
+      }
     }
   }
 
@@ -1337,7 +1390,7 @@ function AdminAuditPage() {
 
         <section className="panel stack">
           <h2>Audit report</h2>
-          <div className="actions">
+          <div className="actions actions--audit-filters">
             <label className="field">
               <span>User</span>
               {isAdmin ? (
@@ -1360,7 +1413,15 @@ function AdminAuditPage() {
               <span>End date</span>
               <input type="date" value={endDate} onChange={( event ) => setEndDate( event.target.value )} />
             </label>
-            <button type="button" onClick={handleRunReport} disabled={isBusy}>
+            <button
+              ref={runReportButtonRef}
+              type="button"
+              onClick={() => {
+                shouldRestoreRunReportFocusRef.current = true
+                void handleRunReport()
+              }}
+              disabled={isBusy}
+            >
               Run report
             </button>
           </div>
@@ -1371,6 +1432,8 @@ function AdminAuditPage() {
 
         {isBusy && logs.length === 0 ? (
           <section className="panel">
+            <GiphyInline reason="loading" />
+            <p className="muted">Generating report...</p>
           </section>
         ) : (
           <section className="panel stack">

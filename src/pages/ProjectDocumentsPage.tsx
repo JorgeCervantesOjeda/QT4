@@ -69,18 +69,24 @@ function ProjectDocumentsPage() {
   const [sorting, setSorting] = useState<SortingState>( [ { id: 'shortId', desc: false } ] )
   const lastErrorRef = useRef<string | null>( null )
   const successOkButtonRef = useRef<HTMLButtonElement | null>( null )
+  const titleInputRef = useRef<HTMLInputElement | null>( null )
+  const shouldRestoreTitleFocusRef = useRef( false )
   const [userDirectoryById, setUserDirectoryById] = useState<Record<string, { email?: string | null; displayName?: string | null }>>( {} )
 
   const canSubmit = useMemo(
-    () => title.trim().length > 0 && !isBusy && Boolean( projectId ),
-    [ title, isBusy, projectId ],
+    () => title.trim().length > 0 && !isBusy && Boolean( projectId ) && Boolean( project ),
+    [ title, isBusy, projectId, project ],
   )
 
   const formatUserLabel = useCallback( (memberUserId: string) => {
     const entry = userDirectoryById[memberUserId]
     const displayName = entry?.displayName ?? ''
+    const email = entry?.email ?? ''
     if( displayName ) {
       return displayName
+    }
+    if( email ) {
+      return email
     }
     return 'Unknown user'
   }, [ userDirectoryById ] )
@@ -445,12 +451,32 @@ function ProjectDocumentsPage() {
     }
   }, [ successMessage ] )
 
+  const handleCloseSuccessMessage = () => {
+    const shouldRestoreFocus = shouldRestoreTitleFocusRef.current
+    setSuccessMessage( null )
+    if( shouldRestoreFocus ) {
+      window.setTimeout( () => {
+        titleInputRef.current?.focus()
+      }, 0 )
+    }
+    shouldRestoreTitleFocusRef.current = false
+  }
+
   const handleCreateDocument = async ( event: React.FormEvent<HTMLFormElement> ) => {
     event.preventDefault()
-    if( !projectId || !userId ) {
-      openError( 'You need an active project to create documents.', [
+    if( !projectId || !project || !userId ) {
+      openError( 'Sign in and select an existing project before creating documents.', [
+        { label: '(project is selected)', ok: Boolean( projectId ) },
+        { label: '(project exists)', ok: Boolean( project ) },
+        { label: '(user is signed in)', ok: Boolean( userId ) },
+      ] )
+      return
+    }
+    if( title.trim().length === 0 ) {
+      openError( 'Document title cannot be empty.', [
         { label: '(project is selected)', ok: Boolean( projectId ) },
         { label: '(user is signed in)', ok: Boolean( userId ) },
+        { label: '(document title is provided)', ok: false },
       ] )
       return
     }
@@ -461,6 +487,7 @@ function ProjectDocumentsPage() {
       const counterRef = doc( db, 'counters', `documents_${projectId}` )
       const documentRef = doc( collection( db, 'documents' ) )
       const versionRef = doc( collection( db, 'versions' ) )
+      const versionCounterRef = doc( db, 'counters', `versions_${documentRef.id}` )
       await runTransaction( db, async ( transaction ) => {
         const counterSnap = await transaction.get( counterRef )
         const nextNumberRaw = counterSnap.data()?.nextNumber
@@ -469,6 +496,7 @@ function ProjectDocumentsPage() {
           counterRef,
           {
             nextNumber: nextNumber + 1,
+            projectId,
           },
           { merge: true },
         )
@@ -507,8 +535,18 @@ function ProjectDocumentsPage() {
           updatedAt: serverTimestamp(),
           updatedBy: userId,
         } )
+        transaction.set(
+          versionCounterRef,
+          {
+            nextNumber: FIRST_VERSION_NUMBER + 1,
+            docId: documentRef.id,
+            projectId,
+          },
+          { merge: true },
+        )
       } )
       setTitle( '' )
+      shouldRestoreTitleFocusRef.current = true
       setSuccessMessage( 'Document created successfully.' )
       void ( async () => {
         try {
@@ -576,6 +614,7 @@ function ProjectDocumentsPage() {
             <label className="field">
               <span>Title</span>
               <input
+                ref={titleInputRef}
                 type="text"
                 name="title"
                 required
@@ -631,7 +670,7 @@ function ProjectDocumentsPage() {
                   <GiphyInline reason="good_job" mode="inline" showLabel={false} />
                   <p className="muted">{successMessage}</p>
                   <div className="actions">
-                    <button ref={successOkButtonRef} type="button" onClick={() => setSuccessMessage( null )}>
+                    <button ref={successOkButtonRef} type="button" onClick={handleCloseSuccessMessage}>
                       OK
                     </button>
                   </div>

@@ -173,6 +173,7 @@ function VersionsPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>( null )
   const lastErrorRef = useRef<string | null>( null )
   const successOkButtonRef = useRef<HTMLButtonElement | null>( null )
+  const commentInputRef = useRef<HTMLTextAreaElement | null>( null )
   const [userDirectoryById, setUserDirectoryById] = useState<Record<string, { email?: string | null; displayName?: string | null }>>( {} )
   const [errorReportGate, setErrorReportGate] = useState<{ isBlocking: boolean; isLoading: boolean }>({
     isBlocking: false,
@@ -182,7 +183,8 @@ function VersionsPage() {
   const [commentsByThread, setCommentsByThread] = useState<Record<string, CommentSummary[]>>( {} )
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>( null )
   const [pendingThreadStatusChange, setPendingThreadStatusChange] = useState<ThreadSummary | null>( null )
-  const hasAppliedThreadQueryRef = useRef( false )
+  const lastAppliedVersionQueryRef = useRef<string | null>( null )
+  const lastAppliedThreadQueryRef = useRef<string | null>( null )
   const [newThreadTitle, setNewThreadTitle] = useState( '' )
   const [newCommentBody, setNewCommentBody] = useState( '' )
   const [isLoadingThreads, setIsLoadingThreads] = useState( false )
@@ -568,27 +570,6 @@ function VersionsPage() {
     },
   ], [ formatUserLabel ] )
 
-  const threadColumns = useMemo<ColumnDef<ThreadSummary>[]>( () => [
-    {
-      header: 'Issue',
-      accessorKey: 'title',
-    },
-    {
-      header: 'Status',
-      accessorKey: 'status',
-    },
-    {
-      header: 'Created by',
-      accessorKey: 'createdBy',
-      cell: ( info ) => formatUserLabel( info.getValue<string>() ),
-    },
-    {
-      header: 'Comments',
-      accessorKey: 'commentCount',
-      cell: ( info ) => String( info.getValue<number>() ),
-    },
-  ], [ formatUserLabel ] )
-
   const commentColumns = useMemo<ColumnDef<CommentSummary>[]>( () => [
     {
       header: 'Author',
@@ -631,21 +612,6 @@ function VersionsPage() {
       }
 
       const documentRaw = documentSnapshot.data()
-      console.log( 'Versions document snapshot', {
-        docIdParam: docId,
-        snapshotId: documentSnapshot.id,
-        exists: documentSnapshot.exists(),
-        keys: Object.keys( documentRaw ?? {} ),
-        baseDocId: ( documentRaw as Record<string, unknown> )?.baseDocId ?? null,
-        baseVersionId: ( documentRaw as Record<string, unknown> )?.baseVersionId ?? null,
-      } )
-      console.log( 'Versions document snapshot', {
-        docIdParam: docId,
-        snapshotId: documentSnapshot.id,
-        type: documentRaw.type ?? 'document',
-        baseDocId: documentRaw.baseDocId ?? null,
-        baseVersionId: documentRaw.baseVersionId ?? null,
-      } )
       const loadedProjectId = ( documentRaw.projectId as string ) ?? projectIdFromQuery
       const loadedAuthorId = ( documentRaw.createdBy as string ) ?? ( documentRaw.authorId as string ) ?? ''
       const detectedShortId = Number.isFinite( documentRaw.shortId ) ? Number( documentRaw.shortId ) : null
@@ -672,12 +638,6 @@ function VersionsPage() {
       step = 'versions-members'
       const baseDocId = loadedBaseDocId
       const baseVersionId = loadedBaseVersionId
-      console.log( 'Error report base links', {
-        docId,
-        baseDocId,
-        baseVersionId,
-        docType: documentRaw.type ?? 'document',
-      } )
       const [ versionsSnapshot, membersSnapshot, projectSnapshot, baseDocumentSnapshot ] = await Promise.all( [
         getDocs(
           query(
@@ -723,17 +683,6 @@ function VersionsPage() {
         }
       } )
       const latestVersionLocal = nextVersions[0] ?? null
-      console.log(
-        '[DEBUG create_next_version] versions loaded =',
-        JSON.stringify( {
-          docId,
-          projectId: loadedProjectId,
-          totalVersions: nextVersions.length,
-          latestVersionLocal: latestVersionLocal
-            ? { id: latestVersionLocal.id, status: latestVersionLocal.status, number: latestVersionLocal.number }
-            : null,
-        } ),
-      )
       setVersions( nextVersions )
 
       const members = membersSnapshot.docs.map( ( memberSnapshot ) => {
@@ -755,11 +704,6 @@ function VersionsPage() {
       }
       if( baseDocumentSnapshot && 'exists' in baseDocumentSnapshot && baseDocumentSnapshot.exists() ) {
         const baseData = baseDocumentSnapshot.data()
-        console.log( 'Resolved base document from baseDocId', {
-          baseDocId: baseDocumentSnapshot.id,
-          shortId: baseData?.shortId ?? null,
-          title: baseData?.title ?? null,
-        } )
         setBaseDocumentData( {
           id: baseDocumentSnapshot.id,
           title: ( baseData?.title as string | undefined ) ?? 'Untitled document',
@@ -772,19 +716,10 @@ function VersionsPage() {
           if( baseVersionSnapshot.exists() ) {
             const baseVersionData = baseVersionSnapshot.data()
             const resolvedBaseDocId = ( baseVersionData?.docId as string | undefined ) ?? ''
-            console.log( 'Resolved base version', {
-              baseVersionId,
-              resolvedBaseDocId,
-            } )
             if( resolvedBaseDocId ) {
               const baseDocSnapshot = await getDocFromServer( doc( db, 'documents', resolvedBaseDocId ) )
               if( baseDocSnapshot.exists() ) {
                 const baseDocData = baseDocSnapshot.data()
-                console.log( 'Resolved base document from baseVersionId', {
-                  baseDocId: baseDocSnapshot.id,
-                  shortId: baseDocData?.shortId ?? null,
-                  title: baseDocData?.title ?? null,
-                } )
                 setBaseDocumentData( {
                   id: baseDocSnapshot.id,
                   title: ( baseDocData?.title as string | undefined ) ?? 'Untitled document',
@@ -810,9 +745,6 @@ function VersionsPage() {
 
         setBaseDocumentData( null )
       }
-      const isLeaderLocal = members.some(
-        ( member ) => member.userId === userId && member.role === 'leader',
-      )
       const allowedMemberIds = members.map( ( member ) => member.userId ).filter( Boolean )
       const activeVersion =
         ( versionIdFromQuery
@@ -847,24 +779,6 @@ function VersionsPage() {
             directoryCandidates.add( reviewerId )
           }
         } )
-      } )
-
-      const activeVersionId = activeVersion?.id ?? null
-      const canReadReview = Boolean(
-        activeVersion &&
-          ( activeVersion.createdBy === userId ||
-            activeVersion.reviewerIds.includes( userId ) ||
-            isLeaderLocal ),
-      )
-      console.log( 'Versions review access', {
-        docId,
-        versionId: activeVersionId,
-        canReadReview,
-        userId,
-        isLeader: isLeaderLocal,
-        isAdmin,
-        authorId: activeVersion?.createdBy ?? '',
-        reviewerCount: activeVersion?.reviewerIds.length ?? 0,
       } )
 
       const candidateList = Array.from( directoryCandidates )
@@ -944,13 +858,6 @@ function VersionsPage() {
       step = 'error-reports'
       if( latestVersionLocal && latestVersionLocal.status === 'Accepted' ) {
         setErrorReportGate( { isBlocking: false, isLoading: true } )
-        console.log(
-          '[DEBUG create_next_version] error report gate start =',
-          JSON.stringify( {
-            latestVersionId: latestVersionLocal.id,
-            latestVersionStatus: latestVersionLocal.status,
-          } ),
-        )
         const errorReportsSnapshot = await getDocs(
           query(
             collection( db, 'documents' ),
@@ -960,21 +867,7 @@ function VersionsPage() {
           ),
         )
         const errorReportDocs = errorReportsSnapshot.docs.map( ( docSnapshot ) => docSnapshot.id )
-        console.log(
-          '[DEBUG create_next_version] related error reports =',
-          JSON.stringify( {
-            count: errorReportDocs.length,
-            reportDocIds: errorReportDocs,
-          } ),
-        )
         if( errorReportDocs.length === 0 ) {
-          console.log(
-            '[DEBUG create_next_version] gate result =',
-            JSON.stringify( {
-              isBlocking: true,
-              reason: 'no_related_error_reports',
-            } ),
-          )
           setErrorReportGate( { isBlocking: true, isLoading: false } )
         } else {
           const latestReportVersions = await Promise.all(
@@ -1001,26 +894,9 @@ function VersionsPage() {
             ( report ) => report.latestVersionStatus === 'Accepted',
           )
           const isBlocking = !hasAcceptedErrorReport
-          console.log(
-            '[DEBUG create_next_version] related error report latest versions =',
-            JSON.stringify( {
-              latestReportVersions,
-              hasAcceptedErrorReport,
-              isBlocking,
-            } ),
-          )
           setErrorReportGate( { isBlocking, isLoading: false } )
         }
       } else {
-        console.log(
-          '[DEBUG create_next_version] gate bypassed =',
-          JSON.stringify( {
-            reason: 'latest_version_not_accepted_or_missing',
-            latestVersionLocal: latestVersionLocal
-              ? { id: latestVersionLocal.id, status: latestVersionLocal.status, number: latestVersionLocal.number }
-              : null,
-          } ),
-        )
         setErrorReportGate( { isBlocking: false, isLoading: false } )
       }
 
@@ -1040,7 +916,6 @@ function VersionsPage() {
     userId,
     user?.email,
     user?.displayName,
-    isAdmin,
   ] )
 
   useEffect( () => {
@@ -1157,10 +1032,24 @@ function VersionsPage() {
       setThreads( [] )
       setCommentsByThread( {} )
       setSelectedThreadId( null )
-      hasAppliedThreadQueryRef.current = false
+      setNewThreadTitle( '' )
+      setNewCommentBody( '' )
+      setPendingThreadStatusChange( null )
+      lastAppliedThreadQueryRef.current = null
       return
     }
-    hasAppliedThreadQueryRef.current = false
+    // Clear stale issue/comment state immediately when switching versions.
+    // This avoids interacting with threads from the previously selected version
+    // while the new realtime snapshot is still loading.
+    setThreads( [] )
+    setCommentsByThread( {} )
+    setSelectedThreadId( null )
+    setNewThreadTitle( '' )
+    setNewCommentBody( '' )
+    setPendingThreadStatusChange( null )
+    if( !threadIdFromQuery ) {
+      lastAppliedThreadQueryRef.current = null
+    }
     setIsLoadingThreads( true )
     const threadsUnsub = onSnapshot(
       query( collection( db, 'threads' ), where( 'versionId', '==', selectedVersion.id ) ),
@@ -1177,12 +1066,8 @@ function VersionsPage() {
           }
         } )
         setThreads( nextThreads )
-        if(
-          !hasAppliedThreadQueryRef.current &&
-          threadIdFromQuery &&
-          nextThreads.some( ( thread ) => thread.id === threadIdFromQuery )
-        ) {
-          hasAppliedThreadQueryRef.current = true
+        if( threadIdFromQuery && lastAppliedThreadQueryRef.current !== threadIdFromQuery && nextThreads.some( ( thread ) => thread.id === threadIdFromQuery ) ) {
+          lastAppliedThreadQueryRef.current = threadIdFromQuery
           setSelectedThreadId( threadIdFromQuery )
         } else {
           setSelectedThreadId( ( current ) =>
@@ -1232,6 +1117,11 @@ function VersionsPage() {
       commentsUnsub()
     }
   }, [ selectedVersion?.id, threadIdFromQuery ] )
+
+  useEffect( () => {
+    setNewCommentBody( '' )
+    setPendingThreadStatusChange( null )
+  }, [ selectedThreadId ] )
 
   useEffect( () => {
     let isActive = true
@@ -1366,13 +1256,6 @@ function VersionsPage() {
     }
     if( latestVersion.status !== 'Accepted' ) {
       setErrorReportGate( { isBlocking: false, isLoading: false } )
-      console.log(
-        '[DEBUG create_next_version] reactive gate bypassed =',
-        JSON.stringify( {
-          reason: 'latest_version_not_accepted',
-          latestVersion: { id: latestVersion.id, status: latestVersion.status, number: latestVersion.number },
-        } ),
-      )
       return
     }
 
@@ -1380,13 +1263,6 @@ function VersionsPage() {
     setErrorReportGate( { isBlocking: true, isLoading: true } )
     void ( async () => {
       try {
-        console.log(
-          '[DEBUG create_next_version] reactive gate start =',
-          JSON.stringify( {
-            activeProjectId,
-            latestVersion: { id: latestVersion.id, status: latestVersion.status, number: latestVersion.number },
-          } ),
-        )
         const errorReportsSnapshot = await getDocs(
           query(
             collection( db, 'documents' ),
@@ -1396,22 +1272,11 @@ function VersionsPage() {
           ),
         )
         const errorReportDocs = errorReportsSnapshot.docs.map( ( docSnapshot ) => docSnapshot.id )
-        console.log(
-          '[DEBUG create_next_version] reactive related error reports =',
-          JSON.stringify( {
-            count: errorReportDocs.length,
-            reportDocIds: errorReportDocs,
-          } ),
-        )
         if( !isActive ) {
           return
         }
         if( errorReportDocs.length === 0 ) {
           setErrorReportGate( { isBlocking: true, isLoading: false } )
-          console.log(
-            '[DEBUG create_next_version] reactive gate result =',
-            JSON.stringify( { isBlocking: true, reason: 'no_related_error_reports' } ),
-          )
           return
         }
         const latestReportVersions = await Promise.all(
@@ -1442,21 +1307,13 @@ function VersionsPage() {
         )
         const isBlocking = !hasAcceptedErrorReport
         setErrorReportGate( { isBlocking, isLoading: false } )
-        console.log(
-          '[DEBUG create_next_version] reactive related error report latest versions =',
-          JSON.stringify( {
-            latestReportVersions,
-            hasAcceptedErrorReport,
-            isBlocking,
-          } ),
-        )
       } catch( err ) {
         if( !isActive ) {
           return
         }
         setErrorReportGate( { isBlocking: true, isLoading: false } )
         const message = err instanceof Error ? err.message : 'Unexpected error'
-        console.error( '[DEBUG create_next_version] reactive gate failed:', message )
+        console.error( 'Create-version gate update failed:', message )
       }
     } )()
 
@@ -1567,15 +1424,30 @@ function VersionsPage() {
   }, [ projectMembers, versions, userId, user?.email, user?.displayName ] )
 
   useEffect( () => {
-    const activeVersion =
-      ( versionIdFromQuery
+    if( versions.length === 0 ) {
+      lastAppliedVersionQueryRef.current = null
+      return
+    }
+    if( !versionIdFromQuery ) {
+      lastAppliedVersionQueryRef.current = null
+    }
+    const queryVersion =
+      versionIdFromQuery && lastAppliedVersionQueryRef.current !== versionIdFromQuery
         ? versions.find( ( version ) => version.id === versionIdFromQuery ) || null
-        : null ) ??
-      ( selectedVersionId 
-        ? versions.find( ( version ) => version.id === selectedVersionId ) || null
-        : null ) ?? versions[0] ?? null
+        : null
+    const selectedVersionFromState = selectedVersionId
+      ? versions.find( ( version ) => version.id === selectedVersionId ) || null
+      : null
+    const activeVersion =
+      queryVersion ??
+      selectedVersionFromState ??
+      versions[0] ??
+      null
     if( !activeVersion ) {
       return
+    }
+    if( queryVersion ) {
+      lastAppliedVersionQueryRef.current = versionIdFromQuery
     }
     const allowedMemberIds = projectMembers.map( ( member ) => member.userId ).filter( Boolean )
     const nextReviewerIds = ( activeVersion.reviewerIds ?? [] ).filter( ( reviewerId ) =>
@@ -1636,6 +1508,22 @@ function VersionsPage() {
     }
   }, [ successMessage ] )
 
+  const handleCloseSuccessMessage = () => {
+    const shouldRestoreCommentFocus = successMessage === 'The comment was added successfully.'
+    const shouldRestoreNewIssueCommentFocus = successMessage === 'Issue created successfully.'
+    setSuccessMessage( null )
+    if( shouldRestoreCommentFocus ) {
+      window.setTimeout( () => {
+        commentInputRef.current?.focus()
+      }, 0 )
+    }
+    if( shouldRestoreNewIssueCommentFocus ) {
+      window.setTimeout( () => {
+        commentInputRef.current?.focus()
+      }, 0 )
+    }
+  }
+
   useEffect( () => {
     setClockNowMs( Date.now() )
     const timer = window.setInterval( () => {
@@ -1689,12 +1577,6 @@ function VersionsPage() {
     if( !documentData ) {
       return
     }
-    console.log( 'Versions document data', {
-      docId: documentData.id,
-      type: documentData.type,
-      baseDocId: documentData.baseDocId ?? null,
-      baseVersionId: documentData.baseVersionId ?? null,
-    } )
     if( documentData.type === 'errorReport' && ( !documentData.baseDocId || !documentData.baseVersionId ) ) {
       setError( 'Invalid error report data: baseDocId and baseVersionId are required.' )
     }
@@ -1702,7 +1584,7 @@ function VersionsPage() {
 
   const handleCreateVersion = async () => {
     if( !docId || !projectId || !userId || !documentData ) {
-      setError( 'Select a document and ensure you are signed in to create a version.' )
+      setError( 'Sign in and select a document before creating a version.' )
       return
     }
     if( !canCreateVersion ) {
@@ -1722,45 +1604,57 @@ function VersionsPage() {
     setSuccessMessage( null )
     setIsBusy( true )
     try {
-      const highest = versions.length > 0 ? versions[0].number : 0
-      const nextNumber = highest > 0 ? highest + 1 : FIRST_VERSION_NUMBER
-
+      const counterRef = doc( db, 'counters', `versions_${docId}` )
       const versionRef = doc( collection( db, 'versions' ) )
-      const batch = writeBatch( db )
-      batch.set( versionRef, {
-        projectId,
-        docId,
-        number: nextNumber,
-        status: 'In Creation',
-        createdBy: userId,
-        reviewerIds: [],
-        reviewStartAt: null,
-        reviewEndAt: null,
-        hasFile: false,
-        fileRefId: null,
-        stats: {
+      await runTransaction( db, async ( transaction ) => {
+        const counterSnap = await transaction.get( counterRef )
+        const fallbackNext = ( versions.length > 0 ? versions[0].number + 1 : FIRST_VERSION_NUMBER )
+        const nextNumberRaw = counterSnap.data()?.nextNumber
+        const nextNumber = typeof nextNumberRaw === 'number' ? nextNumberRaw : fallbackNext
+
+        transaction.set(
+          counterRef,
+          {
+            nextNumber: nextNumber + 1,
+            projectId,
+          },
+          { merge: true },
+        )
+
+        transaction.set( versionRef, {
+          projectId,
+          docId,
+          number: nextNumber,
+          status: 'In Creation',
+          createdBy: userId,
+          reviewerIds: [],
+          reviewStartAt: null,
+          reviewEndAt: null,
+          hasFile: false,
+          fileRefId: null,
+          stats: {
+            numThreads: 0,
+            numOpenThreads: 0,
+            numComments: 0,
+            numThreadsWithTwoPlusComments: 0,
+          },
           numThreads: 0,
           numOpenThreads: 0,
           numComments: 0,
           numThreadsWithTwoPlusComments: 0,
-        },
-        numThreads: 0,
-        numOpenThreads: 0,
-        numComments: 0,
-        numThreadsWithTwoPlusComments: 0,
-        acceptedErrorReportId: null,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        updatedBy: userId,
-      } )
-      if( latestVersion && latestVersion.status === 'In Review' ) {
-        batch.update( doc( db, 'versions', latestVersion.id ), {
-          status: 'Reviewed',
+          acceptedErrorReportId: null,
+          createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           updatedBy: userId,
         } )
-      }
-      await batch.commit()
+        if( latestVersion && latestVersion.status === 'In Review' ) {
+          transaction.update( doc( db, 'versions', latestVersion.id ), {
+            status: 'Reviewed',
+            updatedAt: serverTimestamp(),
+            updatedBy: userId,
+          } )
+        }
+      } )
       setSuccessMessage( 'Version created successfully.' )
       void ( async () => {
         try {
@@ -1964,24 +1858,20 @@ function VersionsPage() {
     setIsBusy( true )
     setUploadStatus( 'uploading' )
     setUploadMessage( 'Uploading...' )
+    const fileKey = buildFileKey( {
+      projectId,
+      documentId: docId,
+      versionNumber: selectedVersion.number,
+      fileName: file.name,
+    } )
+    let uploadedNewFile = false
     try {
-      const fileKey = buildFileKey( {
-        projectId,
-        documentId: docId,
-        versionNumber: selectedVersion.number,
-        fileName: file.name,
-      } )
       const existingFileKey = selectedFileRef?.fileKey ?? null
-      if( existingFileKey && existingFileKey !== fileKey ) {
-        try {
-          await deleteFile( existingFileKey )
-        } catch {
-          // Ignore cleanup errors; the new upload still proceeds.
-        }
-      }
+      const shouldDeleteExistingAfterCommit = Boolean( existingFileKey && existingFileKey !== fileKey )
       const uploadResponse = await uploadFile( fileKey, file, {
         overwrite: true,
       } )
+      uploadedNewFile = true
       const fileRefDoc = doc( collection( db, 'files' ) )
       const fileRefPayload = {
         fileKey,
@@ -2027,6 +1917,13 @@ function VersionsPage() {
           fileName: file.name,
         },
       } )
+      if( shouldDeleteExistingAfterCommit && existingFileKey ) {
+        try {
+          await deleteFile( existingFileKey )
+        } catch {
+          // Ignore cleanup errors; the new upload is already committed.
+        }
+      }
       setUploadStatus( 'success' )
       setUploadMessage( `Uploaded: ${file.name}` )
       if( uploadInputRef.current ) {
@@ -2034,6 +1931,13 @@ function VersionsPage() {
       }
       await loadDocumentAndVersions()
     } catch( err ) {
+      if( uploadedNewFile ) {
+        try {
+          await deleteFile( fileKey )
+        } catch {
+          // Ignore cleanup errors when rollback upload fails.
+        }
+      }
       const message = err instanceof Error ? err.message : 'Unexpected error'
       setError( message )
       setUploadStatus( 'error' )
@@ -2247,7 +2151,7 @@ function VersionsPage() {
 
   const handleAcceptLatestVersion = async () => {
     if( !docId || !userId || !latestVersion ) {
-      setError( 'Select the latest version to accept.' )
+      setError( 'Select the latest version before accepting.' )
       return
     }
     if( !canAcceptOrReject ) {
@@ -2353,7 +2257,7 @@ function VersionsPage() {
 
   const handleRejectLatestVersion = async () => {
     if( !docId || !userId || !latestVersion ) {
-      setError( 'Select the latest version to reject.' )
+      setError( 'Select the latest version before rejecting.' )
       return
     }
     if( !canAcceptOrReject ) {
@@ -2414,7 +2318,7 @@ function VersionsPage() {
 
   const handleCreateErrorReport = async (title: string) => {
     if( !latestVersion || !projectId || !docId || !userId ) {
-      setError( 'Select an Accepted latest version to create an error report.' )
+      setError( 'Select the latest Accepted version before creating an error report.' )
       return
     }
     if( latestVersion.status !== 'Accepted' ) {
@@ -2432,6 +2336,7 @@ function VersionsPage() {
       const counterRef = doc( db, 'counters', `documents_${projectId}` )
       const errorReportRef = doc( collection( db, 'documents' ) )
       const versionRef = doc( collection( db, 'versions' ) )
+      const versionCounterRef = doc( db, 'counters', `versions_${errorReportRef.id}` )
       await runTransaction( db, async ( transaction ) => {
         const counterSnap = await transaction.get( counterRef )
         const nextNumberRaw = counterSnap.data()?.nextNumber
@@ -2440,6 +2345,8 @@ function VersionsPage() {
           counterRef,
           {
             nextNumber: nextNumber + 1,
+            docId,
+            projectId,
           },
           { merge: true },
         )
@@ -2481,6 +2388,15 @@ function VersionsPage() {
           updatedAt: serverTimestamp(),
           updatedBy: userId,
         } )
+        transaction.set(
+          versionCounterRef,
+          {
+            nextNumber: FIRST_VERSION_NUMBER + 1,
+            docId: errorReportRef.id,
+            projectId,
+          },
+          { merge: true },
+        )
       } )
       await logAudit( {
         actorId: userId,
@@ -2521,7 +2437,7 @@ function VersionsPage() {
 
   const requestVersionDecisionConfirmation = ( decision: 'accept' | 'reject' ) => {
     if( !docId || !userId || !latestVersion ) {
-      setError( decision === 'accept' ? 'Select the latest version to accept.' : 'Select the latest version to reject.' )
+      setError( decision === 'accept' ? 'Select the latest version before accepting.' : 'Select the latest version before rejecting.' )
       return
     }
     if( !canAcceptOrReject ) {
@@ -2562,40 +2478,8 @@ function VersionsPage() {
   }
 
   const requestCreateVersionConfirmation = () => {
-    const hasAcceptedRelatedErrorReportChecklistValue =
-      latestVersionInAccepted && !errorReportGate.isBlocking && !errorReportGate.isLoading
-    const roleClause =
-      isLatestAuthor || isLeader || isAdmin
-    const statusClause =
-      latestVersionInReview ||
-      latestVersionInReviewed ||
-      ( latestVersionInAccepted && hasAcceptedRelatedErrorReportChecklistValue )
-    console.log(
-      '[DEBUG create_next_version] request confirmation =',
-      JSON.stringify( {
-        docId,
-        projectId,
-        userId,
-        hasDocumentData: Boolean( documentData ),
-        canCreateVersion,
-        latestVersion: latestVersion
-          ? { id: latestVersion.id, status: latestVersion.status, number: latestVersion.number }
-          : null,
-        isLatestAuthor,
-        isLeader,
-        isAdmin,
-        errorReportGate,
-        latestVersionInReview,
-        latestVersionInReviewed,
-        latestVersionInAccepted,
-        hasAcceptedRelatedErrorReportChecklistValue,
-        roleClause,
-        statusClause,
-        fullExpression: roleClause && statusClause,
-      } ),
-    )
     if( !docId || !projectId || !userId || !documentData ) {
-      setError( 'Select a document and ensure you are signed in to create a version.' )
+      setError( 'Sign in and select a document before creating a version.' )
       return
     }
     if( !canCreateVersion ) {
@@ -2843,7 +2727,7 @@ function VersionsPage() {
     }
   }
 
-  const canChangeThreadStatus = (thread: ThreadSummary) => {
+  const canChangeThreadStatus = useCallback( (thread: ThreadSummary) => {
     setSelectedThreadId( thread.id )
     if( !selectedVersion || !projectId || !docId || !userId ) {
       setError( 'Select a version to update an issue.' )
@@ -2859,15 +2743,55 @@ function VersionsPage() {
       return false
     }
     return true
-  }
+  }, [ selectedVersion, projectId, docId, userId, canParticipateReview, selectedVersionInActiveReview ] )
 
-  const requestThreadStatusChangeConfirmation = (thread: ThreadSummary) => {
+  const requestThreadStatusChangeConfirmation = useCallback( (thread: ThreadSummary) => {
     if( !canChangeThreadStatus( thread ) ) {
       return
     }
     setError( null )
     setPendingThreadStatusChange( thread )
-  }
+  }, [ canChangeThreadStatus ] )
+
+  const threadColumns = useMemo<ColumnDef<ThreadSummary>[]>( () => [
+    {
+      header: 'Issue',
+      accessorKey: 'title',
+    },
+    {
+      header: 'Status',
+      accessorKey: 'status',
+    },
+    {
+      header: 'Created by',
+      accessorKey: 'createdBy',
+      cell: ( info ) => formatUserLabel( info.getValue<string>() ),
+    },
+    {
+      header: 'Comments',
+      accessorKey: 'commentCount',
+      cell: ( info ) => String( info.getValue<number>() ),
+    },
+    {
+      header: 'Action',
+      id: 'action',
+      cell: ( info ) => {
+        const thread = info.row.original
+        return (
+          <button
+            type="button"
+            onClick={( event ) => {
+              event.stopPropagation()
+              requestThreadStatusChangeConfirmation( thread )
+            }}
+            disabled={isBusy}
+          >
+            {thread.status === 'open' ? 'Close' : 'Reopen'}
+          </button>
+        )
+      },
+    },
+  ], [ formatUserLabel, isBusy, requestThreadStatusChangeConfirmation ] )
 
   const handleToggleThreadStatus = async (thread: ThreadSummary) => {
     if( !canChangeThreadStatus( thread ) ) {
@@ -3022,7 +2946,7 @@ function VersionsPage() {
           <section className="panel stack">
           <div className="panel-header panel-header--versions">
             {!isBusy ? <h2>Versions</h2> : null}
-            <div className="actions">
+            <div className="actions actions--versions-toolbar">
               <label className="field">
                 <span>Selected version</span>
                 <select
@@ -3053,7 +2977,7 @@ function VersionsPage() {
                 type="button"
                 onClick={() => {
                   if( !latestVersion || !userId ) {
-                    setError( 'Select an Accepted latest version to create an error report.' )
+                    setError( 'Select the latest Accepted version before creating an error report.' )
                     return
                   }
                   if( latestVersion.status !== 'Accepted' ) {
@@ -3324,7 +3248,7 @@ function VersionsPage() {
                 <GiphyInline reason="good_job" mode="inline" showLabel={false} />
                 <p className="muted">{successMessage}</p>
                 <div className="actions">
-                  <button ref={successOkButtonRef} type="button" onClick={() => setSuccessMessage( null )}>
+                  <button ref={successOkButtonRef} type="button" onClick={handleCloseSuccessMessage}>
                     OK
                   </button>
                 </div>
@@ -3367,7 +3291,7 @@ function VersionsPage() {
               <p className="muted">
                 Issues: {selectedVersion.numThreads} - Open: {selectedVersion.numOpenThreads} - Comments: {selectedVersion.numComments}
               </p>
-              <div className="actions">
+              <div className="actions actions--capture-row">
                 <input
                   type="text"
                   value={newThreadTitle}
@@ -3517,8 +3441,9 @@ function VersionsPage() {
                   {commentWindowCountdownLabel ? (
                     <p className="muted">{commentWindowCountdownLabel}</p>
                   ) : null}
-                  <div className="actions">
+                  <div className="actions actions--capture-row">
                     <textarea
+                      ref={commentInputRef}
                       className="comment-input"
                       value={newCommentBody}
                       onChange={( event ) => setNewCommentBody( event.target.value )}
@@ -3542,5 +3467,6 @@ function VersionsPage() {
 }
 
 export default VersionsPage
+
 
 
