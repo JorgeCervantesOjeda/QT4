@@ -278,6 +278,14 @@ service cloud.firestore {
         || isAdmin();
     }
 
+    function versionCounterDoc(docId) {
+      return get(/databases/$(database)/documents/counters/$( 'versions_' + docId ));
+    }
+
+    function versionCounterAfter(docId) {
+      return getAfter(/databases/$(database)/documents/counters/$( 'versions_' + docId ));
+    }
+
     function canReviewAccess(projectId, versionId) {
       return isAdmin()
         || isProjectLeader(projectId)
@@ -329,12 +337,29 @@ service cloud.firestore {
         && request.resource.data.email == request.auth.token.email
         && request.resource.data.emailKey == request.auth.token.email
         && emailKey == request.auth.token.email;
-      allow update, delete: if false;
+      allow update: if isSignedIn()
+        && request.auth.token.email is string
+        && emailKey == request.auth.token.email
+        && resource.data.emailKey == request.auth.token.email
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.email is string
+        && request.resource.data.emailKey is string
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.emailKey == request.auth.token.email
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'userId',
+          'emailLower',
+          'displayName',
+          'updatedAt'
+        ]);
+      allow delete: if false;
     }
 
     match /projects/{projectId} {
       allow read: if isProjectMember(projectId) || isAdmin();
       allow create: if isSignedIn()
+        && request.resource.data.name is string
+        && request.resource.data.name.matches('.*\\S.*')
         && request.resource.data.leaderId == request.auth.uid
         && request.resource.data.shortId is int
         && request.resource.data.shortId > 0;
@@ -363,7 +388,9 @@ service cloud.firestore {
         || (isSignedIn() && resource.data.createdBy == request.auth.uid);
       allow create: if (isProjectMember(request.resource.data.projectId) || isAdmin())
         && request.resource.data.title is string
-        && request.resource.data.title.size() > 0
+        && request.resource.data.title.matches('.*\\S.*')
+        && request.resource.data.shortId is int
+        && request.resource.data.shortId > 0
         && request.resource.data.createdBy == request.auth.uid;
       allow update: if (
           (isProjectLeader(resource.data.projectId) || isDocumentAuthor() || isAdmin())
@@ -395,11 +422,39 @@ service cloud.firestore {
     match /counters/{counterId} {
       allow read: if isSignedIn();
       allow create, update: if isSignedIn()
-        && (counterId in ['documents', 'projects'] || counterId.matches('documents_.*'))
+        && (counterId in ['documents', 'projects'] || counterId.matches('documents_.*') || counterId.matches('versions_.*'))
         && request.resource.data.nextNumber is int
         && request.resource.data.nextNumber > 0
         && (
-          resource == null
+          isAdmin()
+          || (
+            counterId == 'projects'
+            && request.resource.data.lastProjectId is string
+            && request.resource.data.lastProjectId.size() > 0
+            && getAfter(/databases/$(database)/documents/projects/$(request.resource.data.lastProjectId)).data.leaderId == request.auth.uid
+            && getAfter(/databases/$(database)/documents/projects/$(request.resource.data.lastProjectId)).data.shortId
+              == request.resource.data.nextNumber - 1
+          )
+          || (
+            counterId.matches('documents_.*')
+            && request.resource.data.projectId is string
+            && counterId == 'documents_' + request.resource.data.projectId
+            && isProjectMember(request.resource.data.projectId)
+          )
+          || (
+            counterId.matches('versions_.*')
+            && request.resource.data.docId is string
+            && request.resource.data.projectId is string
+            && counterId == 'versions_' + request.resource.data.docId
+            && (
+              documentDoc(request.resource.data.docId).data.projectId == request.resource.data.projectId
+              || documentAfter(request.resource.data.docId).data.projectId == request.resource.data.projectId
+            )
+            && canManageVersionByDocId(request.resource.data.projectId, request.resource.data.docId)
+          )
+        )
+        && (
+          (resource == null && request.resource.data.nextNumber == 2)
           || request.resource.data.nextNumber == resource.data.nextNumber + 1
           || isAdmin()
         );
@@ -418,6 +473,29 @@ service cloud.firestore {
         && request.resource.data.projectId is string
         && request.resource.data.number is int
         && request.resource.data.number > 0
+        && versionCounterAfter(request.resource.data.docId).data.nextNumber is int
+        && versionCounterAfter(request.resource.data.docId).data.nextNumber
+          == request.resource.data.number + 1
+        && (
+          versionCounterAfter(request.resource.data.docId).data.docId == request.resource.data.docId
+          || !(versionCounterAfter(request.resource.data.docId).data.docId is string)
+        )
+        && (
+          versionCounterAfter(request.resource.data.docId).data.projectId == request.resource.data.projectId
+          || !(versionCounterAfter(request.resource.data.docId).data.projectId is string)
+        )
+        && (
+          (
+            versionCounterDoc(request.resource.data.docId).data.nextNumber is int
+            && request.resource.data.number == versionCounterDoc(request.resource.data.docId).data.nextNumber
+            && versionCounterAfter(request.resource.data.docId).data.nextNumber
+              == versionCounterDoc(request.resource.data.docId).data.nextNumber + 1
+          )
+          || (
+            !(versionCounterDoc(request.resource.data.docId).data.nextNumber is int)
+            && request.resource.data.number == 1
+          )
+        )
         && request.resource.data.status == 'In Creation'
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.reviewerIds is list
