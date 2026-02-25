@@ -9,7 +9,6 @@ export default defineConfig( ( { mode } ) => {
     ? filesApiProxyPathRaw
     : `/${filesApiProxyPathRaw}`
   const filesApiBaseUrl = env.QT4_FILES_API_BASE_URL ?? 'http://localhost:42873/api/v1'
-  const filesApiKey = env.QT4_FILES_API_KEY ?? ''
 
   return {
     plugins: [react()],
@@ -22,13 +21,6 @@ export default defineConfig( ( { mode } ) => {
           rewrite: (path) => path.startsWith( filesApiProxyPath )
             ? path.slice( filesApiProxyPath.length ) || '/'
             : path,
-          configure: (proxy) => {
-            proxy.on( 'proxyReq', (proxyReq) => {
-              if( filesApiKey ) {
-                proxyReq.setHeader( 'X-API-Key', filesApiKey )
-              }
-            } )
-          },
         },
       },
     },

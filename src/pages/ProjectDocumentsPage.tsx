@@ -20,6 +20,7 @@ import AppBrand from '../components/AppBrand'
 import BackStack from '../components/BackStack'
 import DataTable from '../components/DataTable'
 import ErrorChecklistModal from '../components/ErrorChecklistModal'
+import ModalDialog from '../components/ModalDialog'
 import { GiphyInline } from '../giphy/GiphyProvider'
 import { useErrorChecklistModal } from '../hooks/useErrorChecklistModal'
 import { FIRST_VERSION_NUMBER, versionNumberToString } from '../domain/types'
@@ -664,8 +665,7 @@ function ProjectDocumentsPage() {
               <ErrorChecklistModal error={error} checklist={errorChecklist} onClose={clearError} />
             ) : null}
             {successMessage ? (
-              <div className="modal-overlay" role="dialog" aria-modal="true">
-                <div className="modal-card">
+              <ModalDialog onClose={handleCloseSuccessMessage} initialFocusRef={successOkButtonRef}>
                   <h3>Success</h3>
                   <GiphyInline reason="good_job" mode="inline" showLabel={false} />
                   <p className="muted">{successMessage}</p>
@@ -674,8 +674,7 @@ function ProjectDocumentsPage() {
                       OK
                     </button>
                   </div>
-                </div>
-              </div>
+              </ModalDialog>
             ) : null}
             <div className="actions">
               <label className="field">

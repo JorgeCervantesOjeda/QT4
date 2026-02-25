@@ -29,11 +29,13 @@ import AppBrand from '../components/AppBrand'
 import BackStack from '../components/BackStack'
 import DataTable from '../components/DataTable'
 import ErrorChecklistModal from '../components/ErrorChecklistModal'
+import ModalDialog from '../components/ModalDialog'
 import { versionNumberToString } from '../domain/types'
 import { GiphyInline } from '../giphy/GiphyProvider'
 import { buildAdminAuditErrorChecklist } from '../lib/errorChecklistBuilders'
 import { buildFilesApiUrl, getFilesApiConfigSummary } from '../lib/filesApi'
 import { db } from '../lib/firebase'
+import { REVIEW_WINDOW_MS } from '../lib/reviewWindow'
 import { formatTimeAgo } from '../lib/time'
 
 type AuditLogEntry = {
@@ -170,6 +172,10 @@ function AdminAuditPage() {
   const [modelUpdateMessage, setModelUpdateMessage] = useState<string>( '' )
   const [modelUpdateSummary, setModelUpdateSummary] = useState<string>( '' )
   const [confirmModelUpdate, setConfirmModelUpdate] = useState( false )
+  const [reviewRepairStatus, setReviewRepairStatus] = useState<'idle' | 'running' | 'done' | 'error'>( 'idle' )
+  const [reviewRepairMessage, setReviewRepairMessage] = useState<string>( '' )
+  const [reviewRepairSummary, setReviewRepairSummary] = useState<string>( '' )
+  const [confirmReviewRepair, setConfirmReviewRepair] = useState( false )
   const runReportButtonRef = useRef<HTMLButtonElement | null>( null )
   const shouldRestoreRunReportFocusRef = useRef( false )
   const reportUserId = isAdmin ? selectedUserId : userId
@@ -507,16 +513,19 @@ function AdminAuditPage() {
         return
       }
       const payload = ( await resp.json() ) as {
-        id?: number
-        name?: string
+        projectId?: string | null
+        firebaseUid?: string | null
+        firebaseEmail?: string | null
         defaultExpireAfterDays?: number | null
       }
-      const name = payload.name ?? 'Unknown app'
+      const projectLabel = payload.projectId ?? 'Unknown project'
+      const uidLabel = payload.firebaseUid ?? 'Unknown uid'
+      const emailSuffix = payload.firebaseEmail ? `, email: ${payload.firebaseEmail}` : ''
       const defaultExpire =
         payload.defaultExpireAfterDays === null || payload.defaultExpireAfterDays === undefined
           ? 'default'
           : `${payload.defaultExpireAfterDays} days`
-      const message = `Connected: ${name} (default expire: ${defaultExpire}).`
+      const message = `Connected: project ${projectLabel}, uid ${uidLabel}${emailSuffix} (default expire: ${defaultExpire}).`
       const nowIso = new Date().toISOString()
       setFilesApiStatus( 'ok' )
       setFilesApiMessage( message )
@@ -925,6 +934,95 @@ function AdminAuditPage() {
       return
     }
     setConfirmModelUpdate( true )
+  }
+
+  const handleRepairReviewExpirations = async () => {
+    if( !isAdmin ) {
+      setReviewRepairStatus( 'error' )
+      setReviewRepairMessage( 'Admin access is required to repair review expirations.' )
+      return
+    }
+    if( !userId ) {
+      setReviewRepairStatus( 'error' )
+      setReviewRepairMessage( 'Sign in before repairing review expirations.' )
+      return
+    }
+    setReviewRepairStatus( 'running' )
+    setReviewRepairMessage( 'Loading In Review versions...' )
+    setReviewRepairSummary( '' )
+    try {
+      const versionsSnapshot = await getDocs(
+        query( collection( db, 'versions' ), where( 'status', '==', 'In Review' ) ),
+      )
+
+      const updates = versionsSnapshot.docs.flatMap( ( snapshot ) => {
+        const data = snapshot.data()
+        const currentReviewEndAt = toTimestampDate( data.reviewEndAt )
+        if( currentReviewEndAt ) {
+          return []
+        }
+        const baseDate =
+          toTimestampDate( data.reviewStartAt ) ??
+          toTimestampDate( data.updatedAt ) ??
+          toTimestampDate( data.createdAt ) ??
+          new Date()
+        const nextReviewEndAt = new Date( baseDate.getTime() + REVIEW_WINDOW_MS )
+        return [
+          {
+            ref: doc( db, 'versions', snapshot.id ),
+            data: {
+              reviewEndAt: Timestamp.fromDate( nextReviewEndAt ),
+              updatedAt: serverTimestamp(),
+              updatedBy: userId,
+            },
+            usedReviewStartAt: Boolean( toTimestampDate( data.reviewStartAt ) ),
+          },
+        ]
+      } )
+
+      if( updates.length === 0 ) {
+        setReviewRepairStatus( 'done' )
+        setReviewRepairMessage( 'No repairs needed. All In Review versions already have reviewEndAt.' )
+        setReviewRepairSummary( `In Review versions scanned: ${versionsSnapshot.docs.length}.` )
+        return
+      }
+
+      setReviewRepairMessage( 'Applying review expiration repairs...' )
+      const updateChunks = chunkArray( updates, 400 )
+      for( const chunk of updateChunks ) {
+        const batch = writeBatch( db )
+        chunk.forEach( ( update ) => {
+          batch.update( update.ref, update.data )
+        } )
+        await batch.commit()
+      }
+
+      const basedOnReviewStart = updates.filter( ( update ) => update.usedReviewStartAt ).length
+      const basedOnFallbackDate = updates.length - basedOnReviewStart
+      setReviewRepairStatus( 'done' )
+      setReviewRepairMessage( 'Review expiration repair completed.' )
+      setReviewRepairSummary(
+        `In Review scanned: ${versionsSnapshot.docs.length}. Repaired: ${updates.length}. Based on reviewStartAt: ${basedOnReviewStart}. Based on fallback date: ${basedOnFallbackDate}.`,
+      )
+    } catch( err ) {
+      const message = err instanceof Error ? err.message : 'Unexpected error'
+      setReviewRepairStatus( 'error' )
+      setReviewRepairMessage( `Review expiration repair failed: ${message}` )
+    }
+  }
+
+  const requestReviewRepairConfirmation = () => {
+    if( !isAdmin ) {
+      setReviewRepairStatus( 'error' )
+      setReviewRepairMessage( 'Admin access is required to repair review expirations.' )
+      return
+    }
+    if( !userId ) {
+      setReviewRepairStatus( 'error' )
+      setReviewRepairMessage( 'Sign in before repairing review expirations.' )
+      return
+    }
+    setConfirmReviewRepair( true )
   }
 
   useEffect( () => {
@@ -1363,9 +1461,31 @@ function AdminAuditPage() {
             ) : null}
           </section>
         ) : null}
+        {isAdmin ? (
+          <section className="panel stack">
+            <h2>Review expiration repair</h2>
+            <div className="actions">
+              <button
+                type="button"
+                onClick={requestReviewRepairConfirmation}
+                disabled={reviewRepairStatus === 'running'}
+              >
+                {reviewRepairStatus === 'running' ? 'Repairing...' : 'Repair In Review expirations'}
+              </button>
+            </div>
+            {reviewRepairStatus === 'running' ? <p className="muted">{reviewRepairMessage}</p> : null}
+            {reviewRepairStatus === 'done' ? <p className="muted">{reviewRepairMessage}</p> : null}
+            {reviewRepairSummary ? <p className="muted">{reviewRepairSummary}</p> : null}
+            {reviewRepairStatus === 'error' ? <p className="error">{reviewRepairMessage}</p> : null}
+            {reviewRepairStatus === 'idle' ? (
+              <p className="muted">
+                Adds missing review expiration (`reviewEndAt`) to versions in `In Review`.
+              </p>
+            ) : null}
+          </section>
+        ) : null}
         {confirmModelUpdate ? (
-          <div className="modal-overlay" role="dialog" aria-modal="true">
-            <div className="modal-card">
+          <ModalDialog onClose={() => setConfirmModelUpdate( false )}>
               <h3>Update data model</h3>
               <GiphyInline reason="thinking" mode="inline" />
               <p className="muted">Confirm updating existing data and recalculating stats.</p>
@@ -1384,8 +1504,35 @@ function AdminAuditPage() {
                   Confirm
                 </button>
               </div>
-            </div>
-          </div>
+          </ModalDialog>
+        ) : null}
+        {confirmReviewRepair ? (
+          <ModalDialog onClose={() => setConfirmReviewRepair( false )}>
+              <h3>Repair review expirations</h3>
+              <GiphyInline reason="thinking" mode="inline" />
+              <p className="muted">
+                Confirm backfilling `reviewEndAt` on `In Review` versions that do not have expiration yet.
+              </p>
+              <div className="actions">
+                <button
+                  type="button"
+                  onClick={() => setConfirmReviewRepair( false )}
+                  disabled={reviewRepairStatus === 'running'}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmReviewRepair( false )
+                    void handleRepairReviewExpirations()
+                  }}
+                  disabled={reviewRepairStatus === 'running'}
+                >
+                  Confirm
+                </button>
+              </div>
+          </ModalDialog>
         ) : null}
 
         <section className="panel stack">

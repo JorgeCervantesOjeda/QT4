@@ -24,6 +24,7 @@ import AppBrand from '../components/AppBrand'
 import BackStack from '../components/BackStack'
 import DataTable from '../components/DataTable'
 import ErrorChecklistModal from '../components/ErrorChecklistModal'
+import ModalDialog from '../components/ModalDialog'
 import { FIRST_VERSION_NUMBER, isIntegerVersionNumber, versionNumberToString } from '../domain/types'
 import { GiphyInline } from '../giphy/GiphyProvider'
 import { logAudit } from '../lib/audit'
@@ -119,6 +120,9 @@ const toTimestampDate = (value: unknown): Date | null => {
   }
   return null
 }
+
+const hasLinkedFileMetadata = (version: Pick<VersionSummary, 'hasFile' | 'fileRefId'> | null | undefined) =>
+  Boolean( version?.hasFile && version.fileRefId )
 
 function VersionsPage() {
   const { docId } = useParams()
@@ -268,38 +272,46 @@ function VersionsPage() {
       nowMs: clockNowMs,
     } ),
   )
-  const selectedThreadCountdownMs = selectedVersion && selectedThread
-    ? getCommentWindowRemainingMs(
-      selectedVersion.status,
-      selectedVersion.reviewEndAt,
-      selectedThreadLatestCommentAt,
-      clockNowMs,
-    )
-    : null
+  const getThreadCommentWindowMeta = useCallback(
+    (thread?: Pick<ThreadSummary, 'status' | 'lastCommentAt'> | null) => {
+      if( !selectedVersion ) {
+        return { label: 'Unavailable', state: 'unavailable' as const }
+      }
+      if( selectedVersion.status !== 'In Review' ) {
+        return { label: 'Closed (version is not In Review)', state: 'expired' as const }
+      }
+      if( thread?.status !== 'open' ) {
+        return { label: 'Closed issue', state: 'closed' as const }
+      }
+      if( !selectedVersion.reviewEndAt ) {
+        return { label: 'No expiration configured', state: 'active' as const }
+      }
+      const remainingMs = getCommentWindowRemainingMs(
+        selectedVersion.status,
+        selectedVersion.reviewEndAt,
+        thread?.lastCommentAt,
+        clockNowMs,
+      )
+      if( remainingMs === null ) {
+        return { label: 'Unavailable', state: 'unavailable' as const }
+      }
+      if( selectedVersion.reviewEndAt.getTime() > clockNowMs ) {
+        return { label: formatApproxCountdown( remainingMs ), state: 'active' as const }
+      }
+      if( remainingMs <= 0 ) {
+        return { label: 'Expired', state: 'expired' as const }
+      }
+      return { label: `Grace ${formatApproxCountdown( remainingMs )}`, state: 'grace' as const }
+    },
+    [ selectedVersion, clockNowMs ],
+  )
   const commentWindowCountdownLabel = useMemo( () => {
     if( !selectedVersion || !selectedThread ) {
       return null
     }
-    if( selectedVersion.status !== 'In Review' ) {
-      return 'Comment window closed (version is not In Review).'
-    }
-    if( !selectedVersion.reviewEndAt ) {
-      return 'Approx. time left to comment: unavailable (legacy review without expiration).'
-    }
-    if( selectedVersion.reviewEndAt && selectedVersion.reviewEndAt.getTime() > clockNowMs ) {
-      if( selectedThreadCountdownMs === null ) {
-        return 'Approx. time left to comment: unavailable.'
-      }
-      return `Approx. time left to comment: ${formatApproxCountdown( selectedThreadCountdownMs )}.`
-    }
-    if( selectedThreadCountdownMs === null ) {
-      return 'Comment window closed.'
-    }
-    if( selectedThreadCountdownMs <= 0 ) {
-      return 'Comment window expired.'
-    }
-    return `Approx. grace left to comment: ${formatApproxCountdown( selectedThreadCountdownMs )}.`
-  }, [ selectedVersion, selectedThread, selectedThreadCountdownMs, clockNowMs ] )
+    const meta = getThreadCommentWindowMeta( selectedThread )
+    return `Selected issue comment window: ${meta.label}.`
+  }, [ selectedVersion, selectedThread, getThreadCommentWindowMeta ] )
   const latestSelectedVersionCommentAt = useMemo( () => {
     const comments = Object.values( commentsByThread ).flat()
     return comments.reduce<Date | null>( ( latest, comment ) => {
@@ -378,6 +390,48 @@ function VersionsPage() {
     return `${( sizeBytes / ( 1024 * 1024 ) ).toFixed( 1 )} MB`
   }
 
+  const normalizeDownloadError = (rawMessage: string) => {
+    const lowered = rawMessage.toLowerCase()
+    if( lowered.includes( 'action blocked' ) || lowered.includes( '(403)' ) || lowered.includes( ' 403' ) ) {
+      return 'Download blocked by Files API authorization (Action blocked).'
+    }
+    return rawMessage
+  }
+
+  const handleDownloadVersionFile = useCallback( async (version: VersionSummary) => {
+    setError( null )
+    setSuccessMessage( null )
+    setIsBusy( true )
+    try {
+      if( !version.fileRefId ) {
+        throw new Error(
+          'Cannot download this file: version metadata is incomplete (fileRefId is missing). Please re-upload/replace the file for this version.',
+        )
+      }
+      let fileKey = ''
+      let fileName = `version-${versionNumberToString( version.number )}`
+
+      if( version.fileRefId ) {
+        const fileSnapshot = await getDoc( doc( db, 'files', version.fileRefId ) )
+        if( fileSnapshot.exists() ) {
+          const fileData = fileSnapshot.data()
+          fileKey = ( fileData.fileKey as string | undefined ) ?? ''
+          fileName = ( fileData.fileName as string | undefined ) ?? fileName
+        }
+      }
+
+      if( !fileKey ) {
+        throw new Error( 'Cannot download this file: linked file metadata is missing file key.' )
+      }
+      await downloadFile( fileKey, fileName )
+    } catch( err ) {
+      const rawMessage = err instanceof Error ? err.message : 'Unexpected error'
+      setError( normalizeDownloadError( rawMessage ) )
+    } finally {
+      setIsBusy( false )
+    }
+  }, [] )
+
   const statusClassName = (status?: string | null) => {
     switch( status ) {
       case 'In Creation':
@@ -449,7 +503,7 @@ function VersionsPage() {
       Boolean(
         latestVersion &&
           latestVersion.status === 'In Creation' &&
-          latestVersion.hasFile &&
+          hasLinkedFileMetadata( latestVersion ) &&
           latestVersion.reviewerIds.length > 0 &&
           canManageLatestVersion,
       ),
@@ -500,7 +554,7 @@ function VersionsPage() {
         nowMs: clockNowMs,
       } ),
     ),
-    latestVersionHasFile: Boolean( latestVersion && latestVersion.hasFile ),
+    latestVersionHasFile: hasLinkedFileMetadata( latestVersion ),
     latestVersionHasReviewer: Boolean( latestVersion && latestVersion.reviewerIds.length > 0 ),
     latestVersionHasIssues: Boolean( latestVersion && latestVersion.numThreads > 0 ),
     latestVersionHasIssueWithAtLeastTwoComments: Boolean( latestVersion && latestVersion.numThreadsWithTwoPlusComments > 0 ),
@@ -511,6 +565,7 @@ function VersionsPage() {
     selectedThreadOpen,
     selectedIssueHasAtLeastTwoComments: Boolean( selectedThread && selectedThread.commentCount >= 2 ),
     hasSelectedVersion: Boolean( selectedVersion ),
+    selectedVersionHasFile: hasLinkedFileMetadata( selectedVersion ),
     issueTitleProvided: newThreadTitle.trim().length > 0,
     hasSelectedThread: Boolean( selectedThread ),
     commentBodyProvided: newCommentBody.trim().length > 0,
@@ -566,9 +621,50 @@ function VersionsPage() {
     {
       header: 'Uploaded',
       accessorKey: 'hasFile',
-      cell: ( info ) => ( info.getValue<boolean>() ? 'Yes' : 'No' ),
+      cell: ( info ) => {
+        const version = info.row.original
+        if( !version.hasFile ) {
+          return 'No'
+        }
+        if( !version.fileRefId ) {
+          return 'Missing metadata'
+        }
+        return (
+          <div className="actions actions--inline">
+            <span>Yes</span>
+            <button
+              type="button"
+              onClick={( event ) => {
+                event.stopPropagation()
+                void handleDownloadVersionFile( version )
+              }}
+              disabled={isBusy}
+            >
+              Download
+            </button>
+          </div>
+        )
+      },
     },
-  ], [ formatUserLabel ] )
+    {
+      header: 'Review time left',
+      id: 'reviewTimeLeft',
+      cell: ( info ) => {
+        const version = info.row.original
+        if( version.status !== 'In Review' ) {
+          return '-'
+        }
+        if( !version.reviewEndAt ) {
+          return 'No expiration'
+        }
+        const remainingMs = version.reviewEndAt.getTime() - clockNowMs
+        if( remainingMs <= 0 ) {
+          return 'Expired'
+        }
+        return formatApproxCountdown( remainingMs )
+      },
+    },
+  ], [ formatUserLabel, clockNowMs, handleDownloadVersionFile, isBusy ] )
 
   const commentColumns = useMemo<ColumnDef<CommentSummary>[]>( () => [
     {
@@ -1120,7 +1216,6 @@ function VersionsPage() {
 
   useEffect( () => {
     setNewCommentBody( '' )
-    setPendingThreadStatusChange( null )
   }, [ selectedThreadId ] )
 
   useEffect( () => {
@@ -1524,6 +1619,90 @@ function VersionsPage() {
     }
   }
 
+  const isVersionReviewExpired = (version?: Pick<VersionSummary, 'status' | 'reviewEndAt'> | null) =>
+    Boolean(
+      version &&
+      version.status === 'In Review' &&
+      version.reviewEndAt &&
+      version.reviewEndAt.getTime() <= clockNowMs,
+    )
+
+  const versionStatusClassName = (version?: Pick<VersionSummary, 'status' | 'reviewEndAt'> | null) => {
+    if( isVersionReviewExpired( version ) ) {
+      return 'status-card--in-review-expired'
+    }
+    return statusClassName( version?.status )
+  }
+
+  const versionSelectStatusClassName = (version?: Pick<VersionSummary, 'status' | 'reviewEndAt'> | null) => {
+    if( isVersionReviewExpired( version ) ) {
+      return 'version-select--in-review-expired'
+    }
+    switch( version?.status ) {
+      case 'In Creation':
+        return 'version-select--in-creation'
+      case 'In Review':
+        return 'version-select--in-review'
+      case 'Reviewed':
+        return 'version-select--reviewed'
+      case 'Accepted':
+        return 'version-select--accepted'
+      case 'Rejected':
+        return 'version-select--rejected'
+      case 'Replaced':
+        return 'version-select--replaced'
+      default:
+        return ''
+    }
+  }
+
+  const versionStatusColor = (version?: Pick<VersionSummary, 'status' | 'reviewEndAt'> | null) => {
+    if( isVersionReviewExpired( version ) ) {
+      return '#ffb347'
+    }
+    switch( version?.status ) {
+      case 'In Review':
+        return '#fff59d'
+      case 'Reviewed':
+        return '#d3d3d3'
+      case 'Accepted':
+        return '#c8f7c5'
+      case 'Rejected':
+        return '#bfbfbf'
+      case 'Replaced':
+        return '#d3d3d3'
+      case 'In Creation':
+      default:
+        return '#ffffff'
+    }
+  }
+
+  const selectedReviewTimerState = useMemo<
+    'active' | 'expired' | 'noExpiration' | 'inactive'
+  >( () => {
+    if( !selectedVersion || selectedVersion.status !== 'In Review' ) {
+      return 'inactive'
+    }
+    if( !selectedVersion.reviewEndAt ) {
+      return 'noExpiration'
+    }
+    return selectedVersion.reviewEndAt.getTime() <= clockNowMs ? 'expired' : 'active'
+  }, [ selectedVersion, clockNowMs ] )
+
+  const selectedReviewTimerLabel = useMemo( () => {
+    if( !selectedVersion || selectedVersion.status !== 'In Review' ) {
+      return null
+    }
+    if( !selectedVersion.reviewEndAt ) {
+      return 'No expiration configured'
+    }
+    const remainingMs = selectedVersion.reviewEndAt.getTime() - clockNowMs
+    if( remainingMs <= 0 ) {
+      return 'Expired'
+    }
+    return formatApproxCountdown( remainingMs )
+  }, [ selectedVersion, clockNowMs ] )
+
   useEffect( () => {
     setClockNowMs( Date.now() )
     const timer = window.setInterval( () => {
@@ -1865,9 +2044,12 @@ function VersionsPage() {
       fileName: file.name,
     } )
     let uploadedNewFile = false
+    let shouldDeleteUploadedOnError = true
     try {
       const existingFileKey = selectedFileRef?.fileKey ?? null
       const shouldDeleteExistingAfterCommit = Boolean( existingFileKey && existingFileKey !== fileKey )
+      // If we overwrote the same key, deleting on rollback would remove the valid file.
+      shouldDeleteUploadedOnError = !existingFileKey || existingFileKey !== fileKey
       const uploadResponse = await uploadFile( fileKey, file, {
         overwrite: true,
       } )
@@ -1931,7 +2113,7 @@ function VersionsPage() {
       }
       await loadDocumentAndVersions()
     } catch( err ) {
-      if( uploadedNewFile ) {
+      if( uploadedNewFile && shouldDeleteUploadedOnError ) {
         try {
           await deleteFile( fileKey )
         } catch {
@@ -2043,7 +2225,7 @@ function VersionsPage() {
       return
     }
     if( !canStartReview ) {
-      setError( 'To start review, the version must be In Creation, have a file, have at least one reviewer, and you must be the author or leader.' )
+      setError( 'To start review, the version must be In Creation, have linked file metadata (fileRefId), have at least one reviewer, and you must be the author or leader.' )
       return
     }
 
@@ -2504,7 +2686,7 @@ function VersionsPage() {
       return
     }
     if( !canStartReview ) {
-      setError( 'To start review, the version must be In Creation, have a file, have at least one reviewer, and you must be the author or leader.' )
+      setError( 'To start review, the version must be In Creation, have linked file metadata (fileRefId), have at least one reviewer, and you must be the author or leader.' )
       return
     }
     setError( null )
@@ -2612,7 +2794,7 @@ function VersionsPage() {
       void loadDocumentAndVersions()
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
-      setError( message )
+      setError( normalizeDownloadError( message ) )
     } finally {
       setIsBusy( false )
     }
@@ -2755,10 +2937,6 @@ function VersionsPage() {
 
   const threadColumns = useMemo<ColumnDef<ThreadSummary>[]>( () => [
     {
-      header: 'Issue',
-      accessorKey: 'title',
-    },
-    {
       header: 'Status',
       accessorKey: 'status',
     },
@@ -2773,6 +2951,11 @@ function VersionsPage() {
       cell: ( info ) => String( info.getValue<number>() ),
     },
     {
+      header: 'Comment window',
+      id: 'commentWindow',
+      cell: ( info ) => getThreadCommentWindowMeta( info.row.original ).label,
+    },
+    {
       header: 'Action',
       id: 'action',
       cell: ( info ) => {
@@ -2780,6 +2963,7 @@ function VersionsPage() {
         return (
           <button
             type="button"
+            className="thread-table-action-button"
             onClick={( event ) => {
               event.stopPropagation()
               requestThreadStatusChangeConfirmation( thread )
@@ -2791,7 +2975,11 @@ function VersionsPage() {
         )
       },
     },
-  ], [ formatUserLabel, isBusy, requestThreadStatusChangeConfirmation ] )
+    {
+      header: 'Issue',
+      accessorKey: 'title',
+    },
+  ], [ formatUserLabel, getThreadCommentWindowMeta, isBusy, requestThreadStatusChangeConfirmation ] )
 
   const handleToggleThreadStatus = async (thread: ThreadSummary) => {
     if( !canChangeThreadStatus( thread ) ) {
@@ -2890,6 +3078,24 @@ function VersionsPage() {
     setSelectedVersionId( versionId )
   }
 
+  const moveSelectedVersion = useCallback(
+    (direction: 1 | -1) => {
+      if( versions.length === 0 ) {
+        return
+      }
+      const currentIndex = selectedVersionId
+        ? versions.findIndex( ( version ) => version.id === selectedVersionId )
+        : -1
+      if( currentIndex < 0 ) {
+        setSelectedVersionId( versions[0].id )
+        return
+      }
+      const nextIndex = Math.min( versions.length - 1, Math.max( 0, currentIndex + direction ) )
+      setSelectedVersionId( versions[nextIndex].id )
+    },
+    [ versions, selectedVersionId ],
+  )
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -2950,12 +3156,35 @@ function VersionsPage() {
               <label className="field">
                 <span>Selected version</span>
                 <select
+                  className={`version-select ${versionSelectStatusClassName( selectedVersion )}`.trim()}
                   value={selectedVersion?.id ?? ''}
                   onChange={( event ) => setSelectedVersionId( event.target.value || null )}
+                  onKeyDown={( event ) => {
+                    if( versions.length === 0 ) {
+                      return
+                    }
+                    if( event.key === 'ArrowLeft' ) {
+                      event.preventDefault()
+                      moveSelectedVersion( -1 )
+                    } else if( event.key === 'ArrowRight' ) {
+                      event.preventDefault()
+                      moveSelectedVersion( 1 )
+                    } else if( event.key === 'Home' ) {
+                      event.preventDefault()
+                      setSelectedVersionId( versions[0].id )
+                    } else if( event.key === 'End' ) {
+                      event.preventDefault()
+                      setSelectedVersionId( versions[versions.length - 1].id )
+                    }
+                  }}
                   disabled={isBusy}
                 >
                   {versions.map( ( version ) => (
-                    <option key={version.id} value={version.id}>
+                    <option
+                      key={version.id}
+                      value={version.id}
+                      style={{ backgroundColor: versionStatusColor( version ), color: '#24130f' }}
+                    >
                       {versionNumberToString( version.number )} - {version.status}
                     </option>
                   ) )}
@@ -3015,6 +3244,12 @@ function VersionsPage() {
               </div>
             </label>
           </div>
+          {selectedReviewTimerLabel ? (
+            <section className={`review-timer review-timer--${selectedReviewTimerState}`}>
+              <p className="review-timer__eyebrow">Version review time remaining</p>
+              <p className="review-timer__value">{selectedReviewTimerLabel}</p>
+            </section>
+          ) : null}
           {!isBusy && !isLoadingVersions && versions.length === 0 ? (
             <p className="muted">No versions yet.</p>
           ) : viewMode === 'table' ? (
@@ -3026,7 +3261,7 @@ function VersionsPage() {
               onSortingChange={setVersionSorting}
               tableClassName="data-table--versions"
               storageKey={`qt4_table_versions_${docId ?? 'unknown'}`}
-              getRowClassName={( row ) => statusClassName( row.status )}
+              getRowClassName={( row ) => versionStatusClassName( row )}
               onRowClick={( row ) => openReviewIssuesForVersion( row.id )}
             />
           ) : (
@@ -3036,7 +3271,7 @@ function VersionsPage() {
                 return (
                   <article
                     key={version.id}
-                    className={`project-card ${statusClassName( version.status )} ${
+                    className={`project-card ${versionStatusClassName( version )} ${
                       isSelected ? 'project-card--selected' : ''
                     }`}
                     onClick={() => openReviewIssuesForVersion( version.id )}
@@ -3056,7 +3291,34 @@ function VersionsPage() {
                   <p className="muted">
                     Issues: {version.numThreads} - Open: {version.numOpenThreads} - Comments: {version.numComments}
                   </p>
-                  <p className="muted">Uploaded: {version.hasFile ? 'Yes' : 'No'}</p>
+                  <p className="muted">
+                    Uploaded: {!version.hasFile ? 'No' : version.fileRefId ? 'Yes' : 'Missing metadata'}
+                  </p>
+                  <p className="muted">
+                    Review time left:{' '}
+                    {version.status !== 'In Review'
+                      ? '-'
+                      : !version.reviewEndAt
+                        ? 'No expiration'
+                        : version.reviewEndAt.getTime() <= clockNowMs
+                          ? 'Expired'
+                          : formatApproxCountdown( version.reviewEndAt.getTime() - clockNowMs )}
+                  </p>
+                  {hasLinkedFileMetadata( version ) ? (
+                    <div className="actions">
+                      <button
+                        type="button"
+                        onClick={( event ) => {
+                          event.stopPropagation()
+                          void handleDownloadVersionFile( version )
+                        }}
+                        onKeyDown={( event ) => event.stopPropagation()}
+                        disabled={isBusy}
+                      >
+                        Download file
+                      </button>
+                    </div>
+                  ) : null}
                 </article>
                 )
               } )}
@@ -3064,7 +3326,9 @@ function VersionsPage() {
           )}
           {selectedVersion ? (
             <div className="stack">
-              <p className="muted">Uploaded: {selectedVersion.hasFile ? 'Yes' : 'No'}</p>
+              <p className="muted">
+                Uploaded: {!selectedVersion.hasFile ? 'No' : selectedVersion.fileRefId ? 'Yes' : 'Missing metadata'}
+              </p>
               {documentData?.type === 'errorReport' ? (
                 <p className="muted">
                   For document:{' '}
@@ -3125,8 +3389,12 @@ function VersionsPage() {
             </section>
           ) : null}
           {isErrorReportModalOpen ? (
-            <div className="modal-overlay" role="dialog" aria-modal="true">
-              <div className="modal-card">
+            <ModalDialog
+              onClose={() => {
+                setIsErrorReportModalOpen( false )
+                setErrorReportTitleError( null )
+              }}
+            >
                 <h3>Create error report</h3>
                 <GiphyInline reason="thinking" mode="inline" />
                 <label className="field">
@@ -3157,12 +3425,10 @@ function VersionsPage() {
                     Confirm
                   </button>
                 </div>
-              </div>
-            </div>
+            </ModalDialog>
           ) : null}
           {versionDecisionModal ? (
-            <div className="modal-overlay" role="dialog" aria-modal="true">
-              <div className="modal-card">
+            <ModalDialog onClose={() => setVersionDecisionModal( null )}>
                 <h3>{versionDecisionModal === 'accept' ? 'Accept latest version' : 'Reject latest version'}</h3>
                 <GiphyInline reason="thinking" mode="inline" />
                 <p className="muted">
@@ -3178,12 +3444,18 @@ function VersionsPage() {
                     Confirm
                   </button>
                 </div>
-              </div>
-            </div>
+            </ModalDialog>
           ) : null}
           {pendingVersionAction ? (
-            <div className="modal-overlay" role="dialog" aria-modal="true">
-              <div className="modal-card">
+            <ModalDialog
+              onClose={() => {
+                setPendingVersionAction( null )
+                setPendingUploadFile( null )
+                if( uploadInputRef.current ) {
+                  uploadInputRef.current.value = ''
+                }
+              }}
+            >
                 <h3>
                   {pendingVersionAction === 'createVersion'
                     ? 'Create new version'
@@ -3217,12 +3489,10 @@ function VersionsPage() {
                     Confirm
                   </button>
                 </div>
-              </div>
-            </div>
+            </ModalDialog>
           ) : null}
           {pendingThreadStatusChange ? (
-            <div className="modal-overlay" role="dialog" aria-modal="true">
-              <div className="modal-card">
+            <ModalDialog onClose={() => setPendingThreadStatusChange( null )}>
                 <h3>{pendingThreadStatusChange.status === 'open' ? 'Close issue' : 'Reopen issue'}</h3>
                 <GiphyInline reason="thinking" mode="inline" />
                 <p className="muted">
@@ -3238,12 +3508,10 @@ function VersionsPage() {
                     Confirm
                   </button>
                 </div>
-              </div>
-            </div>
+            </ModalDialog>
           ) : null}
           {successMessage ? (
-            <div className="modal-overlay" role="dialog" aria-modal="true">
-              <div className="modal-card">
+            <ModalDialog onClose={handleCloseSuccessMessage} initialFocusRef={successOkButtonRef}>
                 <h3>Success</h3>
                 <GiphyInline reason="good_job" mode="inline" showLabel={false} />
                 <p className="muted">{successMessage}</p>
@@ -3252,8 +3520,7 @@ function VersionsPage() {
                     OK
                   </button>
                 </div>
-              </div>
-            </div>
+            </ModalDialog>
           ) : null}
           {error ? (
             <ErrorChecklistModal error={error} checklist={errorChecklist} onClose={() => setError( null )} />
@@ -3339,16 +3606,29 @@ function VersionsPage() {
                       onSortingChange={setThreadsSorting}
                       tableClassName="data-table--threads"
                       storageKey={`qt4_table_versions_threads_${selectedVersion.id}`}
-                      getRowClassName={( row ) => ( row.status === 'closed' ? 'thread-row--closed' : 'thread-row--open' )}
+                      getRowClassName={( row ) => {
+                        if( row.status === 'closed' ) {
+                          return 'thread-row--closed'
+                        }
+                        return getThreadCommentWindowMeta( row ).state === 'expired'
+                          ? 'thread-row--open-expired'
+                          : 'thread-row--open'
+                      }}
                       onRowClick={( row ) => setSelectedThreadId( row.id )}
                     />
                   ) : (
                     <div className="project-grid">
-                      {threads.map( ( thread ) => (
+                      {threads.map( ( thread ) => {
+                        const commentWindowMeta = getThreadCommentWindowMeta( thread )
+                        return (
                         <article
                           key={thread.id}
                           className={`project-card ${
-                            thread.status === 'open' ? 'project-card--thread-open' : 'project-card--thread-closed'
+                            thread.status === 'open'
+                              ? commentWindowMeta.state === 'expired'
+                                ? 'project-card--thread-open-expired'
+                                : 'project-card--thread-open'
+                              : 'project-card--thread-closed'
                           } ${selectedThreadId === thread.id ? 'project-card--thread-selected' : ''}`}
                           onClick={() => setSelectedThreadId( thread.id )}
                           role="button"
@@ -3364,6 +3644,9 @@ function VersionsPage() {
                           <p className="muted">Status: {thread.status}</p>
                           <p className="muted">Created by: {formatUserLabel( thread.createdBy )}</p>
                           <p className="muted">Comments: {commentsByThread[thread.id]?.length ?? thread.commentCount}</p>
+                          <p className={`thread-window thread-window--${commentWindowMeta.state}`}>
+                            Comment window: {commentWindowMeta.label}
+                          </p>
                           <div className="actions">
                             <button
                               type="button"
@@ -3377,7 +3660,8 @@ function VersionsPage() {
                             </button>
                           </div>
                         </article>
-                      ) )}
+                        )
+                      })}
                     </div>
                   )}
                 </div>
@@ -3467,6 +3751,7 @@ function VersionsPage() {
 }
 
 export default VersionsPage
+
 
 
 

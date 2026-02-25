@@ -25,7 +25,6 @@ For local Files API development, use proxy mode in `.env.local`:
 VITE_FILES_API_MODE=proxy
 VITE_FILES_API_PROXY_PATH=/files-api
 QT4_FILES_API_BASE_URL=http://localhost:42873/api/v1
-QT4_FILES_API_KEY=<64-hex-key>
 ```
 
 ## Build
@@ -56,25 +55,23 @@ VITE_FILES_API_MODE=proxy
 
 # Used by frontend only when mode=direct
 VITE_FILES_API_BASE_URL=
-VITE_FILES_API_CLIENT_KEY=
 
 # Optional proxy mount path for frontend when mode=proxy
 VITE_FILES_API_PROXY_PATH=/files-api
 
 # Used by Vite dev server proxy target
 QT4_FILES_API_BASE_URL=http://localhost:42873/api/v1
-QT4_FILES_API_KEY=<64-hex-key>
 ```
 
 Modes:
 
-- `proxy`: frontend calls `/files-api`, and Vite forwards to `QT4_FILES_API_BASE_URL` adding `QT4_FILES_API_KEY`.
-- `direct`: frontend calls `VITE_FILES_API_BASE_URL` directly (optionally sends `VITE_FILES_API_CLIENT_KEY`).
+- `proxy`: frontend calls `/files-api`, and Vite forwards to `QT4_FILES_API_BASE_URL`.
+- `direct`: frontend calls `VITE_FILES_API_BASE_URL` directly.
+- Files API authentication is Bearer-only (`Authorization: Bearer <Firebase ID token>`), and backend project context is derived from token `aud`.
 
 Production recommendation:
 
 - Use `direct` mode and set `VITE_FILES_API_BASE_URL=https://archivos.dmas.cua.uam.mx/api/v1`.
-- Keep `VITE_FILES_API_CLIENT_KEY` empty unless your security model explicitly allows a public client key.
 - Do not rely on `QT4_FILES_API_*` in production builds; those are for Vite dev proxy only.
 
 ### Giphy (optional)

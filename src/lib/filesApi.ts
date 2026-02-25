@@ -12,7 +12,6 @@ const rawProxyPath = ( import.meta.env.VITE_FILES_API_PROXY_PATH ?? '/files-api'
 const normalizedProxyPath = rawProxyPath.startsWith( '/' ) ? rawProxyPath : `/${rawProxyPath}`
 const FILES_API_PROXY_PATH = normalizedProxyPath.replace( /\/+$/, '' )
 const FILES_API_BASE_URL = ( import.meta.env.VITE_FILES_API_BASE_URL ?? '' ).replace( /\/+$/, '' )
-const FILES_API_CLIENT_KEY = ( import.meta.env.VITE_FILES_API_CLIENT_KEY ?? '' ).trim()
 
 const resolveFilesApiBasePath = (): string => {
   if( FILES_API_MODE === 'direct' ) {
@@ -96,9 +95,6 @@ const withSessionHeaders = async (headersInit?: HeadersInit): Promise<Headers> =
   const idToken = await user.getIdToken( true )
   const headers = new Headers( headersInit )
   headers.set( 'Authorization', `Bearer ${idToken}` )
-  if( FILES_API_CLIENT_KEY ) {
-    headers.set( 'X-API-Key', FILES_API_CLIENT_KEY )
-  }
   return headers
 }
 

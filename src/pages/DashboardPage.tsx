@@ -29,6 +29,14 @@ function DashboardPage() {
   const [tasks, setTasks] = useState<DashboardTask[]>([] )
   const [activeRefreshScope, setActiveRefreshScope] = useState<DashboardRefreshScope | null>( null )
   const [dashboardUpdatedAt, setDashboardUpdatedAt] = useState<Date | null>( null )
+  const [nowMs, setNowMs] = useState( () => Date.now() )
+  const [lastRefreshByScope, setLastRefreshByScope] = useState<Record<DashboardRefreshScope, Date | null>>( {
+    all: null,
+    authoring: null,
+    reply: null,
+    reviewer: null,
+    acceptedReport: null,
+  } )
   const loadInFlightRef = useRef( false )
   const loadQueuedScopeRef = useRef<DashboardRefreshScope | null>( null )
   const pendingFocusScopeRef = useRef<DashboardRefreshScope | null>( null )
@@ -79,7 +87,7 @@ function DashboardPage() {
     [ tasks ],
   )
 
-  const taskColumns = useMemo<ColumnDef<DashboardTask & { createdAtMs: number }>[]>(
+  const taskColumns = useMemo<ColumnDef<DashboardTask & { createdAtMs: number }>[]>( 
     () => [
       {
         header: 'Type',
@@ -124,6 +132,22 @@ function DashboardPage() {
       try {
         const refreshOptions = scope === 'all' ? {} : { types: [ scope ] as DashboardTaskType[] }
         await refreshDashboard( userId, refreshOptions )
+        const refreshAt = new Date()
+        setLastRefreshByScope( ( previous ) => {
+          if( scope === 'all' ) {
+            return {
+              all: refreshAt,
+              authoring: refreshAt,
+              reply: refreshAt,
+              reviewer: refreshAt,
+              acceptedReport: refreshAt,
+            }
+          }
+          return {
+            ...previous,
+            [scope]: refreshAt,
+          }
+        } )
       } catch( err ) {
         const message = err instanceof Error ? err.message : 'Unexpected error'
         openError( `Dashboard tasks failed: ${message}`, [
@@ -164,6 +188,15 @@ function DashboardPage() {
   }
 
   useEffect( () => {
+    const timerId = window.setInterval( () => {
+      setNowMs( Date.now() )
+    }, 1000 )
+    return () => {
+      window.clearInterval( timerId )
+    }
+  }, [] )
+
+  useEffect( () => {
     if( !userId ) {
       return
     }
@@ -185,6 +218,15 @@ function DashboardPage() {
         setTasks( nextTasks )
         const updatedAt = toTimestampDate( data.updatedAt )
         setDashboardUpdatedAt( updatedAt )
+        if( updatedAt ) {
+          setLastRefreshByScope( ( previous ) => ( {
+            all: previous.all ?? updatedAt,
+            authoring: previous.authoring ?? updatedAt,
+            reply: previous.reply ?? updatedAt,
+            reviewer: previous.reviewer ?? updatedAt,
+            acceptedReport: previous.acceptedReport ?? updatedAt,
+          } ) )
+        }
       },
       ( err ) => {
         const message = err instanceof Error ? err.message : 'Unexpected error'
@@ -203,6 +245,13 @@ function DashboardPage() {
     setDashboardUpdatedAt( null )
     setTasks( [] )
     setActiveRefreshScope( null )
+    setLastRefreshByScope( {
+      all: null,
+      authoring: null,
+      reply: null,
+      reviewer: null,
+      acceptedReport: null,
+    } )
     loadQueuedScopeRef.current = null
     if( !userId ) {
       clearError()
@@ -230,6 +279,17 @@ function DashboardPage() {
   useEffect( () => {
     window.localStorage.setItem( 'qt4_dashboard_sorting', JSON.stringify( sorting ) )
   }, [ sorting ] )
+
+  const formatElapsed = (value: Date | null) => {
+    if( !value ) {
+      return '--:--:--'
+    }
+    const deltaSeconds = Math.max( 0, Math.floor( ( nowMs - value.getTime() ) / 1000 ) )
+    const hours = Math.floor( deltaSeconds / 3600 )
+    const minutes = Math.floor( ( deltaSeconds % 3600 ) / 60 )
+    const seconds = deltaSeconds % 60
+    return `${String( hours ).padStart( 2, '0' )}:${String( minutes ).padStart( 2, '0' )}:${String( seconds ).padStart( 2, '0' )}`
+  }
 
   const renderTaskCard = (task: DashboardTask) => (
     <article
@@ -261,15 +321,18 @@ function DashboardPage() {
     <div className="stack">
       <div className="panel-header">
         <h3>{title}</h3>
-        <button
-          type="button"
-          className="ghost"
-          ref={bindRefreshButtonRef( scope )}
-          onClick={() => triggerLoadTasks( scope )}
-          disabled={isLoadingTasks}
-        >
-          Refresh section
-        </button>
+        <div className="actions">
+          <button
+            type="button"
+            className="ghost"
+            ref={bindRefreshButtonRef( scope )}
+            onClick={() => triggerLoadTasks( scope )}
+            disabled={isLoadingTasks}
+          >
+            Refresh section
+          </button>
+          <span className="muted">Since refresh: {formatElapsed( lastRefreshByScope[scope] )}</span>
+        </div>
       </div>
       {sectionTasks.length > 0 ? (
         <div className="dashboard-card-grid">
@@ -317,6 +380,7 @@ function DashboardPage() {
             >
               Refresh all sections
             </button>
+            <span className="muted">Since refresh: {formatElapsed( lastRefreshByScope.all )}</span>
           </div>
         </section>
         {error ? (
@@ -359,44 +423,48 @@ function DashboardPage() {
             {viewMode === 'table' ? (
               <>
                 <div className="actions">
-                  <button
-                    type="button"
-                    className="ghost"
-                    ref={bindRefreshButtonRef( 'authoring' )}
-                    onClick={() => triggerLoadTasks( 'authoring' )}
-                    disabled={isLoadingTasks}
-                  >
-                    Refresh In Creation
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost"
-                    ref={bindRefreshButtonRef( 'reply' )}
-                    onClick={() => triggerLoadTasks( 'reply' )}
-                    disabled={isLoadingTasks}
-                  >
-                    Refresh Replies
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost"
-                    ref={bindRefreshButtonRef( 'reviewer' )}
-                    onClick={() => triggerLoadTasks( 'reviewer' )}
-                    disabled={isLoadingTasks}
-                  >
-                    Refresh In Review
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost"
-                    ref={bindRefreshButtonRef( 'acceptedReport' )}
-                    onClick={() => triggerLoadTasks( 'acceptedReport' )}
-                    disabled={isLoadingTasks}
-                  >
-                    Refresh Accepted Reports
-                  </button>
-                </div>
-                <DataTable
+                <button
+                  type="button"
+                  className="ghost"
+                  ref={bindRefreshButtonRef( 'authoring' )}
+                  onClick={() => triggerLoadTasks( 'authoring' )}
+                  disabled={isLoadingTasks}
+                >
+                  Refresh In Creation
+                </button>
+                <span className="muted">Since refresh: {formatElapsed( lastRefreshByScope.authoring )}</span>
+                <button
+                  type="button"
+                  className="ghost"
+                  ref={bindRefreshButtonRef( 'reply' )}
+                  onClick={() => triggerLoadTasks( 'reply' )}
+                  disabled={isLoadingTasks}
+                >
+                  Refresh Replies
+                </button>
+                <span className="muted">Since refresh: {formatElapsed( lastRefreshByScope.reply )}</span>
+                <button
+                  type="button"
+                  className="ghost"
+                  ref={bindRefreshButtonRef( 'reviewer' )}
+                  onClick={() => triggerLoadTasks( 'reviewer' )}
+                  disabled={isLoadingTasks}
+                >
+                  Refresh In Review
+                </button>
+                <span className="muted">Since refresh: {formatElapsed( lastRefreshByScope.reviewer )}</span>
+                <button
+                  type="button"
+                  className="ghost"
+                  ref={bindRefreshButtonRef( 'acceptedReport' )}
+                  onClick={() => triggerLoadTasks( 'acceptedReport' )}
+                  disabled={isLoadingTasks}
+                >
+                  Refresh Accepted Reports
+                </button>
+                <span className="muted">Since refresh: {formatElapsed( lastRefreshByScope.acceptedReport )}</span>
+              </div>
+              <DataTable
                   columns={taskColumns}
                   data={taskTableRows}
                   sorting={sorting}

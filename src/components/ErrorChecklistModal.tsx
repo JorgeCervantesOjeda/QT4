@@ -1,4 +1,5 @@
 import { GiphyInline } from '../giphy/GiphyProvider'
+import ModalDialog from './ModalDialog'
 
 type ChecklistPart = {
   label: string
@@ -85,13 +86,13 @@ const resolveRequestedAction = (error: string): string | null => {
 function ErrorChecklistModal( { title = 'Action blocked', error, checklist, onClose }: ErrorChecklistModalProps ) {
   const requestedAction = resolveRequestedAction( error )
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true">
-      <div className="modal-card modal-card--checklist">
+    <ModalDialog onClose={onClose} cardClassName="modal-card--checklist">
         {checklist.length > 0 ? (
           <section className="checklist-card" aria-label="Validation checklist">
             <h4>{title}</h4>
             <GiphyInline reason="dislike_rejected_nope" mode="inline" showLabel={false} />
             {requestedAction ? <p className="muted">Requested action: {requestedAction}</p> : null}
+            <p className="error">{error}</p>
             <ul className="checklist-list">
               {checklist.map( ( item, index ) => {
                 const showAnd = index < checklist.length - 1
@@ -142,14 +143,19 @@ function ErrorChecklistModal( { title = 'Action blocked', error, checklist, onCl
               } )}
             </ul>
           </section>
-        ) : null}
+        ) : (
+          <section className="checklist-card" aria-label="Validation checklist">
+            <h4>{title}</h4>
+            <GiphyInline reason="dislike_rejected_nope" mode="inline" showLabel={false} />
+            <p className="error">{error}</p>
+          </section>
+        )}
         <div className="actions">
           <button type="button" onClick={onClose}>
             Close
           </button>
         </div>
-      </div>
-    </div>
+    </ModalDialog>
   )
 }
 

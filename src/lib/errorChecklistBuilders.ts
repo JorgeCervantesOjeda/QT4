@@ -6,6 +6,7 @@ type VersionsErrorChecklistContext = {
   networkAvailable: boolean
   hasAnyVersion: boolean
   userIsProjectLeader: boolean
+  userIsDocumentAuthor: boolean
   userIsLatestVersionAuthor: boolean
   userIsSelectedVersionAuthor: boolean
   userIsReviewer: boolean
@@ -29,6 +30,7 @@ type VersionsErrorChecklistContext = {
   selectedThreadOpen: boolean
   selectedIssueHasAtLeastTwoComments: boolean
   hasSelectedVersion: boolean
+  selectedVersionHasFile: boolean
   issueTitleProvided: boolean
   hasSelectedThread: boolean
   commentBodyProvided: boolean
@@ -58,7 +60,7 @@ const buildVersionsErrorChecklist = (
       {
         parts: [
           { label: '(user_is_project_leader)', ok: context.userIsProjectLeader },
-          { label: '(user_is_latest_version_author)', ok: context.userIsLatestVersionAuthor },
+          { label: '(user_is_document_author)', ok: context.userIsDocumentAuthor },
           { label: '(user_is_admin)', ok: context.userIsAdmin },
         ],
         operator: 'or',
@@ -153,11 +155,34 @@ const buildVersionsErrorChecklist = (
     ]
   }
 
-  if( error.includes( 'No file is linked to this version' ) ) {
+  if(
+    error.includes( 'No file is linked to this version' ) ||
+    error.includes( 'Cannot download this file' ) ||
+    error.includes( 'Download failed' ) ||
+    error.includes( 'File not found' ) ||
+    error.includes( 'Download blocked by Files API authorization' )
+  ) {
+    const lowerError = error.toLowerCase()
+    const filesApiDenied = (
+      lowerError.includes( 'action blocked' ) ||
+      lowerError.includes( '403' ) ||
+      lowerError.includes( 'download blocked by files api authorization' )
+    )
+    const metadataIncomplete = (
+      lowerError.includes( 'filerefid is missing' ) ||
+      lowerError.includes( 'missing file key' ) ||
+      lowerError.includes( 'metadata is incomplete' )
+    )
     return [
       ...shared,
       { label: '(a version is selected)', ok: context.hasSelectedVersion },
-      { label: '(the selected version has a linked file)', ok: false },
+      { label: '(the selected version has a linked file)', ok: context.selectedVersionHasFile },
+      { label: '(download metadata is complete: fileRefId and fileKey)', ok: !metadataIncomplete },
+      {
+        label: '(files API request is authorized for this user and file)',
+        ok: !filesApiDenied,
+      },
+      { label: '(network connection is available)', ok: context.networkAvailable },
     ]
   }
 

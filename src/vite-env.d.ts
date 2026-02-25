@@ -12,7 +12,6 @@ interface ImportMetaEnv {
   readonly VITE_FILES_API_MODE?: 'proxy' | 'direct';
   readonly VITE_FILES_API_PROXY_PATH?: string;
   readonly VITE_FILES_API_BASE_URL?: string;
-  readonly VITE_FILES_API_CLIENT_KEY?: string;
 }
 
 interface ImportMeta {

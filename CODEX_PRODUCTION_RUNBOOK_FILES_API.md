@@ -66,7 +66,7 @@ If `/health` is unavailable in your API, test any public lightweight endpoint us
 At minimum, allow:
 
 - methods used by QT4 (`GET`, `PUT`, `DELETE`, `POST`, `OPTIONS`)
-- headers used by QT4 (`Authorization`, `Content-Type`, `X-API-Key`, `X-Overwrite`, `X-File-Permanent`, `X-Expire-After-Days`)
+- headers used by QT4 (`Authorization`, `Content-Type`, `X-Overwrite`, `X-File-Permanent`, `X-Expire-After-Days`)
 
 Without this, Firebase Hosting clients will fail with browser `NetworkError`/CORS blocks even if the API works from server-side tools.
 
@@ -77,13 +77,13 @@ In `QT4/.env.production`, ensure:
 ```env
 VITE_FILES_API_MODE=direct
 VITE_FILES_API_BASE_URL=https://archivos.dmas.cua.uam.mx/api/v1
-VITE_FILES_API_CLIENT_KEY=
 ```
 
 Notes:
 
 - In production frontend, do not depend on `QT4_FILES_API_*` variables.
 - `QT4_FILES_API_*` is only for local Vite proxy mode (`npm run dev`).
+- Files API auth is Bearer-only (`Authorization: Bearer <Firebase ID token>`), and project context comes from token `aud`.
 
 ## 4. Build QT4 for production
 
@@ -130,16 +130,16 @@ Fix:
 - Verify backend points to correct Firebase project.
 - Restart `archivos-api` after credential changes.
 
-### Error: `Files API error (500): Internal auth error`
+### Error: `Files API error (500): Internal server error`
 
 Cause:
 
-- Backend auth middleware crashed or misconfigured.
+- Backend route, storage, or server-side validation failed unexpectedly.
 
 Fix:
 
 - Inspect `archivos-api` logs.
-- Validate Firebase Admin initialization path and credentials.
+- Validate Firebase Admin configuration and storage/database dependencies.
 - Restart API and retest.
 
 ### Error: `NetworkError when attempting to fetch resource`
@@ -174,7 +174,6 @@ Use `QT4/.env.local`:
 VITE_FILES_API_MODE=proxy
 VITE_FILES_API_PROXY_PATH=/files-api
 QT4_FILES_API_BASE_URL=http://localhost:42873/api/v1
-QT4_FILES_API_KEY=<64-hex-key>
 ```
 
 Then run:

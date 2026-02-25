@@ -8,6 +8,7 @@ import {
   getSortedRowModel,
   type ColumnDef,
   type ColumnFiltersState,
+  type ColumnPinningState,
   type FilterFn,
   type OnChangeFn,
   type PaginationState,
@@ -41,6 +42,8 @@ function DataTable<T>( {
   enablePagination = false,
   initialPageSize = 20,
 }: DataTableProps<T> ) {
+  const columnPinning = useMemo<ColumnPinningState>( () => ( { left: [], right: [] } ), [] )
+
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>( () => {
     if( !storageKey ) {
       return []
@@ -112,7 +115,7 @@ function DataTable<T>( {
   const tableOptions: TableOptions<T> = {
     data,
     columns,
-    state: { sorting, columnFilters, pagination },
+    state: { sorting, columnFilters, pagination, columnPinning },
     onSortingChange: handleSortingChange,
     onColumnFiltersChange: handleColumnFiltersChange,
     onPaginationChange: setPagination,
@@ -173,7 +176,29 @@ function DataTable<T>( {
                 const sortHandler = canSort ? header.column.getToggleSortingHandler() : undefined
                 const sortState = header.column.getIsSorted()
                 return (
-                  <th key={header.id} onClick={sortHandler} role={canSort ? 'button' : undefined}>
+                  <th
+                    key={header.id}
+                    onClick={sortHandler}
+                    role={canSort ? 'button' : undefined}
+                    tabIndex={canSort ? 0 : undefined}
+                    onKeyDown={
+                      canSort
+                        ? ( event ) => {
+                          if( event.key === 'Enter' || event.key === ' ' ) {
+                            event.preventDefault()
+                            header.column.toggleSorting()
+                          }
+                        }
+                        : undefined
+                    }
+                    aria-sort={
+                      sortState === 'asc'
+                        ? 'ascending'
+                        : sortState === 'desc'
+                          ? 'descending'
+                          : 'none'
+                    }
+                  >
                     <div className="data-table__header">
                       <span>{flexRender( header.column.columnDef.header, header.getContext() )}</span>
                       {canSort ? (

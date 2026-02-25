@@ -21,7 +21,6 @@ Use `.env.local` with proxy mode:
 VITE_FILES_API_MODE=proxy
 VITE_FILES_API_PROXY_PATH=/files-api
 QT4_FILES_API_BASE_URL=http://localhost:42873/api/v1
-QT4_FILES_API_KEY=<64-hex-key>
 ```
 
 Run:
@@ -44,13 +43,12 @@ Use `.env.production` with direct mode:
 ```env
 VITE_FILES_API_MODE=direct
 VITE_FILES_API_BASE_URL=https://archivos.dmas.cua.uam.mx/api/v1
-VITE_FILES_API_CLIENT_KEY=
 ```
 
 Important:
 
-- `QT4_FILES_API_BASE_URL` and `QT4_FILES_API_KEY` are not used in production builds.
-- Avoid embedding private API keys in `VITE_*` variables, because they are public in frontend bundles.
+- `QT4_FILES_API_BASE_URL` is not used in production builds.
+- Files API auth is Bearer-only (`Authorization: Bearer <Firebase ID token>`); do not configure client API keys in QT4 env vars.
 
 ## 4. Network prerequisites for the Files API server
 
