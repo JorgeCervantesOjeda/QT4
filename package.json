@@ -5,7 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:prod": "vite --mode production",
+    "dev:test": "vite --mode test",
     "build": "tsc -b && vite build",
+    "build:test": "tsc -b && vite build --mode test",
+    "build:prod": "tsc -b && vite build --mode production",
+    "deploy:test": "npm run build:test && npx firebase-tools deploy --only hosting:test,firestore --project qualiteam-plus-test",
+    "deploy:prod": "npm run build:prod && npx firebase-tools deploy --only hosting:prod,firestore --project qualiteam-app",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -33,3 +39,4 @@
     "vite": "^7.2.4"
   }
 }
+
