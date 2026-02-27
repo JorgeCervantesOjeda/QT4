@@ -215,6 +215,7 @@ function VersionsPage() {
   const isLatestAuthor = Boolean( userId && latestAuthorId && latestAuthorId === userId )
   const canManageLatestVersion = isLatestAuthor || isLeader || isAdmin
   const canApproveVersion = isLatestAuthor || isLeader || isAdmin
+  const canCreateVersionActor = isLatestAuthor || isLeader || isAdmin
   const isReviewer = Boolean( selectedVersion && selectedVersion.reviewerIds.includes( userId ) )
   const canParticipateReview = isSelectedAuthor || isLeader || isReviewer || isAdmin
   const latestVersionInReview = Boolean( latestVersion && latestVersion.status === 'In Review' )
@@ -311,6 +312,12 @@ function VersionsPage() {
     }
     const meta = getThreadCommentWindowMeta( selectedThread )
     return `Selected issue comment window: ${meta.label}.`
+  }, [ selectedVersion, selectedThread, getThreadCommentWindowMeta ] )
+  const selectedCommentWindowState = useMemo( () => {
+    if( !selectedVersion || !selectedThread ) {
+      return 'unavailable' as const
+    }
+    return getThreadCommentWindowMeta( selectedThread ).state
   }, [ selectedVersion, selectedThread, getThreadCommentWindowMeta ] )
   const latestSelectedVersionCommentAt = useMemo( () => {
     const comments = Object.values( commentsByThread ).flat()
@@ -465,7 +472,7 @@ function VersionsPage() {
   )
 
   const canCreateVersion = useMemo( () => {
-    if( !canManageLatestVersion ) {
+    if( !canCreateVersionActor ) {
       return false
     }
     if( versions.length === 0 ) {
@@ -481,7 +488,7 @@ function VersionsPage() {
       return !errorReportGate.isBlocking && !errorReportGate.isLoading
     }
     return false
-  }, [ canManageLatestVersion, versions.length, latestVersion, errorReportGate ] )
+  }, [ canCreateVersionActor, versions.length, latestVersion, errorReportGate ] )
 
   const canAssignReviewers = useMemo(
     () => Boolean( selectedVersion && selectedVersion.status === 'In Creation' && ( isSelectedAuthor || isLeader || isAdmin ) ),
@@ -494,8 +501,8 @@ function VersionsPage() {
   )
 
   const canAssignAuthor = useMemo(
-    () => Boolean( selectedVersion && selectedVersion.status === 'In Creation' && ( isLeader || isSelectedAuthor || isAdmin ) ),
-    [ selectedVersion, isLeader, isSelectedAuthor, isAdmin ],
+    () => Boolean( selectedVersion && selectedVersion.status === 'In Creation' && ( isLeader || isAdmin ) ),
+    [ selectedVersion, isLeader, isAdmin ],
   )
 
   const canStartReview = useMemo(
@@ -1777,7 +1784,7 @@ function VersionsPage() {
         setError( 'To create the next version from an Accepted version, at least one related error report must have latest version in Accepted.' )
         return
       }
-      setError( "To create a version: ((user is project leader) or (user is latest version author)) and ((latest version status = 'In Review' or 'Reviewed') or ((latest version status = 'Accepted') and (exists related error report with latest version status = 'Accepted')))." )
+      setError( "To create a version: ((user is project leader) or (user is latest version author) or (user is admin)) and ((latest version status = 'In Review' or 'Reviewed') or ((latest version status = 'Accepted') and (exists related error report with latest version status = 'Accepted')))." )
       return
     }
 
@@ -1797,7 +1804,9 @@ function VersionsPage() {
           counterRef,
           {
             nextNumber: nextNumber + 1,
+            docId,
             projectId,
+            previousVersionId: latestVersion?.id ?? null,
           },
           { merge: true },
         )
@@ -1824,6 +1833,7 @@ function VersionsPage() {
           numComments: 0,
           numThreadsWithTwoPlusComments: 0,
           acceptedErrorReportId: null,
+          previousVersionId: latestVersion?.id ?? null,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           updatedBy: userId,
@@ -1888,7 +1898,12 @@ function VersionsPage() {
       void loadDocumentAndVersions()
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
-      setError( message )
+      const loweredMessage = message.toLowerCase()
+      if( loweredMessage.includes( 'missing or insufficient permissions' ) || loweredMessage.includes( 'permission-denied' ) ) {
+        setError( "To create a version: ((user is project leader) or (user is latest version author) or (user is admin)) and ((latest version status = 'In Review' or 'Reviewed') or ((latest version status = 'Accepted') and (exists related error report with latest version status = 'Accepted')))." )
+      } else {
+        setError( message )
+      }
     } finally {
       setIsBusy( false )
     }
@@ -1965,7 +1980,7 @@ function VersionsPage() {
       if( selectedVersion.status !== 'In Creation' ) {
         setError( 'You can change the author only while the version is In Creation.' )
       } else {
-        setError( 'You can change the author only if you are the author, project leader, or admin.' )
+        setError( 'You can change the author only if you are the project leader or admin.' )
       }
       return
     }
@@ -2568,6 +2583,7 @@ function VersionsPage() {
           numComments: 0,
           numThreadsWithTwoPlusComments: 0,
           acceptedErrorReportId: null,
+          previousVersionId: null,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           updatedBy: userId,
@@ -2578,6 +2594,7 @@ function VersionsPage() {
             nextNumber: FIRST_VERSION_NUMBER + 1,
             docId: errorReportRef.id,
             projectId,
+            previousVersionId: null,
           },
           { merge: true },
         )
@@ -2675,7 +2692,7 @@ function VersionsPage() {
         setError( 'To create the next version from an Accepted version, at least one related error report must have latest version in Accepted.' )
         return
       }
-      setError( "To create a version: ((user is project leader) or (user is latest version author)) and ((latest version status = 'In Review' or 'Reviewed') or ((latest version status = 'Accepted') and (exists related error report with latest version status = 'Accepted')))." )
+      setError( "To create a version: ((user is project leader) or (user is latest version author) or (user is admin)) and ((latest version status = 'In Review' or 'Reviewed') or ((latest version status = 'Accepted') and (exists related error report with latest version status = 'Accepted')))." )
       return
     }
     setError( null )
@@ -3730,7 +3747,7 @@ function VersionsPage() {
                   <div className="actions actions--capture-row">
                     <textarea
                       ref={commentInputRef}
-                      className="comment-input"
+                      className={`comment-input comment-input--${selectedCommentWindowState}`}
                       value={newCommentBody}
                       onChange={( event ) => setNewCommentBody( event.target.value )}
                       placeholder="Write a comment"

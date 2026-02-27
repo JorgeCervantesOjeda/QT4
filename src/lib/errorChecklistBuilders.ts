@@ -60,7 +60,7 @@ const buildVersionsErrorChecklist = (
       {
         parts: [
           { label: '(user_is_project_leader)', ok: context.userIsProjectLeader },
-          { label: '(user_is_document_author)', ok: context.userIsDocumentAuthor },
+          { label: '(user_is_latest_version_author)', ok: context.userIsLatestVersionAuthor },
           { label: '(user_is_admin)', ok: context.userIsAdmin },
         ],
         operator: 'or',
@@ -217,7 +217,6 @@ const buildVersionsErrorChecklist = (
       { label: "(selected version status = 'In Creation')", ok: context.selectedVersionInCreation },
       {
         parts: [
-          { label: '(user_is_selected_version_author)', ok: context.userIsSelectedVersionAuthor },
           { label: '(user_is_project_leader)', ok: context.userIsProjectLeader },
           { label: '(user_is_admin)', ok: context.userIsAdmin },
         ],

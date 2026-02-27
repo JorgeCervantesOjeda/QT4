@@ -532,6 +532,7 @@ function ProjectDocumentsPage() {
           numComments: 0,
           numThreadsWithTwoPlusComments: 0,
           acceptedErrorReportId: null,
+          previousVersionId: null,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           updatedBy: userId,
@@ -542,6 +543,7 @@ function ProjectDocumentsPage() {
             nextNumber: FIRST_VERSION_NUMBER + 1,
             docId: documentRef.id,
             projectId,
+            previousVersionId: null,
           },
           { merge: true },
         )

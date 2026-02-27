@@ -262,6 +262,27 @@
   overflow: hidden;
 }
 
+.comment-input--active {
+  background: #fff59d;
+  border-color: #d4b200;
+}
+
+.comment-input--grace {
+  background: #ffd58f;
+  border-color: #d66915;
+}
+
+.comment-input--expired {
+  background: #ffb347;
+  border-color: #d66915;
+}
+
+.comment-input--closed,
+.comment-input--unavailable {
+  background: #e6e6e6;
+  color: #625a4d;
+}
+
 .comment-body {
   white-space: pre-wrap;
   margin: 0;

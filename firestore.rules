@@ -251,6 +251,7 @@ service cloud.firestore {
 
     function isAuthorReassignmentAllowed() {
       return resource.data.status == 'In Creation'
+        && (isProjectLeader(resource.data.projectId) || isAdmin())
         && request.resource.data.status == 'In Creation'
         && request.resource.data.createdBy is string
         && request.resource.data.createdBy.size() > 0
@@ -268,14 +269,32 @@ service cloud.firestore {
         ]);
     }
 
-    function canManageVersionByDocId(projectId, docId) {
-      return isProjectLeader(projectId)
-        || (isSignedIn()
-          && (
-            documentDoc(docId).data.createdBy == request.auth.uid
-            || documentAfter(docId).data.createdBy == request.auth.uid
-          ))
-        || isAdmin();
+    function isDocumentCreatorForDocId(docId) {
+      return isSignedIn()
+        && (
+          documentDoc(docId).data.createdBy == request.auth.uid
+          || documentAfter(docId).data.createdBy == request.auth.uid
+        );
+    }
+
+    function isLatestVersionAuthorForCreate(projectId, docId, versionNumber, previousVersionId) {
+      return isSignedIn()
+        && previousVersionId is string
+        && previousVersionId.size() > 0
+        && versionNumber is int
+        && versionNumber > 1
+        && versionDoc(previousVersionId).data.projectId == projectId
+        && versionDoc(previousVersionId).data.docId == docId
+        && versionDoc(previousVersionId).data.number is int
+        && versionDoc(previousVersionId).data.number == versionNumber - 1
+        && versionDoc(previousVersionId).data.createdBy == request.auth.uid;
+    }
+
+    function canCreateVersionByPolicy(projectId, docId, versionNumber, previousVersionId) {
+      return isAdmin()
+        || isProjectLeader(projectId)
+        || isLatestVersionAuthorForCreate(projectId, docId, versionNumber, previousVersionId)
+        || (versionNumber == 1 && isDocumentCreatorForDocId(docId));
     }
 
     function versionCounterDoc(docId) {
@@ -450,7 +469,12 @@ service cloud.firestore {
               documentDoc(request.resource.data.docId).data.projectId == request.resource.data.projectId
               || documentAfter(request.resource.data.docId).data.projectId == request.resource.data.projectId
             )
-            && canManageVersionByDocId(request.resource.data.projectId, request.resource.data.docId)
+            && canCreateVersionByPolicy(
+              request.resource.data.projectId,
+              request.resource.data.docId,
+              request.resource.data.nextNumber - 1,
+              request.resource.data.previousVersionId
+            )
           )
         )
         && (
@@ -468,7 +492,12 @@ service cloud.firestore {
         || isVersionAuthor(resource.data)
         || isVersionReviewer(resource.data)
         || isAdmin();
-      allow create: if canManageVersionByDocId(request.resource.data.projectId, request.resource.data.docId)
+      allow create: if canCreateVersionByPolicy(
+          request.resource.data.projectId,
+          request.resource.data.docId,
+          request.resource.data.number,
+          request.resource.data.previousVersionId
+        )
         && request.resource.data.docId is string
         && request.resource.data.projectId is string
         && request.resource.data.number is int
