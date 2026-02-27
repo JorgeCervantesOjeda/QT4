@@ -1624,3 +1624,12 @@ button.ghost {
   border-radius: 10px;
   font-weight: 700;
 }
+
+.notice-warning {
+  color: #6b4502;
+  background: rgba( 255, 188, 86, 0.23 );
+  border: 1px solid rgba( 184, 119, 11, 0.45 );
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-weight: 700;
+}

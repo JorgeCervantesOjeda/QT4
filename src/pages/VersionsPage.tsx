@@ -183,6 +183,7 @@ function VersionsPage() {
   const [isLoadingVersions, setIsLoadingVersions] = useState( true )
   const [error, setError] = useState<string | null>( null )
   const [successMessage, setSuccessMessage] = useState<string | null>( null )
+  const [warningMessage, setWarningMessage] = useState<string | null>( null )
   const lastErrorRef = useRef<string | null>( null )
   const successOkButtonRef = useRef<HTMLButtonElement | null>( null )
   const commentInputRef = useRef<HTMLTextAreaElement | null>( null )
@@ -1859,6 +1860,7 @@ function VersionsPage() {
 
     setError( null )
     setSuccessMessage( null )
+    setWarningMessage( null )
     setIsBusy( true )
     try {
       const counterRef = doc( db, 'counters', `versions_${docId}` )
@@ -2407,6 +2409,7 @@ function VersionsPage() {
             } )
           } catch( err ) {
             console.warn( 'Email notify failed (start review):', err )
+            setWarningMessage( 'Review started, but email notification failed. Notify participants manually.' )
           }
         } )()
       }
@@ -3340,6 +3343,7 @@ function VersionsPage() {
               <p className="review-timer__value">{selectedReviewTimerLabel}</p>
             </section>
           ) : null}
+          {warningMessage ? <p className="notice-warning">{warningMessage}</p> : null}
           {!isBusy && !isLoadingVersions && versions.length === 0 ? (
             <p className="muted">No versions yet.</p>
           ) : viewMode === 'table' ? (
