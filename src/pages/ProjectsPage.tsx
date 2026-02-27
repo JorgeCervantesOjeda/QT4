@@ -40,6 +40,8 @@ type ProjectMember = {
   email?: string | null
 }
 
+const isLikelyEmail = (value: string) => /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test( value )
+
 function ProjectsPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -474,6 +476,10 @@ function ProjectsPage() {
     const memberEmailLower = memberEmailInput.toLowerCase()
     if( !memberEmailLower ) {
       setMemberErrors( ( prev ) => ( { ...prev, [projectId]: 'Provide an email address.' } ) )
+      return
+    }
+    if( !isLikelyEmail( memberEmailInput ) ) {
+      setMemberErrors( ( prev ) => ( { ...prev, [projectId]: 'Provide a valid email address.' } ) )
       return
     }
     let directorySnapshot

@@ -10,6 +10,8 @@ type LocationState = {
   from?: Location
 }
 
+const isLikelyEmail = (value: string) => /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test( value )
+
 function LoginPage() {
   const [email, setEmail] = useState( '' )
   const [password, setPassword] = useState( '' )
@@ -67,9 +69,17 @@ function LoginPage() {
   }
 
   const handlePasswordReset = async () => {
-    if( !email.trim() ) {
+    const targetEmail = email.trim()
+    if( !targetEmail ) {
       openError( 'Enter your email to request a password reset.', [
         { label: '(email is provided)', ok: false },
+      ] )
+      return
+    }
+    if( !isLikelyEmail( targetEmail ) ) {
+      openError( 'Enter a valid email address before requesting a password reset.', [
+        { label: '(email is provided)', ok: true },
+        { label: '(email format is valid)', ok: false },
       ] )
       return
     }
@@ -77,8 +87,6 @@ function LoginPage() {
     setResetNotice( null )
     setIsBusy( true )
     try {
-      const targetEmail = email.trim()
-
       await sendPasswordResetEmail( auth, targetEmail )
 
       setResetNotice( `Password reset email sent to ${targetEmail}. Check your inbox.` )
