@@ -107,6 +107,7 @@ type CommentSummary = {
 }
 
 type PendingVersionAction = 'createVersion' | 'startReview' | 'replaceFile'
+type DashboardFocusTarget = 'actions' | 'file' | 'issues' | 'comments'
 
 const toTimestampDate = (value: unknown): Date | null => {
   if( !value ) {
@@ -123,6 +124,13 @@ const toTimestampDate = (value: unknown): Date | null => {
 
 const hasLinkedFileMetadata = (version: Pick<VersionSummary, 'hasFile' | 'fileRefId'> | null | undefined) =>
   Boolean( version?.hasFile && version.fileRefId )
+
+const parseDashboardFocusTarget = (value: string | null): DashboardFocusTarget | null => {
+  if( value === 'actions' || value === 'file' || value === 'issues' || value === 'comments' ) {
+    return value
+  }
+  return null
+}
 
 function VersionsPage() {
   const { docId } = useParams()
@@ -178,6 +186,10 @@ function VersionsPage() {
   const lastErrorRef = useRef<string | null>( null )
   const successOkButtonRef = useRef<HTMLButtonElement | null>( null )
   const commentInputRef = useRef<HTMLTextAreaElement | null>( null )
+  const versionsActionsRef = useRef<HTMLDivElement | null>( null )
+  const filePanelRef = useRef<HTMLElement | null>( null )
+  const reviewIssuesPanelRef = useRef<HTMLElement | null>( null )
+  const lastAppliedDashboardFocusRef = useRef<string | null>( null )
   const [userDirectoryById, setUserDirectoryById] = useState<Record<string, { email?: string | null; displayName?: string | null }>>( {} )
   const [errorReportGate, setErrorReportGate] = useState<{ isBlocking: boolean; isLoading: boolean }>({
     isBlocking: false,
@@ -198,6 +210,7 @@ function VersionsPage() {
   const projectIdFromQuery = searchParams.get( 'projectId' ) ?? ''
   const versionIdFromQuery = searchParams.get( 'versionId' ) ?? ''
   const threadIdFromQuery = searchParams.get( 'threadId' ) ?? ''
+  const dashboardFocusTarget = parseDashboardFocusTarget( searchParams.get( 'focus' ) )
   const projectId = documentData?.projectId ?? projectIdFromQuery
   const documentsPath = projectId ? `/projects/${projectId}/documents` : '/projects'
   const versionsPath = docId && projectId
@@ -1226,6 +1239,60 @@ function VersionsPage() {
   useEffect( () => {
     setNewCommentBody( '' )
   }, [ selectedThreadId ] )
+
+  useEffect( () => {
+    if( !dashboardFocusTarget ) {
+      return
+    }
+    if( !selectedVersion || isLoadingVersions ) {
+      return
+    }
+    if( dashboardFocusTarget === 'comments' && isLoadingThreads ) {
+      return
+    }
+
+    const focusKey = `${dashboardFocusTarget}|${selectedVersion.id}|${selectedThreadId ?? ''}`
+    if( lastAppliedDashboardFocusRef.current === focusKey ) {
+      return
+    }
+
+    const scrollToTarget = (target: HTMLElement | null, focusInput = false) => {
+      if( !target ) {
+        return false
+      }
+      target.scrollIntoView( { behavior: 'smooth', block: 'start' } )
+      if( focusInput && commentInputRef.current ) {
+        window.setTimeout( () => {
+          commentInputRef.current?.focus()
+        }, 220 )
+      }
+      return true
+    }
+
+    let didScroll = false
+    if( dashboardFocusTarget === 'actions' ) {
+      didScroll = scrollToTarget( versionsActionsRef.current )
+    } else if( dashboardFocusTarget === 'file' ) {
+      didScroll = scrollToTarget( filePanelRef.current )
+    } else if( dashboardFocusTarget === 'issues' ) {
+      didScroll = scrollToTarget( reviewIssuesPanelRef.current )
+    } else if( selectedThread ) {
+      didScroll = scrollToTarget( commentInputRef.current, true )
+    } else {
+      didScroll = scrollToTarget( reviewIssuesPanelRef.current )
+    }
+
+    if( didScroll ) {
+      lastAppliedDashboardFocusRef.current = focusKey
+    }
+  }, [
+    dashboardFocusTarget,
+    selectedVersion,
+    selectedThread,
+    selectedThreadId,
+    isLoadingVersions,
+    isLoadingThreads,
+  ] )
 
   useEffect( () => {
     let isActive = true
@@ -3173,7 +3240,7 @@ function VersionsPage() {
           <section className="panel stack">
           <div className="panel-header panel-header--versions">
             {!isBusy ? <h2>Versions</h2> : null}
-            <div className="actions actions--versions-toolbar">
+            <div ref={versionsActionsRef} className="actions actions--versions-toolbar">
               <label className="field">
                 <span>Selected version</span>
                 <select
@@ -3282,7 +3349,9 @@ function VersionsPage() {
               onSortingChange={setVersionSorting}
               tableClassName="data-table--versions"
               storageKey={`qt4_table_versions_${docId ?? 'unknown'}`}
-              getRowClassName={( row ) => versionStatusClassName( row )}
+              getRowClassName={( row ) => `${versionStatusClassName( row )} ${
+                selectedVersion?.id === row.id ? 'data-table-row--selected' : ''
+              }`.trim()}
               onRowClick={( row ) => openReviewIssuesForVersion( row.id )}
             />
           ) : (
@@ -3363,7 +3432,7 @@ function VersionsPage() {
             </div>
           ) : null}
           {selectedVersion ? (
-            <section className="panel stack">
+            <section ref={filePanelRef} className="panel stack">
               <h3>File</h3>
               {selectedFileRef ? (
                 <div className="stack">
@@ -3566,7 +3635,7 @@ function VersionsPage() {
           ) : null}
 
           {selectedVersion ? (
-            <section className="panel stack">
+            <section ref={reviewIssuesPanelRef} className="panel stack">
               <h3>Review Issues</h3>
               <p className="muted">
                 Reviewers:{' '}
@@ -3628,12 +3697,14 @@ function VersionsPage() {
                       tableClassName="data-table--threads"
                       storageKey={`qt4_table_versions_threads_${selectedVersion.id}`}
                       getRowClassName={( row ) => {
-                        if( row.status === 'closed' ) {
-                          return 'thread-row--closed'
-                        }
-                        return getThreadCommentWindowMeta( row ).state === 'expired'
-                          ? 'thread-row--open-expired'
-                          : 'thread-row--open'
+                        const statusClassName = row.status === 'closed'
+                          ? 'thread-row--closed'
+                          : getThreadCommentWindowMeta( row ).state === 'expired'
+                            ? 'thread-row--open-expired'
+                            : 'thread-row--open'
+                        return `${statusClassName} ${
+                          selectedThreadId === row.id ? 'data-table-row--selected' : ''
+                        }`.trim()
                       }}
                       onRowClick={( row ) => setSelectedThreadId( row.id )}
                     />

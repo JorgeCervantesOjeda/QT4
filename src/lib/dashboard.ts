@@ -70,6 +70,14 @@ type ReplyTask = {
   threadId: string
 }
 
+const appendQueryParam = (link: string, key: string, value: string): string => {
+  const hashIndex = link.indexOf( '#' )
+  const base = hashIndex >= 0 ? link.slice( 0, hashIndex ) : link
+  const hash = hashIndex >= 0 ? link.slice( hashIndex ) : ''
+  const separator = base.includes( '?' ) ? '&' : '?'
+  return `${base}${separator}${encodeURIComponent( key )}=${encodeURIComponent( value )}${hash}`
+}
+
 const toTimestampDate = (value: unknown): Date | null => {
   if( !value ) {
     return null
@@ -528,7 +536,11 @@ export const buildDashboardTasks = async (
         title: formatDocumentLabel( docId ),
         detail: `${projectNameById[projectId] ?? 'Project'} - ${fileNote} (Version ${versionNumberToString( version.number )})`,
         projectId,
-        link: `/documents/${docId}/versions?projectId=${projectId}`,
+        link: appendQueryParam(
+          `/documents/${docId}/versions?projectId=${projectId}`,
+          'focus',
+          'file',
+        ),
         createdAt: version.createdAt ?? null,
       } )
     } )
@@ -550,7 +562,11 @@ export const buildDashboardTasks = async (
         title: formatDocumentLabel( docId ),
         detail: `${projectNameById[projectId] ?? 'Project'} - Review and add your first comment (Version ${versionNumberToString( version.number )})`,
         projectId,
-        link: `/documents/${docId}/versions?projectId=${projectId}&versionId=${version.id}`,
+        link: appendQueryParam(
+          `/documents/${docId}/versions?projectId=${projectId}&versionId=${version.id}`,
+          'focus',
+          'issues',
+        ),
         createdAt: version.reviewStartAt ?? version.updatedAt ?? version.createdAt ?? null,
         reviewEndAt: version.reviewEndAt ?? null,
       } )
@@ -578,7 +594,11 @@ export const buildDashboardTasks = async (
         title: formatDocumentLabel( docId ),
         detail: `${projectNameById[projectId] ?? 'Project'} - Reply to the latest thread response`,
         projectId,
-        link: `/documents/${docId}/versions?projectId=${projectId}&versionId=${threadTask.versionId}&threadId=${threadTask.threadId}`,
+        link: appendQueryParam(
+          `/documents/${docId}/versions?projectId=${projectId}&versionId=${threadTask.versionId}&threadId=${threadTask.threadId}`,
+          'focus',
+          'comments',
+        ),
         createdAt: thread.createdAt ?? null,
       } )
     } )
@@ -610,7 +630,11 @@ export const buildDashboardTasks = async (
         detail: `${projectNameById[projectId] ?? 'Project'} - Review accepted error reports (Version ${versionNumberToString( version.number )})`,
         projectId,
         link: docId
-          ? `/documents/${docId}/versions?projectId=${projectId}`
+          ? appendQueryParam(
+            `/documents/${docId}/versions?projectId=${projectId}`,
+            'focus',
+            'actions',
+          )
           : `/projects/${projectId}/documents`,
         createdAt: acceptedReportAcceptedAtByVersionId[versionId] ?? version.updatedAt ?? version.createdAt ?? null,
       } )
