@@ -214,6 +214,7 @@ function DashboardPage() {
         const nextTasks = rawTasks.map( ( task ) => ( {
           ...task,
           createdAt: toTimestampDate( task.createdAt ),
+          reviewEndAt: toTimestampDate( task.reviewEndAt ),
         } ) )
         setTasks( nextTasks )
         const updatedAt = toTimestampDate( data.updatedAt )
@@ -291,10 +292,20 @@ function DashboardPage() {
     return `${String( hours ).padStart( 2, '0' )}:${String( minutes ).padStart( 2, '0' )}:${String( seconds ).padStart( 2, '0' )}`
   }
 
+  const resolveTaskStatusClassName = (task: Pick<DashboardTask, 'type' | 'reviewEndAt'>) => {
+    if( task.type !== 'reviewer' ) {
+      return ''
+    }
+    if( task.reviewEndAt && task.reviewEndAt.getTime() <= nowMs ) {
+      return 'status-card--in-review-expired'
+    }
+    return 'status-card--in-review'
+  }
+
   const renderTaskCard = (task: DashboardTask) => (
     <article
       key={task.id}
-      className="project-card"
+      className={`project-card ${resolveTaskStatusClassName( task )}`.trim()}
       onClick={() => navigate( task.link )}
       role="button"
       tabIndex={0}
@@ -470,6 +481,7 @@ function DashboardPage() {
                   sorting={sorting}
                   onSortingChange={setSorting}
                   tableClassName="data-table--dashboard"
+                  getRowClassName={( row ) => resolveTaskStatusClassName( row )}
                   storageKey="qt4_table_dashboard"
                   onRowClick={( row ) => navigate( row.link )}
                 />

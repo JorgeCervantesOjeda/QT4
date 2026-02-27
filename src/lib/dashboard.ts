@@ -23,6 +23,7 @@ export type DashboardTask = {
   projectId: string
   link: string
   createdAt?: Date | null
+  reviewEndAt?: Date | null
 }
 
 export type DashboardTaskType = DashboardTask['type']
@@ -48,6 +49,7 @@ type VersionRecord = {
   createdAt?: Date | null
   updatedAt?: Date | null
   reviewStartAt?: Date | null
+  reviewEndAt?: Date | null
 }
 
 type ThreadRecord = {
@@ -103,6 +105,7 @@ const toVersionRecord = (snapshot: { id: string; data: () => Record<string, unkn
     createdAt: toTimestampDate( data.createdAt ),
     updatedAt: toTimestampDate( data.updatedAt ),
     reviewStartAt: toTimestampDate( data.reviewStartAt ),
+    reviewEndAt: toTimestampDate( data.reviewEndAt ),
   }
 }
 
@@ -549,6 +552,7 @@ export const buildDashboardTasks = async (
         projectId,
         link: `/documents/${docId}/versions?projectId=${projectId}&versionId=${version.id}`,
         createdAt: version.reviewStartAt ?? version.updatedAt ?? version.createdAt ?? null,
+        reviewEndAt: version.reviewEndAt ?? null,
       } )
     } )
   }
