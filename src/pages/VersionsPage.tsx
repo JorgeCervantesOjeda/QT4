@@ -3606,6 +3606,13 @@ function VersionsPage() {
                 </div>
             </ModalDialog>
           ) : null}
+          {uploadStatus === 'uploading' ? (
+            <ModalDialog>
+                <h3>Uploading file</h3>
+                <GiphyInline reason="loading" mode="inline" />
+                <p className="muted">{uploadMessage || 'Uploading...'}</p>
+            </ModalDialog>
+          ) : null}
           {successMessage ? (
             <ModalDialog onClose={handleCloseSuccessMessage} initialFocusRef={successOkButtonRef}>
                 <h3>Success</h3>
