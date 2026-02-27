@@ -297,12 +297,26 @@ service cloud.firestore {
         || (versionNumber == 1 && isDocumentCreatorForDocId(docId));
     }
 
-    function versionCounterDoc(docId) {
-      return get(/databases/$(database)/documents/counters/$( 'versions_' + docId ));
+    function hasPreviousVersionChainForCounter(projectId, docId, nextNumber, previousVersionId) {
+      return previousVersionId is string
+        && previousVersionId.size() > 0
+        && nextNumber is int
+        && nextNumber > 2
+        && versionDoc(previousVersionId).data.projectId == projectId
+        && versionDoc(previousVersionId).data.docId == docId
+        && versionDoc(previousVersionId).data.number is int
+        && versionDoc(previousVersionId).data.number == nextNumber - 2;
     }
 
-    function versionCounterAfter(docId) {
-      return getAfter(/databases/$(database)/documents/counters/$( 'versions_' + docId ));
+    function hasPreviousVersionChainForCreate(projectId, docId, versionNumber, previousVersionId) {
+      return previousVersionId is string
+        && previousVersionId.size() > 0
+        && versionNumber is int
+        && versionNumber > 1
+        && versionDoc(previousVersionId).data.projectId == projectId
+        && versionDoc(previousVersionId).data.docId == docId
+        && versionDoc(previousVersionId).data.number is int
+        && versionDoc(previousVersionId).data.number == versionNumber - 1;
     }
 
     function canReviewAccess(projectId, versionId) {
@@ -465,10 +479,6 @@ service cloud.firestore {
             && request.resource.data.docId is string
             && request.resource.data.projectId is string
             && counterId == 'versions_' + request.resource.data.docId
-            && (
-              documentDoc(request.resource.data.docId).data.projectId == request.resource.data.projectId
-              || documentAfter(request.resource.data.docId).data.projectId == request.resource.data.projectId
-            )
             && canCreateVersionByPolicy(
               request.resource.data.projectId,
               request.resource.data.docId,
@@ -478,8 +488,19 @@ service cloud.firestore {
           )
         )
         && (
-          (resource == null && request.resource.data.nextNumber == 2)
-          || request.resource.data.nextNumber == resource.data.nextNumber + 1
+          (resource == null && (
+            request.resource.data.nextNumber == 2
+            || hasPreviousVersionChainForCounter(
+              request.resource.data.projectId,
+              request.resource.data.docId,
+              request.resource.data.nextNumber,
+              request.resource.data.previousVersionId
+            )
+          ))
+          || (
+            resource != null
+            && request.resource.data.nextNumber == resource.data.nextNumber + 1
+          )
           || isAdmin()
         );
       allow delete: if false;
@@ -502,27 +523,13 @@ service cloud.firestore {
         && request.resource.data.projectId is string
         && request.resource.data.number is int
         && request.resource.data.number > 0
-        && versionCounterAfter(request.resource.data.docId).data.nextNumber is int
-        && versionCounterAfter(request.resource.data.docId).data.nextNumber
-          == request.resource.data.number + 1
         && (
-          versionCounterAfter(request.resource.data.docId).data.docId == request.resource.data.docId
-          || !(versionCounterAfter(request.resource.data.docId).data.docId is string)
-        )
-        && (
-          versionCounterAfter(request.resource.data.docId).data.projectId == request.resource.data.projectId
-          || !(versionCounterAfter(request.resource.data.docId).data.projectId is string)
-        )
-        && (
-          (
-            versionCounterDoc(request.resource.data.docId).data.nextNumber is int
-            && request.resource.data.number == versionCounterDoc(request.resource.data.docId).data.nextNumber
-            && versionCounterAfter(request.resource.data.docId).data.nextNumber
-              == versionCounterDoc(request.resource.data.docId).data.nextNumber + 1
-          )
-          || (
-            !(versionCounterDoc(request.resource.data.docId).data.nextNumber is int)
-            && request.resource.data.number == 1
+          request.resource.data.number == 1
+          || hasPreviousVersionChainForCreate(
+            request.resource.data.projectId,
+            request.resource.data.docId,
+            request.resource.data.number,
+            request.resource.data.previousVersionId
           )
         )
         && request.resource.data.status == 'In Creation'

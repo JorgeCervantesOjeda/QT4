@@ -1796,25 +1796,19 @@ function VersionsPage() {
       const versionRef = doc( collection( db, 'versions' ) )
       await runTransaction( db, async ( transaction ) => {
         const counterSnap = await transaction.get( counterRef )
-        const fallbackNext = ( versions.length > 0 ? versions[0].number + 1 : FIRST_VERSION_NUMBER )
-        const nextNumberRaw = counterSnap.data()?.nextNumber
-        const nextNumber = typeof nextNumberRaw === 'number' ? nextNumberRaw : fallbackNext
-
-        transaction.set(
-          counterRef,
-          {
-            nextNumber: nextNumber + 1,
-            docId,
-            projectId,
-            previousVersionId: latestVersion?.id ?? null,
-          },
-          { merge: true },
-        )
-
-        transaction.set( versionRef, {
+        const txFallbackNext = ( versions.length > 0 ? versions[0].number + 1 : FIRST_VERSION_NUMBER )
+        const txNextNumberRaw = counterSnap.data()?.nextNumber
+        const txNextNumber = typeof txNextNumberRaw === 'number' ? txNextNumberRaw : txFallbackNext
+        const counterPayload = {
+          nextNumber: txNextNumber + 1,
+          docId,
+          projectId,
+          previousVersionId: latestVersion?.id ?? null,
+        }
+        const versionPayload = {
           projectId,
           docId,
-          number: nextNumber,
+          number: txNextNumber,
           status: 'In Creation',
           createdBy: userId,
           reviewerIds: [],
@@ -1837,7 +1831,15 @@ function VersionsPage() {
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           updatedBy: userId,
-        } )
+        }
+
+        transaction.set(
+          counterRef,
+          counterPayload,
+          { merge: true },
+        )
+
+        transaction.set( versionRef, versionPayload )
         if( latestVersion && latestVersion.status === 'In Review' ) {
           transaction.update( doc( db, 'versions', latestVersion.id ), {
             status: 'Reviewed',
