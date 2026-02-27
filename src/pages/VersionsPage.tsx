@@ -1251,7 +1251,9 @@ function VersionsPage() {
       return
     }
 
-    const focusKey = `${dashboardFocusTarget}|${selectedVersion.id}|${selectedThreadId ?? ''}`
+    const focusKey = dashboardFocusTarget === 'comments'
+      ? `${dashboardFocusTarget}|${selectedVersion.id}|${selectedThreadId ?? ''}`
+      : `${dashboardFocusTarget}|${selectedVersion.id}`
     if( lastAppliedDashboardFocusRef.current === focusKey ) {
       return
     }
