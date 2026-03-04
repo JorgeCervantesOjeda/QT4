@@ -177,10 +177,8 @@
   text-transform: uppercase;
   font-size: 0.85rem;
   letter-spacing: 0.2em;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: #ffe4c7;
-  color: var(--qt-ink-strong);
+  font-weight: 700;
+  color: rgba(53, 35, 30, 0.72);
 }
 
 .document-title-text {
@@ -208,6 +206,20 @@
   background: linear-gradient(90deg, rgba(255, 106, 0, 0.2), rgba(255, 255, 255, 0.9));
   border: 2px solid rgba(255, 106, 0, 0.35);
   box-shadow: 0 12px 24px rgba(36, 19, 15, 0.12);
+}
+
+.context-nav-label {
+  margin-top: 10px;
+  padding: 2px 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: clamp(1rem, 2.1vw, 1.2rem);
+  font-weight: 700;
+  color: var(--qt-ink-strong);
+  background: transparent;
+  border: 0;
+  box-shadow: none;
 }
 
 .context-nav-button:hover {
@@ -849,6 +861,17 @@
 .actions--inline {
   align-items: center;
   justify-content: flex-end;
+}
+
+.download-provider-hint {
+  color: rgba( 45, 55, 72, 0.82 );
+  font-size: 0.76rem;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.actions--inline .download-provider-hint {
+  margin-left: 8px;
 }
 
 .audit-calendar-shell {
@@ -1531,6 +1554,35 @@
   display: grid;
   gap: 8px;
   grid-template-columns: 1fr;
+}
+
+.success-email-recipients {
+  margin: 4px 0 0;
+}
+
+.success-email-recipients > summary {
+  cursor: pointer;
+  color: var(--qt-ink-strong);
+  font-size: 0.88rem;
+  font-weight: 600;
+  user-select: none;
+}
+
+.success-email-recipients > p {
+  margin: 4px 0 0;
+  font-size: 0.84rem;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.comment-card--highlight {
+  border-color: #f08c00;
+  box-shadow: 0 0 0 3px rgba( 240, 140, 0, 0.22 );
+  background: #fff8e1;
+}
+
+.data-table--comments tr.comment-row--highlight td {
+  background: #fff8e1;
 }
 
 .link {

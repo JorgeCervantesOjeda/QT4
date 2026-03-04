@@ -92,7 +92,12 @@ const withSessionHeaders = async (headersInit?: HeadersInit): Promise<Headers> =
     throw new Error( 'User session is required.' )
   }
 
-  const idToken = await user.getIdToken( true )
+  let idToken = ''
+  try {
+    idToken = await user.getIdToken()
+  } catch {
+    idToken = await user.getIdToken( true )
+  }
   const headers = new Headers( headersInit )
   headers.set( 'Authorization', `Bearer ${idToken}` )
   return headers

@@ -14,7 +14,7 @@ import {
   serverTimestamp,
   where,
 } from 'firebase/firestore'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import AppBrand from '../components/AppBrand'
 import BackStack from '../components/BackStack'
@@ -37,8 +37,10 @@ type DocumentSummary = {
   baseDocId?: string | null
   latestVersionNumber: number | null
   latestStatus: string | null
+  latestReviewEndAt?: Date | null
   createdAt?: Date | null
   updatedAt?: Date | null
+  lastActivityAt?: Date | null
 }
 
 type ProjectSummary = {
@@ -48,6 +50,19 @@ type ProjectSummary = {
 }
 
 type DocumentFilter = 'all' | 'mine'
+
+const pickLatestDate = ( ...values: Array<Date | null | undefined> ): Date | null => {
+  let latest: Date | null = null
+  for( const value of values ) {
+    if( !value ) {
+      continue
+    }
+    if( !latest || value.getTime() > latest.getTime() ) {
+      latest = value
+    }
+  }
+  return latest
+}
 
 function ProjectDocumentsPage() {
   const { projectId } = useParams()
@@ -73,6 +88,7 @@ function ProjectDocumentsPage() {
   const titleInputRef = useRef<HTMLInputElement | null>( null )
   const shouldRestoreTitleFocusRef = useRef( false )
   const [userDirectoryById, setUserDirectoryById] = useState<Record<string, { email?: string | null; displayName?: string | null }>>( {} )
+  const [nowMs, setNowMs] = useState( () => Date.now() )
 
   const canSubmit = useMemo(
     () => title.trim().length > 0 && !isBusy && Boolean( projectId ) && Boolean( project ),
@@ -97,7 +113,7 @@ function ProjectDocumentsPage() {
       documents.map( ( documentItem ) => ( {
         ...documentItem,
         creatorLabel: formatUserLabel( documentItem.createdBy ),
-        updatedAtMs: documentItem.updatedAt ? documentItem.updatedAt.getTime() : 0,
+        updatedAtMs: documentItem.lastActivityAt ? documentItem.lastActivityAt.getTime() : 0,
       } ) ),
     [ documents, formatUserLabel ],
   )
@@ -169,9 +185,9 @@ function ProjectDocumentsPage() {
         accessorKey: 'creatorLabel',
       },
       {
-        header: 'Updated',
+        header: 'Last activity',
         accessorKey: 'updatedAtMs',
-        cell: ( info ) => formatTimeAgo( info.row.original.updatedAt ),
+        cell: ( info ) => formatTimeAgo( info.row.original.lastActivityAt ),
       },
     ],
     [ baseDocumentById ],
@@ -223,11 +239,14 @@ function ProjectDocumentsPage() {
     window.localStorage.setItem( 'qt4_documents_filter', filter )
   }, [ filter ] )
 
-  const statusClassName = (status?: string | null) => {
+  const statusClassName = (status?: string | null, reviewEndAt?: Date | null) => {
     switch( status ) {
       case 'In Creation':
         return 'status-card--in-creation'
       case 'In Review':
+        if( reviewEndAt && reviewEndAt.getTime() <= nowMs ) {
+          return 'status-card--in-review-expired'
+        }
         return 'status-card--in-review'
       case 'Reviewed':
         return 'status-card--reviewed'
@@ -241,6 +260,15 @@ function ProjectDocumentsPage() {
         return ''
     }
   }
+
+  useEffect( () => {
+    const timer = window.setInterval( () => {
+      setNowMs( Date.now() )
+    }, 60 * 1000 )
+    return () => {
+      window.clearInterval( timer )
+    }
+  }, [] )
 
   const loadProject = useCallback( async () => {
     if( !projectId ) {
@@ -290,6 +318,8 @@ function ProjectDocumentsPage() {
           latestStatus: null,
           createdAt,
           updatedAt,
+          lastActivityAt: pickLatestDate( updatedAt, createdAt ),
+          latestReviewEndAt: null,
         }
       } )
 
@@ -314,11 +344,21 @@ function ProjectDocumentsPage() {
             const isMine = createdBy === userId || reviewerIds.includes( userId )
             const latestVersionNumber = Number( versionData.number ?? 0 )
             const latestStatus = ( versionData.status as string | undefined ) ?? 'In Creation'
+            const latestVersionUpdatedAt = versionData.updatedAt?.toDate?.() ?? null
+            const latestVersionCreatedAt = versionData.createdAt?.toDate?.() ?? null
+            const latestReviewEndAt = versionData.reviewEndAt?.toDate?.() ?? null
             return {
               documentItem: {
                 ...documentItem,
                 latestVersionNumber,
                 latestStatus,
+                latestReviewEndAt,
+                lastActivityAt: pickLatestDate(
+                  documentItem.updatedAt,
+                  documentItem.createdAt,
+                  latestVersionUpdatedAt,
+                  latestVersionCreatedAt,
+                ),
               },
               isMine,
             }
@@ -600,12 +640,12 @@ function ProjectDocumentsPage() {
       <header className="app-header">
         <div>
           <AppBrand pageTitle="Project Documents" />
-          <Link className="context-nav-button" to="/projects">
+          <div className="context-nav-label">
             <span className="document-title-prefix">Project</span>
             <span className="document-title-text">
               {project ? `${project.shortId ?? 'Unassigned'} - ${project.name}` : 'Unknown project'}
             </span>
-          </Link>
+          </div>
         </div>
         <BackStack links={[ { label: 'Projects', to: '/projects' } ]} />
       </header>
@@ -710,7 +750,7 @@ function ProjectDocumentsPage() {
                 onSortingChange={setSorting}
                 tableClassName="data-table--documents"
                 storageKey={`qt4_table_documents_${projectId ?? 'unknown'}`}
-                getRowClassName={( row ) => statusClassName( row.latestStatus )}
+                getRowClassName={( row ) => statusClassName( row.latestStatus, row.latestReviewEndAt )}
                 onRowClick={( row ) => {
                   if( projectId ) {
                     navigate( `/documents/${row.id}/versions?projectId=${projectId}` )
@@ -722,7 +762,7 @@ function ProjectDocumentsPage() {
                 {sortedDocumentCards.map( ( documentItem ) => (
                   <article
                     key={documentItem.id}
-                    className={`project-card ${statusClassName( documentItem.latestStatus )}`}
+                    className={`project-card ${statusClassName( documentItem.latestStatus, documentItem.latestReviewEndAt )}`}
                     onClick={() => {
                       if( projectId ) {
                         navigate( `/documents/${documentItem.id}/versions?projectId=${projectId}` )
@@ -763,7 +803,7 @@ function ProjectDocumentsPage() {
                     </p>
                     <p className="muted">Creator: {formatUserLabel( documentItem.createdBy )}</p>
                     <p className="muted">Created: {formatTimeAgo( documentItem.createdAt )}</p>
-                    <p className="muted">Updated: {formatTimeAgo( documentItem.updatedAt )}</p>
+                    <p className="muted">Last activity: {formatTimeAgo( documentItem.lastActivityAt )}</p>
                     <div className="actions">
                       <span className="muted">Open versions</span>
                     </div>

@@ -18,19 +18,31 @@ import {
   where,
   writeBatch,
 } from 'firebase/firestore'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import AppBrand from '../components/AppBrand'
 import BackStack from '../components/BackStack'
 import DataTable from '../components/DataTable'
 import ErrorChecklistModal from '../components/ErrorChecklistModal'
 import ModalDialog from '../components/ModalDialog'
-import { FIRST_VERSION_NUMBER, isIntegerVersionNumber, versionNumberToString } from '../domain/types'
+import {
+  FIRST_VERSION_NUMBER,
+  isIntegerVersionNumber,
+  versionNumberToString,
+  type FileStorageProviderKind,
+} from '../domain/types'
 import { GiphyInline } from '../giphy/GiphyProvider'
 import { logAudit } from '../lib/audit'
 import { buildVersionsErrorChecklist } from '../lib/errorChecklistBuilders'
-import { buildFileKey, deleteFile, downloadFile, notifyEmail, uploadFile } from '../lib/filesApi'
+import {
+  buildFileKey,
+  deleteFileByProvider,
+  downloadFileByProvider,
+  getEffectiveFileStorageProviderHint,
+  uploadFileUsingActiveProvider,
+} from '../lib/fileStorage'
 import { db } from '../lib/firebase'
+import { notifyEmailUsingActiveProvider } from '../lib/notifications'
 import {
   canAddCommentInWindow,
   formatApproxCountdown,
@@ -39,6 +51,7 @@ import {
   shouldAutoSetReviewed,
 } from '../lib/reviewWindow'
 import { formatTimeAgo } from '../lib/time'
+import { normalizeFileStorageProvider } from '../lib/runtimeConfig'
 
 type VersionSummary = {
   id: string
@@ -83,6 +96,7 @@ type FileRefSummary = {
   sizeBytes: number
   isPermanent: boolean
   expireAfterDays: number | null
+  storageProvider: FileStorageProviderKind
   createdBy: string
   projectId: string
   docId: string
@@ -125,11 +139,164 @@ const toTimestampDate = (value: unknown): Date | null => {
 const hasLinkedFileMetadata = (version: Pick<VersionSummary, 'hasFile' | 'fileRefId'> | null | undefined) =>
   Boolean( version?.hasFile && version.fileRefId )
 
+const DOWNLOAD_SLOW_NOTICE_MS = 5000
+const DOWNLOAD_TIMEOUT_MS = 25000
+
+const formatStorageProviderLabel = (provider: FileStorageProviderKind | null): string => {
+  if( provider === 'firebase-storage' ) {
+    return 'Firebase Storage'
+  }
+  if( provider === 'files-api' ) {
+    return 'Files API'
+  }
+  return 'Unknown'
+}
+
 const parseDashboardFocusTarget = (value: string | null): DashboardFocusTarget | null => {
   if( value === 'actions' || value === 'file' || value === 'issues' || value === 'comments' ) {
     return value
   }
   return null
+}
+
+const buildCommentAnchorId = (commentId: string) => `qt4-comment-${commentId}`
+
+const toDateMs = (value?: Date | null): number | null => ( value ? value.getTime() : null )
+
+const areStringArraysEqual = (left: string[], right: string[]) => {
+  if( left.length !== right.length ) {
+    return false
+  }
+  for( let index = 0; index < left.length; index += 1 ) {
+    if( left[index] !== right[index] ) {
+      return false
+    }
+  }
+  return true
+}
+
+const areVersionsEqual = (left: VersionSummary[], right: VersionSummary[]) => {
+  if( left.length !== right.length ) {
+    return false
+  }
+  for( let index = 0; index < left.length; index += 1 ) {
+    const a = left[index]
+    const b = right[index]
+    if(
+      a.id !== b.id ||
+      a.number !== b.number ||
+      a.status !== b.status ||
+      a.createdBy !== b.createdBy ||
+      !areStringArraysEqual( a.reviewerIds, b.reviewerIds ) ||
+      toDateMs( a.reviewStartAt ) !== toDateMs( b.reviewStartAt ) ||
+      toDateMs( a.reviewEndAt ) !== toDateMs( b.reviewEndAt ) ||
+      a.hasFile !== b.hasFile ||
+      a.fileRefId !== b.fileRefId ||
+      a.numThreads !== b.numThreads ||
+      a.numOpenThreads !== b.numOpenThreads ||
+      a.numComments !== b.numComments ||
+      a.numThreadsWithTwoPlusComments !== b.numThreadsWithTwoPlusComments ||
+      a.acceptedErrorReportId !== b.acceptedErrorReportId
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
+const areProjectMembersEqual = (left: ProjectMember[], right: ProjectMember[]) => {
+  if( left.length !== right.length ) {
+    return false
+  }
+  for( let index = 0; index < left.length; index += 1 ) {
+    const a = left[index]
+    const b = right[index]
+    if( a.userId !== b.userId || a.role !== b.role || ( a.email ?? null ) !== ( b.email ?? null ) ) {
+      return false
+    }
+  }
+  return true
+}
+
+const areThreadsEqual = (left: ThreadSummary[], right: ThreadSummary[]) => {
+  if( left.length !== right.length ) {
+    return false
+  }
+  for( let index = 0; index < left.length; index += 1 ) {
+    const a = left[index]
+    const b = right[index]
+    if(
+      a.id !== b.id ||
+      a.status !== b.status ||
+      a.title !== b.title ||
+      a.createdBy !== b.createdBy ||
+      a.commentCount !== b.commentCount ||
+      toDateMs( a.lastCommentAt ) !== toDateMs( b.lastCommentAt )
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
+const areCommentsByThreadEqual = (
+  left: Record<string, CommentSummary[]>,
+  right: Record<string, CommentSummary[]>,
+) => {
+  const leftKeys = Object.keys( left ).sort()
+  const rightKeys = Object.keys( right ).sort()
+  if( !areStringArraysEqual( leftKeys, rightKeys ) ) {
+    return false
+  }
+  for( const key of leftKeys ) {
+    const leftComments = left[key] ?? []
+    const rightComments = right[key] ?? []
+    if( leftComments.length !== rightComments.length ) {
+      return false
+    }
+    for( let index = 0; index < leftComments.length; index += 1 ) {
+      const a = leftComments[index]
+      const b = rightComments[index]
+      if(
+        a.id !== b.id ||
+        a.threadId !== b.threadId ||
+        a.body !== b.body ||
+        a.createdBy !== b.createdBy ||
+        toDateMs( a.createdAt ) !== toDateMs( b.createdAt )
+      ) {
+        return false
+      }
+    }
+  }
+  return true
+}
+
+const areUserDirectoryEqual = (
+  left: Record<string, { email?: string | null; displayName?: string | null }>,
+  right: Record<string, { email?: string | null; displayName?: string | null }>,
+) => {
+  const leftKeys = Object.keys( left ).sort()
+  const rightKeys = Object.keys( right ).sort()
+  if( !areStringArraysEqual( leftKeys, rightKeys ) ) {
+    return false
+  }
+  for( const key of leftKeys ) {
+    const leftEntry = left[key] ?? {}
+    const rightEntry = right[key] ?? {}
+    if(
+      ( leftEntry.email ?? null ) !== ( rightEntry.email ?? null ) ||
+      ( leftEntry.displayName ?? null ) !== ( rightEntry.displayName ?? null )
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
+const formatEmailRecipientsLine = (recipients: { to: string[]; cc: string[] }) => {
+  const toPart = `To: ${recipients.to.join( ', ' )}`
+  const ccPart = recipients.cc.length > 0 ? ` | Cc: ${recipients.cc.join( ', ' )}` : ''
+  return `${toPart}${ccPart}`
 }
 
 function VersionsPage() {
@@ -153,6 +320,10 @@ function VersionsPage() {
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>( null )
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>( 'idle' )
   const [uploadMessage, setUploadMessage] = useState<string>( '' )
+  const [downloadStatus, setDownloadStatus] = useState<'idle' | 'downloading'>( 'idle' )
+  const [downloadMessage, setDownloadMessage] = useState<string>( '' )
+  const [emailNotifyStatus, setEmailNotifyStatus] = useState<'idle' | 'sending'>( 'idle' )
+  const [emailNotifyMessage, setEmailNotifyMessage] = useState<string>( '' )
   const uploadInputRef = useRef<HTMLInputElement | null>( null )
   const [selectedFileRef, setSelectedFileRef] = useState<FileRefSummary | null>( null )
   const [isErrorReportModalOpen, setIsErrorReportModalOpen] = useState( false )
@@ -183,6 +354,10 @@ function VersionsPage() {
   const [isLoadingVersions, setIsLoadingVersions] = useState( true )
   const [error, setError] = useState<string | null>( null )
   const [successMessage, setSuccessMessage] = useState<string | null>( null )
+  const [successEmailRecipients, setSuccessEmailRecipients] = useState<{
+    to: string[]
+    cc: string[]
+  } | null>( null )
   const [warningMessage, setWarningMessage] = useState<string | null>( null )
   const lastErrorRef = useRef<string | null>( null )
   const successOkButtonRef = useRef<HTMLButtonElement | null>( null )
@@ -199,28 +374,40 @@ function VersionsPage() {
   const [threads, setThreads] = useState<ThreadSummary[]>([] )
   const [commentsByThread, setCommentsByThread] = useState<Record<string, CommentSummary[]>>( {} )
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>( null )
+  const [highlightedCommentId, setHighlightedCommentId] = useState<string | null>( null )
   const [pendingThreadStatusChange, setPendingThreadStatusChange] = useState<ThreadSummary | null>( null )
   const lastAppliedVersionQueryRef = useRef<string | null>( null )
   const lastAppliedThreadQueryRef = useRef<string | null>( null )
+  const lastAppliedCommentQueryRef = useRef<string | null>( null )
   const [newThreadTitle, setNewThreadTitle] = useState( '' )
   const [newCommentBody, setNewCommentBody] = useState( '' )
   const [isLoadingThreads, setIsLoadingThreads] = useState( false )
   const [clockNowMs, setClockNowMs] = useState( () => Date.now() )
+  const [isMembersTableCompact, setIsMembersTableCompact] = useState( () =>
+    typeof window !== 'undefined' ? window.matchMedia( '(max-width: 480px)' ).matches : false,
+  )
   const autoReviewUpdateRef = useRef<string | null>( null )
+  const autoReviewPermissionDeniedVersionIdsRef = useRef<Set<string>>( new Set() )
 
   const projectIdFromQuery = searchParams.get( 'projectId' ) ?? ''
   const versionIdFromQuery = searchParams.get( 'versionId' ) ?? ''
   const threadIdFromQuery = searchParams.get( 'threadId' ) ?? ''
+  const commentIdFromQuery = searchParams.get( 'commentId' ) ?? ''
   const dashboardFocusTarget = parseDashboardFocusTarget( searchParams.get( 'focus' ) )
   const projectId = documentData?.projectId ?? projectIdFromQuery
-  const documentsPath = projectId ? `/projects/${projectId}/documents` : '/projects'
-  const versionsPath = docId && projectId
-    ? `/documents/${docId}/versions?projectId=${projectId}`
-    : documentsPath
   const latestVersion = versions[0] ?? null
   const selectedVersion = selectedVersionId
     ? versions.find( ( version ) => version.id === selectedVersionId ) || latestVersion
     : latestVersion
+  const selectedDownloadProvider = getEffectiveFileStorageProviderHint(
+    selectedFileRef?.storageProvider ?? null,
+  )
+  const getVersionDownloadProvider = useCallback( (version: VersionSummary): FileStorageProviderKind | null => {
+    if( selectedVersion?.id === version.id && selectedFileRef?.storageProvider ) {
+      return getEffectiveFileStorageProviderHint( selectedFileRef.storageProvider )
+    }
+    return getEffectiveFileStorageProviderHint()
+  }, [ selectedVersion?.id, selectedFileRef?.storageProvider ] )
   const documentAuthorId = documentData?.createdBy ?? ''
   const latestAuthorId = latestVersion?.createdBy ?? documentAuthorId
   const isSelectedAuthor = Boolean(
@@ -419,10 +606,76 @@ function VersionsPage() {
     return rawMessage
   }
 
+  const executeDownloadWithTimeout = async (
+    action: () => Promise<void>,
+    options: {
+      attemptId?: string
+      timeoutMessage?: string
+      onSlowNotice?: () => void
+    } = {},
+  ) => {
+    const attemptId = options.attemptId ?? `${Date.now()}-${Math.random().toString( 36 ).slice( 2, 8 )}`
+    const startedAt = Date.now()
+    let timeoutId: number | undefined
+    let slowNoticeId: number | undefined
+    let slowNoticeShown = false
+    console.info( '[download][start]', {
+      attemptId,
+      timeoutMs: DOWNLOAD_TIMEOUT_MS,
+      slowNoticeMs: DOWNLOAD_SLOW_NOTICE_MS,
+    } )
+    try {
+      slowNoticeId = window.setTimeout( () => {
+        slowNoticeShown = true
+        options.onSlowNotice?.()
+        console.info( '[download][slow_notice]', {
+          attemptId,
+          elapsedMs: Date.now() - startedAt,
+        } )
+      }, DOWNLOAD_SLOW_NOTICE_MS )
+      await Promise.race( [
+        action(),
+        new Promise<never>( ( _, reject ) => {
+          timeoutId = window.setTimeout( () => {
+            reject(
+              new Error(
+                options.timeoutMessage ??
+                'Download failed (timeout): the server took too long to respond.',
+              ),
+            )
+          }, DOWNLOAD_TIMEOUT_MS )
+        } ),
+      ] )
+      console.info( '[download][success]', {
+        attemptId,
+        elapsedMs: Date.now() - startedAt,
+        slowNoticeShown,
+      } )
+    } catch( err ) {
+      console.warn( '[download][error]', {
+        attemptId,
+        elapsedMs: Date.now() - startedAt,
+        slowNoticeShown,
+        message: err instanceof Error ? err.message : String( err ),
+      } )
+      throw err
+    } finally {
+      if( timeoutId !== undefined ) {
+        window.clearTimeout( timeoutId )
+      }
+      if( slowNoticeId !== undefined ) {
+        window.clearTimeout( slowNoticeId )
+      }
+    }
+  }
+
   const handleDownloadVersionFile = useCallback( async (version: VersionSummary) => {
     setError( null )
     setSuccessMessage( null )
-    setIsBusy( true )
+    setDownloadStatus( 'downloading' )
+    setDownloadMessage( 'Preparing download...' )
+    const attemptId = `${Date.now()}-${Math.random().toString( 36 ).slice( 2, 8 )}`
+    const metadataStartedAt = Date.now()
     try {
       if( !version.fileRefId ) {
         throw new Error(
@@ -431,6 +684,7 @@ function VersionsPage() {
       }
       let fileKey = ''
       let fileName = `version-${versionNumberToString( version.number )}`
+      let storageProvider: FileStorageProviderKind = 'files-api'
 
       if( version.fileRefId ) {
         const fileSnapshot = await getDoc( doc( db, 'files', version.fileRefId ) )
@@ -438,20 +692,54 @@ function VersionsPage() {
           const fileData = fileSnapshot.data()
           fileKey = ( fileData.fileKey as string | undefined ) ?? ''
           fileName = ( fileData.fileName as string | undefined ) ?? fileName
+          storageProvider = normalizeFileStorageProvider( fileData.storageProvider )
         }
       }
+      console.info( '[download][metadata_resolved]', {
+        attemptId,
+        versionId: version.id,
+        versionNumber: version.number,
+        fileRefId: version.fileRefId,
+        fileKey,
+        storageProvider,
+        elapsedMs: Date.now() - metadataStartedAt,
+      } )
 
       if( !fileKey ) {
         throw new Error( 'Cannot download this file: linked file metadata is missing file key.' )
       }
-      await downloadFile( fileKey, fileName )
+      setDownloadMessage( 'Downloading file...' )
+      await executeDownloadWithTimeout(
+        () => downloadFileByProvider( fileKey, fileName, storageProvider ),
+        {
+          attemptId,
+          timeoutMessage: 'Download failed (timeout): the server took too long to respond.',
+          onSlowNotice: () => setDownloadMessage( 'Still downloading from the server...' ),
+        },
+      )
     } catch( err ) {
       const rawMessage = err instanceof Error ? err.message : 'Unexpected error'
       setError( normalizeDownloadError( rawMessage ) )
     } finally {
-      setIsBusy( false )
+      setDownloadStatus( 'idle' )
+      setDownloadMessage( '' )
     }
   }, [] )
+
+  const requestDownloadVersionFile = useCallback( (version: VersionSummary) => {
+    if( downloadStatus === 'downloading' ) {
+      return
+    }
+    if( !userId ) {
+      setError( 'Sign in before downloading a file.' )
+      return
+    }
+    if( !hasLinkedFileMetadata( version ) ) {
+      setError( 'No file is linked to this version.' )
+      return
+    }
+    void handleDownloadVersionFile( version )
+  }, [ userId, handleDownloadVersionFile, downloadStatus ] )
 
   const statusClassName = (status?: string | null) => {
     switch( status ) {
@@ -659,12 +947,15 @@ function VersionsPage() {
               type="button"
               onClick={( event ) => {
                 event.stopPropagation()
-                void handleDownloadVersionFile( version )
+                requestDownloadVersionFile( version )
               }}
-              disabled={isBusy}
+              disabled={isBusy || downloadStatus === 'downloading'}
             >
               Download
             </button>
+            <span className="download-provider-hint">
+              {`From: ${formatStorageProviderLabel( getVersionDownloadProvider( version ) )}`}
+            </span>
           </div>
         )
       },
@@ -687,7 +978,7 @@ function VersionsPage() {
         return formatApproxCountdown( remainingMs )
       },
     },
-  ], [ formatUserLabel, clockNowMs, handleDownloadVersionFile, isBusy ] )
+  ], [ formatUserLabel, clockNowMs, requestDownloadVersionFile, isBusy, downloadStatus, getVersionDownloadProvider ] )
 
   const commentColumns = useMemo<ColumnDef<CommentSummary>[]>( () => [
     {
@@ -802,7 +1093,7 @@ function VersionsPage() {
         }
       } )
       const latestVersionLocal = nextVersions[0] ?? null
-      setVersions( nextVersions )
+      setVersions( ( previous ) => ( areVersionsEqual( previous, nextVersions ) ? previous : nextVersions ) )
 
       const members = membersSnapshot.docs.map( ( memberSnapshot ) => {
         const data = memberSnapshot.data()
@@ -812,7 +1103,9 @@ function VersionsPage() {
           email: ( data.email as string | null | undefined ) ?? null,
         }
       } )
-      setProjectMembers( members )
+      setProjectMembers( ( previous ) =>
+        areProjectMembersEqual( previous, members ) ? previous : members,
+      )
       if( projectSnapshot && 'exists' in projectSnapshot && projectSnapshot.exists() ) {
         const projectData = projectSnapshot.data()
         setProjectName( ( projectData?.name as string | undefined ) ?? '' )
@@ -865,20 +1158,24 @@ function VersionsPage() {
         setBaseDocumentData( null )
       }
       const allowedMemberIds = members.map( ( member ) => member.userId ).filter( Boolean )
+      // Keep the version chosen in the UI when reloading data after mutations
+      // (e.g. assigning reviewers). Query param should only work as fallback.
       const activeVersion =
-        ( versionIdFromQuery
-          ? nextVersions.find( ( version ) => version.id === versionIdFromQuery ) || null
-          : null ) ??
         ( selectedVersionId
           ? nextVersions.find( ( version ) => version.id === selectedVersionId ) || null
+          : null ) ??
+        ( versionIdFromQuery
+          ? nextVersions.find( ( version ) => version.id === versionIdFromQuery ) || null
           : null ) ?? nextVersions[0] ?? null
       const latestCreatedBy = activeVersion?.createdBy ?? ''
       const nextReviewerIds = ( activeVersion?.reviewerIds ?? [] ).filter( ( reviewerId ) =>
         allowedMemberIds.includes( reviewerId ) && reviewerId !== latestCreatedBy,
       )
-      setSelectedReviewerIds( nextReviewerIds )
-      setSelectedAuthorId( latestCreatedBy )
-      setSelectedVersionId( activeVersion?.id ?? null )
+      setSelectedReviewerIds( ( previous ) =>
+        areStringArraysEqual( previous, nextReviewerIds ) ? previous : nextReviewerIds,
+      )
+      setSelectedAuthorId( ( previous ) => ( previous === latestCreatedBy ? previous : latestCreatedBy ) )
+      setSelectedVersionId( ( previous ) => ( previous === ( activeVersion?.id ?? null ) ? previous : activeVersion?.id ?? null ) )
 
       const directoryCandidates = new Set<string>()
       members.forEach( ( member ) => {
@@ -972,7 +1269,9 @@ function VersionsPage() {
           } ),
         )
       }
-      setUserDirectoryById( nextDirectoryById )
+      setUserDirectoryById( ( previous ) => {
+        return areUserDirectoryEqual( previous, nextDirectoryById ) ? previous : nextDirectoryById
+      } )
 
       step = 'error-reports'
       if( latestVersionLocal && latestVersionLocal.status === 'Accepted' ) {
@@ -1184,7 +1483,7 @@ function VersionsPage() {
             lastCommentAt: toTimestampDate( data.lastCommentAt ),
           }
         } )
-        setThreads( nextThreads )
+        setThreads( ( previous ) => ( areThreadsEqual( previous, nextThreads ) ? previous : nextThreads ) )
         if( threadIdFromQuery && lastAppliedThreadQueryRef.current !== threadIdFromQuery && nextThreads.some( ( thread ) => thread.id === threadIdFromQuery ) ) {
           lastAppliedThreadQueryRef.current = threadIdFromQuery
           setSelectedThreadId( threadIdFromQuery )
@@ -1224,7 +1523,9 @@ function VersionsPage() {
           }
           nextComments[threadId].push( commentItem )
         } )
-        setCommentsByThread( nextComments )
+        setCommentsByThread( ( previous ) =>
+          areCommentsByThreadEqual( previous, nextComments ) ? previous : nextComments,
+        )
       },
       ( err ) => {
         const message = err instanceof Error ? err.message : 'Unexpected error'
@@ -1298,6 +1599,51 @@ function VersionsPage() {
   ] )
 
   useEffect( () => {
+    if( !commentIdFromQuery ) {
+      lastAppliedCommentQueryRef.current = null
+      setHighlightedCommentId( null )
+      return
+    }
+    if( lastAppliedCommentQueryRef.current === commentIdFromQuery ) {
+      return
+    }
+    const targetThreadId =
+      selectedThreadId ??
+      Object.entries( commentsByThread ).find( ( [ , threadComments ] ) =>
+        threadComments.some( ( comment ) => comment.id === commentIdFromQuery ),
+      )?.[0] ??
+      null
+    if( !targetThreadId ) {
+      return
+    }
+    if( selectedThreadId !== targetThreadId ) {
+      setSelectedThreadId( targetThreadId )
+      return
+    }
+    const selectedComments = commentsByThread[targetThreadId] ?? []
+    if( !selectedComments.some( ( comment ) => comment.id === commentIdFromQuery ) ) {
+      return
+    }
+    if( commentsViewMode !== 'card' ) {
+      setCommentsViewMode( 'card' )
+      return
+    }
+    lastAppliedCommentQueryRef.current = commentIdFromQuery
+    setHighlightedCommentId( commentIdFromQuery )
+    const scrollTimer = window.setTimeout( () => {
+      const commentNode = document.getElementById( buildCommentAnchorId( commentIdFromQuery ) )
+      commentNode?.scrollIntoView( { behavior: 'smooth', block: 'center' } )
+    }, 120 )
+    const clearHighlightTimer = window.setTimeout( () => {
+      setHighlightedCommentId( ( current ) => ( current === commentIdFromQuery ? null : current ) )
+    }, 12000 )
+    return () => {
+      window.clearTimeout( scrollTimer )
+      window.clearTimeout( clearHighlightTimer )
+    }
+  }, [ commentIdFromQuery, selectedThreadId, commentsByThread, commentsViewMode ] )
+
+  useEffect( () => {
     let isActive = true
     const fileRefId = selectedVersion?.fileRefId ?? null
     if( !fileRefId ) {
@@ -1326,6 +1672,7 @@ function VersionsPage() {
             isPermanent: Boolean( data.isPermanent ),
             expireAfterDays:
               typeof data.expireAfterDays === 'number' ? Number( data.expireAfterDays ) : null,
+            storageProvider: normalizeFileStorageProvider( data.storageProvider ),
             createdBy: ( data.createdBy as string ) ?? '',
             projectId: ( data.projectId as string ) ?? '',
             docId: ( data.docId as string ) ?? '',
@@ -1385,7 +1732,7 @@ function VersionsPage() {
             acceptedErrorReportId: ( data.acceptedErrorReportId as string | null | undefined ) ?? null,
           }
         } )
-        setVersions( nextVersions )
+        setVersions( ( previous ) => ( areVersionsEqual( previous, nextVersions ) ? previous : nextVersions ) )
         setIsLoadingVersions( false )
       },
       ( err ) => {
@@ -1405,7 +1752,9 @@ function VersionsPage() {
             email: ( data.email as string | null | undefined ) ?? null,
           }
         } )
-        setProjectMembers( members )
+        setProjectMembers( ( previous ) =>
+          areProjectMembersEqual( previous, members ) ? previous : members,
+        )
       },
     )
     const projectUnsub = onSnapshot( doc( db, 'projects', activeProjectId ), ( snapshot ) => {
@@ -1588,7 +1937,9 @@ function VersionsPage() {
         )
       }
       if( isActive ) {
-        setUserDirectoryById( nextDirectoryById )
+        setUserDirectoryById( ( previous ) => {
+          return areUserDirectoryEqual( previous, nextDirectoryById ) ? previous : nextDirectoryById
+        } )
       }
     }
     void loadDirectory()
@@ -1627,9 +1978,14 @@ function VersionsPage() {
     const nextReviewerIds = ( activeVersion.reviewerIds ?? [] ).filter( ( reviewerId ) =>
       allowedMemberIds.includes( reviewerId ) && reviewerId !== activeVersion.createdBy,
     )
-    setSelectedReviewerIds( nextReviewerIds )
-    setSelectedAuthorId( activeVersion.createdBy ?? '' )
-    setSelectedVersionId( activeVersion.id )
+    setSelectedReviewerIds( ( previous ) =>
+      areStringArraysEqual( previous, nextReviewerIds ) ? previous : nextReviewerIds,
+    )
+    setSelectedAuthorId( ( previous ) => {
+      const nextAuthorId = activeVersion.createdBy ?? ''
+      return previous === nextAuthorId ? previous : nextAuthorId
+    } )
+    setSelectedVersionId( ( previous ) => ( previous === activeVersion.id ? previous : activeVersion.id ) )
   }, [ versions, selectedVersionId, versionIdFromQuery, projectMembers ] )
 
   useEffect( () => {
@@ -1685,6 +2041,7 @@ function VersionsPage() {
   const handleCloseSuccessMessage = () => {
     const shouldRestoreCommentFocus = successMessage === 'The comment was added successfully.'
     const shouldRestoreNewIssueCommentFocus = successMessage === 'Issue created successfully.'
+    setSuccessEmailRecipients( null )
     setSuccessMessage( null )
     if( shouldRestoreCommentFocus ) {
       window.setTimeout( () => {
@@ -1697,6 +2054,17 @@ function VersionsPage() {
       }, 0 )
     }
   }
+
+  const reloadAndRestoreSelection = useCallback(
+    async (versionId: string | null, threadId?: string | null) => {
+      setSelectedVersionId( ( current ) => ( current === versionId ? current : versionId ) )
+      if( threadId !== undefined ) {
+        const nextThreadId = threadId ?? null
+        setSelectedThreadId( ( current ) => ( current === nextThreadId ? current : nextThreadId ) )
+      }
+    },
+    [],
+  )
 
   const isVersionReviewExpired = (version?: Pick<VersionSummary, 'status' | 'reviewEndAt'> | null) =>
     Boolean(
@@ -1793,10 +2161,37 @@ function VersionsPage() {
   }, [] )
 
   useEffect( () => {
+    if( typeof window === 'undefined' ) {
+      return
+    }
+    const media = window.matchMedia( '(max-width: 480px)' )
+    const handleChange = () => {
+      setIsMembersTableCompact( media.matches )
+    }
+    handleChange()
+    if( typeof media.addEventListener === 'function' ) {
+      media.addEventListener( 'change', handleChange )
+      return () => {
+        media.removeEventListener( 'change', handleChange )
+      }
+    }
+    media.addListener( handleChange )
+    return () => {
+      media.removeListener( handleChange )
+    }
+  }, [] )
+
+  useEffect( () => {
     if( !latestVersion || !userId ) {
       return
     }
+    if( !canManageLatestVersion ) {
+      return
+    }
     if( !selectedVersion || selectedVersion.id !== latestVersion.id ) {
+      return
+    }
+    if( autoReviewPermissionDeniedVersionIdsRef.current.has( latestVersion.id ) ) {
       return
     }
     if( autoReviewUpdateRef.current === latestVersion.id ) {
@@ -1819,8 +2214,22 @@ function VersionsPage() {
       updatedBy: userId,
     } ).catch( ( err ) => {
       const message = err instanceof Error ? err.message : 'Unexpected error'
+      const errorCode =
+        err && typeof err === 'object' && 'code' in err
+          ? String( ( err as { code: unknown } ).code )
+          : ''
+      const loweredMessage = message.toLowerCase()
+      const permissionDenied =
+        errorCode.includes( 'permission-denied' ) ||
+        loweredMessage.includes( 'permission-denied' ) ||
+        loweredMessage.includes( 'missing or insufficient permissions' )
+      if( permissionDenied ) {
+        autoReviewPermissionDeniedVersionIdsRef.current.add( latestVersion.id )
+      }
       console.warn( 'Auto review completion failed:', message )
-      autoReviewUpdateRef.current = null
+      if( !permissionDenied ) {
+        autoReviewUpdateRef.current = null
+      }
     } )
   }, [
     latestVersion,
@@ -1829,6 +2238,7 @@ function VersionsPage() {
     hasSelectedVersionComments,
     clockNowMs,
     userId,
+    canManageLatestVersion,
   ] )
 
   useEffect( () => {
@@ -1857,7 +2267,6 @@ function VersionsPage() {
       setError( "To create a version: ((user is project leader) or (user is latest version author) or (user is admin)) and ((latest version status = 'In Review' or 'Reviewed') or ((latest version status = 'Accepted') and (exists related error report with latest version status = 'Accepted')))." )
       return
     }
-
     setError( null )
     setSuccessMessage( null )
     setWarningMessage( null )
@@ -1999,6 +2408,7 @@ function VersionsPage() {
       setError( 'Reviewers must be project members (including the leader). Select a member from the list.' )
       return
     }
+    const previousReviewerIds = selectedReviewerIds
     const nextReviewerIds = selectedReviewerIds.includes( reviewerId )
       ? selectedReviewerIds.filter( ( currentId ) => currentId !== reviewerId )
       : [ ...selectedReviewerIds, reviewerId ]
@@ -2011,6 +2421,14 @@ function VersionsPage() {
         updatedAt: serverTimestamp(),
         updatedBy: userId,
       } )
+    } catch( err ) {
+      setSelectedReviewerIds( previousReviewerIds )
+      const message = err instanceof Error ? err.message : 'Unexpected error'
+      setError( message )
+      setIsBusy( false )
+      return
+    }
+    try {
       await logAudit( {
         actorId: userId,
         actorEmail: user?.email ?? null,
@@ -2024,11 +2442,8 @@ function VersionsPage() {
           reviewerIds: nextReviewerIds,
         },
       } )
-      await loadDocumentAndVersions()
     } catch( err ) {
-      const message = err instanceof Error ? err.message : 'Unexpected error'
-      setError( message )
-      await loadDocumentAndVersions()
+      console.warn( 'Audit log failed (update reviewers):', err )
     } finally {
       setIsBusy( false )
     }
@@ -2041,7 +2456,6 @@ function VersionsPage() {
     user?.email,
     projectId,
     docId,
-    loadDocumentAndVersions,
   ] )
 
   const handleAssignAuthor = useCallback( async (authorId: string) => {
@@ -2070,6 +2484,8 @@ function VersionsPage() {
       setSelectedAuthorId( authorId )
       return
     }
+    const previousAuthorId = selectedAuthorId || selectedVersion.createdBy
+    const previousReviewerIds = selectedReviewerIds
     setError( null )
     const sanitizedReviewerIds = selectedReviewerIds.filter( ( reviewerId ) => reviewerId !== authorId )
     setSelectedAuthorId( authorId )
@@ -2082,6 +2498,15 @@ function VersionsPage() {
         updatedAt: serverTimestamp(),
         updatedBy: userId,
       } )
+    } catch( err ) {
+      setSelectedAuthorId( previousAuthorId )
+      setSelectedReviewerIds( previousReviewerIds )
+      const message = err instanceof Error ? err.message : 'Unexpected error'
+      setError( message )
+      setIsBusy( false )
+      return
+    }
+    try {
       await logAudit( {
         actorId: userId,
         actorEmail: user?.email ?? null,
@@ -2093,10 +2518,8 @@ function VersionsPage() {
         versionId: selectedVersion.id,
         targetUserId: authorId,
       } )
-      await loadDocumentAndVersions()
     } catch( err ) {
-      const message = err instanceof Error ? err.message : 'Unexpected error'
-      setError( message )
+      console.warn( 'Audit log failed (assign author):', err )
     } finally {
       setIsBusy( false )
     }
@@ -2106,10 +2529,10 @@ function VersionsPage() {
     canAssignAuthor,
     projectMembers,
     selectedReviewerIds,
+    selectedAuthorId,
     user?.email,
     projectId,
     docId,
-    loadDocumentAndVersions,
   ] )
 
   const handleUploadFile = async (file: File) => {
@@ -2121,6 +2544,7 @@ function VersionsPage() {
       setError( 'You can upload a file only while the version is In Creation.' )
       return
     }
+    const lockedVersionId = selectedVersion.id
 
     setError( null )
     setSuccessMessage( null )
@@ -2135,27 +2559,30 @@ function VersionsPage() {
     } )
     let uploadedNewFile = false
     let shouldDeleteUploadedOnError = true
+    let uploadedProvider: FileStorageProviderKind = 'files-api'
     try {
       const existingFileKey = selectedFileRef?.fileKey ?? null
+      const existingFileProvider = selectedFileRef?.storageProvider ?? 'files-api'
       const shouldDeleteExistingAfterCommit = Boolean( existingFileKey && existingFileKey !== fileKey )
       // If we overwrote the same key, deleting on rollback would remove the valid file.
       shouldDeleteUploadedOnError = !existingFileKey || existingFileKey !== fileKey
-      const uploadResponse = await uploadFile( fileKey, file, {
+      const uploadResponse = await uploadFileUsingActiveProvider( fileKey, file, {
         overwrite: true,
       } )
       uploadedNewFile = true
+      uploadedProvider = uploadResponse.storageProvider
       const fileRefDoc = doc( collection( db, 'files' ) )
       const fileRefPayload = {
         fileKey,
         fileName: file.name,
         contentType: file.type || 'application/octet-stream',
-        sizeBytes: Number( uploadResponse.sizeBytes ?? file.size ),
+        sizeBytes: Number( uploadResponse.sizeBytes ),
         isPermanent: Boolean( uploadResponse.isPermanent ),
         expireAfterDays:
           typeof uploadResponse.expireAfterDays === 'number'
             ? Number( uploadResponse.expireAfterDays )
             : null,
-        storageProvider: 'files-api',
+        storageProvider: uploadResponse.storageProvider,
         projectId,
         docId,
         versionId: selectedVersion.id,
@@ -2191,7 +2618,7 @@ function VersionsPage() {
       } )
       if( shouldDeleteExistingAfterCommit && existingFileKey ) {
         try {
-          await deleteFile( existingFileKey )
+          await deleteFileByProvider( existingFileKey, existingFileProvider )
         } catch {
           // Ignore cleanup errors; the new upload is already committed.
         }
@@ -2201,11 +2628,11 @@ function VersionsPage() {
       if( uploadInputRef.current ) {
         uploadInputRef.current.value = ''
       }
-      await loadDocumentAndVersions()
+      await reloadAndRestoreSelection( lockedVersionId )
     } catch( err ) {
       if( uploadedNewFile && shouldDeleteUploadedOnError ) {
         try {
-          await deleteFile( fileKey )
+          await deleteFileByProvider( fileKey, uploadedProvider )
         } catch {
           // Ignore cleanup errors when rollback upload fails.
         }
@@ -2226,9 +2653,8 @@ function VersionsPage() {
     statusLabel: string
     isAuthor: boolean
     isReviewer: boolean
-  }>[]>(
+  }>[]>( 
     () => {
-      const isSmallScreen = window.matchMedia( '(max-width: 480px)' ).matches
       const columns: ColumnDef<{
         userId: string
         role: string
@@ -2274,7 +2700,7 @@ function VersionsPage() {
           accessorKey: 'memberLabel',
         },
       ]
-      if( !isSmallScreen ) {
+      if( !isMembersTableCompact ) {
         columns.push(
           {
             header: 'Role',
@@ -2288,25 +2714,74 @@ function VersionsPage() {
       }
       return columns
     },
-    [ handleAssignAuthor, handleToggleReviewer, isBusy ],
+    [ handleAssignAuthor, handleToggleReviewer, isBusy, isMembersTableCompact ],
   )
 
   const handleDownloadFile = async () => {
-    if( !selectedFileRef ) {
+    if( !selectedVersion ) {
+      setError( 'Select a version to download a file.' )
+      return
+    }
+    if( !hasLinkedFileMetadata( selectedVersion ) ) {
       setError( 'No file is linked to this version.' )
+      return
+    }
+    if( !selectedFileRef ) {
+      setError(
+        'Cannot download this file: version metadata is incomplete (fileRefId is missing). Please re-upload/replace the file for this version.',
+      )
+      return
+    }
+    if( !selectedFileRef.fileKey ) {
+      setError( 'Cannot download this file: linked file metadata is missing file key.' )
       return
     }
     setError( null )
     setSuccessMessage( null )
-    setIsBusy( true )
+    setDownloadStatus( 'downloading' )
+    setDownloadMessage( 'Preparing download...' )
+    const attemptId = `${Date.now()}-${Math.random().toString( 36 ).slice( 2, 8 )}`
     try {
-      await downloadFile( selectedFileRef.fileKey, selectedFileRef.fileName )
+      console.info( '[download][selected_file_preflight]', {
+        attemptId,
+        versionId: selectedVersion.id,
+        versionNumber: selectedVersion.number,
+        fileRefId: selectedVersion.fileRefId,
+        fileKey: selectedFileRef.fileKey,
+        storageProvider: selectedFileRef.storageProvider,
+      } )
+      setDownloadMessage( 'Downloading file...' )
+      await executeDownloadWithTimeout(
+        () =>
+          downloadFileByProvider(
+            selectedFileRef.fileKey,
+            selectedFileRef.fileName,
+            selectedFileRef.storageProvider,
+          ),
+        {
+          attemptId,
+          timeoutMessage: 'Download failed (timeout): the server took too long to respond.',
+          onSlowNotice: () => setDownloadMessage( 'Still downloading from the server...' ),
+        },
+      )
     } catch( err ) {
-      const message = err instanceof Error ? err.message : 'Unexpected error'
-      setError( message )
+      const rawMessage = err instanceof Error ? err.message : 'Unexpected error'
+      setError( normalizeDownloadError( rawMessage ) )
     } finally {
-      setIsBusy( false )
+      setDownloadStatus( 'idle' )
+      setDownloadMessage( '' )
     }
+  }
+
+  const requestDownloadSelectedFile = () => {
+    if( downloadStatus === 'downloading' ) {
+      return
+    }
+    if( !userId ) {
+      setError( 'Sign in before downloading a file.' )
+      return
+    }
+    void handleDownloadFile()
   }
 
   const handleStartReview = async () => {
@@ -2321,6 +2796,9 @@ function VersionsPage() {
 
     setError( null )
     setSuccessMessage( null )
+    setSuccessEmailRecipients( null )
+    setEmailNotifyStatus( 'idle' )
+    setEmailNotifyMessage( '' )
     setIsBusy( true )
     try {
       const reviewEndAt = Timestamp.fromDate( new Date( Date.now() + REVIEW_WINDOW_MS ) )
@@ -2333,7 +2811,6 @@ function VersionsPage() {
         updatedBy: userId,
       } )
       await batch.commit()
-      setSuccessMessage( 'Review started successfully.' )
       const reviewerIds = latestVersion.reviewerIds ?? []
       void ( async () => {
         try {
@@ -2392,32 +2869,52 @@ function VersionsPage() {
         .filter( ( email ) => ( authorEmail ? email !== authorEmail : true ) )
       const toRecipients = authorEmail ? [ authorEmail ] : reviewerEmails.slice( 0, 1 )
       const ccRecipients = authorEmail ? reviewerEmails : reviewerEmails.slice( 1 )
+      let sentReviewEmailRecipients: { to: string[]; cc: string[] } | null = null
       if( toRecipients.length > 0 ) {
         const docLabel = `${documentData?.shortId ?? documentData?.id ?? 'Document'} - ${documentData?.title ?? ''}`.trim()
         const versionLabel = versionNumberToString( latestVersion.number )
-        void ( async () => {
-          try {
-            await notifyEmail( {
-              to: toRecipients,
-              cc: ccRecipients,
-              subject: `Review started: ${docLabel} v${versionLabel}`,
-              text: `Review started for ${docLabel}.\nVersion: ${versionLabel}\nReviewers: ${
-                reviewerIds.length > 0
-                  ? reviewerIds.map( ( reviewerId ) => formatUserLabel( reviewerId ) ).join( ', ' )
-                  : 'None'
-              }\nStarted by: ${formatUserLabel( userId )}\n`,
-            } )
-          } catch( err ) {
-            console.warn( 'Email notify failed (start review):', err )
-            setWarningMessage( 'Review started, but email notification failed. Notify participants manually.' )
-          }
-        } )()
+        const versionUrlQuery = new URLSearchParams()
+        if( projectId ) {
+          versionUrlQuery.set( 'projectId', projectId )
+        }
+        versionUrlQuery.set( 'versionId', latestVersion.id )
+        versionUrlQuery.set( 'focus', 'issues' )
+        const origin = window.location.origin
+        const versionDirectUrl = `${origin}/documents/${encodeURIComponent( docId ?? '' )}/versions?${versionUrlQuery.toString()}`
+        try {
+          setEmailNotifyStatus( 'sending' )
+          setEmailNotifyMessage( 'Sending review notifications...' )
+          await notifyEmailUsingActiveProvider( {
+            to: toRecipients,
+            cc: ccRecipients,
+            subject: `Review started: ${docLabel} v${versionLabel}`,
+            text: `Review started for ${docLabel}.\nVersion: ${versionLabel}\nReviewers: ${
+              reviewerIds.length > 0
+                ? reviewerIds.map( ( reviewerId ) => formatUserLabel( reviewerId ) ).join( ', ' )
+                : 'None'
+            }\nStarted by: ${formatUserLabel( userId )}\n\nOpen this version:\n${versionDirectUrl}\n`,
+          } )
+          sentReviewEmailRecipients = { to: [ ...toRecipients ], cc: [ ...ccRecipients ] }
+        } catch( err ) {
+          console.warn( 'Email notify failed (start review):', err )
+          const message = err instanceof Error ? err.message : 'Unexpected error'
+          setWarningMessage( `Review started, but email notification failed: ${message}` )
+        } finally {
+          setEmailNotifyStatus( 'idle' )
+          setEmailNotifyMessage( '' )
+        }
+      } else {
+        setWarningMessage( 'Review started, but no recipient email was resolved for author/reviewers.' )
       }
+      setSuccessEmailRecipients( sentReviewEmailRecipients )
+      setSuccessMessage( 'Review started successfully.' )
       void loadDocumentAndVersions()
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
       setError( message )
     } finally {
+      setEmailNotifyStatus( 'idle' )
+      setEmailNotifyMessage( '' )
       setIsBusy( false )
     }
   }
@@ -2815,6 +3312,7 @@ function VersionsPage() {
       setError( 'To create an issue, the version must be in active review time, you must be the author, leader, or reviewer, and the title cannot be empty.' )
       return
     }
+    const lockedVersionId = selectedVersion.id
     setError( null )
     setIsBusy( true )
     try {
@@ -2884,7 +3382,7 @@ function VersionsPage() {
           console.warn( 'Audit log failed (create issue):', err )
         }
       } )()
-      void loadDocumentAndVersions()
+      await reloadAndRestoreSelection( lockedVersionId, threadRef.id )
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
       setError( normalizeDownloadError( message ) )
@@ -2898,11 +3396,15 @@ function VersionsPage() {
       setError( 'Select a version and issue to add a comment.' )
       return
     }
+    const lockedVersionId = selectedVersion.id
     if( !canAddComment ) {
       setError( 'To add a comment, the issue must be open, and either review is still active or the issue has a last comment less than one hour old after review expiry.' )
       return
     }
     setError( null )
+    setSuccessEmailRecipients( null )
+    setEmailNotifyStatus( 'idle' )
+    setEmailNotifyMessage( '' )
     setIsBusy( true )
     try {
       const commentBody = newCommentBody.trim()
@@ -2974,7 +3476,6 @@ function VersionsPage() {
         } )
       } )
       setNewCommentBody( '' )
-      setSuccessMessage( 'The comment was added successfully.' )
       void ( async () => {
         try {
           await logAudit( {
@@ -2993,17 +3494,82 @@ function VersionsPage() {
           console.warn( 'Audit log failed (add comment):', err )
         }
       } )()
-      void loadDocumentAndVersions()
+      const participantIds = new Set<string>()
+      if( selectedVersion.createdBy ) {
+        participantIds.add( selectedVersion.createdBy )
+      }
+      if( selectedThread.createdBy ) {
+        participantIds.add( selectedThread.createdBy )
+      }
+      selectedVersion.reviewerIds.forEach( ( reviewerId ) => {
+        if( reviewerId ) {
+          participantIds.add( reviewerId )
+        }
+      } )
+      selectedThreadComments.forEach( ( comment ) => {
+        if( comment.createdBy ) {
+          participantIds.add( comment.createdBy )
+        }
+      } )
+      participantIds.delete( userId )
+      const recipientEmails = Array.from( participantIds )
+        .map( ( participantId ) => resolveUserEmail( participantId ) )
+        .filter( ( email ): email is string => Boolean( email ) )
+      const normalizedRecipientEmails = Array.from( new Set( recipientEmails.map( ( email ) => email.toLowerCase() ) ) )
+      const toRecipients = normalizedRecipientEmails.slice( 0, 1 )
+      const ccRecipients = normalizedRecipientEmails.slice( 1 )
+      let sentCommentEmailRecipients: { to: string[]; cc: string[] } | null = null
+      if( toRecipients.length > 0 ) {
+        const commentUrlQuery = new URLSearchParams()
+        if( projectId ) {
+          commentUrlQuery.set( 'projectId', projectId )
+        }
+        commentUrlQuery.set( 'versionId', selectedVersion.id )
+        commentUrlQuery.set( 'threadId', selectedThread.id )
+        commentUrlQuery.set( 'commentId', commentRef.id )
+        commentUrlQuery.set( 'focus', 'comments' )
+        const origin = window.location.origin
+        const commentDirectUrl = `${origin}/documents/${encodeURIComponent( docId )}/versions?${commentUrlQuery.toString()}`
+        const docLabel = `${documentData?.shortId ?? documentData?.id ?? 'Document'} - ${documentData?.title ?? ''}`.trim()
+        const versionLabel = versionNumberToString( selectedVersion.number )
+        const commentBodyForEmail = commentBody.length > 1600
+          ? `${commentBody.slice( 0, 1600 )}...`
+          : commentBody
+        try {
+          setEmailNotifyStatus( 'sending' )
+          setEmailNotifyMessage( 'Sending comment notifications...' )
+          await notifyEmailUsingActiveProvider( {
+            to: toRecipients,
+            cc: ccRecipients,
+            subject: `New comment: ${docLabel} v${versionLabel}`,
+            text: `A new comment was added.\nDocument: ${docLabel}\nVersion: ${versionLabel}\nIssue: ${selectedThread.title}\nAuthor: ${formatUserLabel( userId )}\n\nComment:\n${commentBodyForEmail}\n\nOpen this comment directly:\n${commentDirectUrl}\n`,
+          } )
+          sentCommentEmailRecipients = { to: [ ...toRecipients ], cc: [ ...ccRecipients ] }
+        } catch( err ) {
+          console.warn( 'Email notify failed (add comment):', err )
+          const message = err instanceof Error ? err.message : 'Unexpected error'
+          setWarningMessage( `Comment added, but email notification failed: ${message}` )
+        } finally {
+          setEmailNotifyStatus( 'idle' )
+          setEmailNotifyMessage( '' )
+        }
+      } else {
+        setWarningMessage( 'Comment added, but no recipient email was resolved for participants.' )
+      }
+      setSuccessEmailRecipients( sentCommentEmailRecipients )
+      setSuccessMessage( 'The comment was added successfully.' )
+      await reloadAndRestoreSelection( lockedVersionId, selectedThread.id )
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
       setError( message )
     } finally {
+      setEmailNotifyStatus( 'idle' )
+      setEmailNotifyMessage( '' )
       setIsBusy( false )
     }
   }
 
   const canChangeThreadStatus = useCallback( (thread: ThreadSummary) => {
-    setSelectedThreadId( thread.id )
     if( !selectedVersion || !projectId || !docId || !userId ) {
       setError( 'Select a version to update an issue.' )
       return false
@@ -3024,6 +3590,7 @@ function VersionsPage() {
     if( !canChangeThreadStatus( thread ) ) {
       return
     }
+    setSelectedThreadId( ( current ) => ( current === thread.id ? current : thread.id ) )
     setError( null )
     setPendingThreadStatusChange( thread )
   }, [ canChangeThreadStatus ] )
@@ -3078,6 +3645,7 @@ function VersionsPage() {
     if( !canChangeThreadStatus( thread ) ) {
       return
     }
+    const lockedVersionId = selectedVersion?.id ?? null
     setError( null )
     setIsBusy( true )
     try {
@@ -3149,7 +3717,7 @@ function VersionsPage() {
           console.warn( 'Audit log failed (update issue status):', err )
         }
       } )()
-      void loadDocumentAndVersions()
+      await reloadAndRestoreSelection( lockedVersionId, thread.id )
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
       setError( message )
@@ -3168,12 +3736,15 @@ function VersionsPage() {
   }
 
   const openReviewIssuesForVersion = (versionId: string) => {
+    if( isBusy ) {
+      return
+    }
     setSelectedVersionId( versionId )
   }
 
   const moveSelectedVersion = useCallback(
     (direction: 1 | -1) => {
-      if( versions.length === 0 ) {
+      if( isBusy || versions.length === 0 ) {
         return
       }
       const currentIndex = selectedVersionId
@@ -3186,7 +3757,7 @@ function VersionsPage() {
       const nextIndex = Math.min( versions.length - 1, Math.max( 0, currentIndex + direction ) )
       setSelectedVersionId( versions[nextIndex].id )
     },
-    [ versions, selectedVersionId ],
+    [ isBusy, versions, selectedVersionId ],
   )
 
   return (
@@ -3196,20 +3767,21 @@ function VersionsPage() {
           <AppBrand pageTitle="Document Versions" />
           <div className="document-title-row">
             {projectName ? (
-              <Link className="context-nav-button" to={documentsPath}>
+              <div className="context-nav-label">
+                <span className="document-title-prefix">Project</span>
                 <span className="document-title-text">
                   {`${projectShortId ?? 'Unassigned'} - ${projectName}`}
                 </span>
-              </Link>
+              </div>
             ) : null}
-            <Link className="context-nav-button" to={versionsPath}>
-              {documentData?.type === 'errorReport' ? (
-                <span className="document-title-prefix">Error report</span>
-              ) : null}
+            <div className="context-nav-label">
+              <span className="document-title-prefix">
+                {documentData?.type === 'errorReport' ? 'Error report' : 'Document'}
+              </span>
               <span className="document-title-text">
                 {`${documentData?.shortId ?? 'Unassigned'} - ${documentData?.title ?? docId ?? 'Unknown'}`}
               </span>
-            </Link>
+            </div>
           </div>
           {documentData?.type === 'errorReport' ? (
             <p className="muted">
@@ -3406,13 +3978,16 @@ function VersionsPage() {
                         type="button"
                         onClick={( event ) => {
                           event.stopPropagation()
-                          void handleDownloadVersionFile( version )
+                          requestDownloadVersionFile( version )
                         }}
                         onKeyDown={( event ) => event.stopPropagation()}
-                        disabled={isBusy}
+                        disabled={isBusy || downloadStatus === 'downloading'}
                       >
                         Download file
                       </button>
+                      <span className="download-provider-hint">
+                        {`From: ${formatStorageProviderLabel( getVersionDownloadProvider( version ) )}`}
+                      </span>
                     </div>
                   ) : null}
                 </article>
@@ -3463,19 +4038,34 @@ function VersionsPage() {
                       }
                     }
                   }}
-                  disabled={isBusy || !canUploadFile}
+                  disabled={isBusy}
                 />
                 <button
                   type="button"
-                  onClick={() => uploadInputRef.current?.click()}
-                  disabled={isBusy || !canUploadFile}
+                  onClick={() => {
+                    if( !canUploadFile ) {
+                      setError( 'You can upload a file only while the version is In Creation.' )
+                      return
+                    }
+                    uploadInputRef.current?.click()
+                  }}
+                  disabled={isBusy}
                 >
                   {selectedFileRef ? 'Replace file' : 'Upload file'}
                 </button>
                 {selectedFileRef ? (
-                  <button type="button" onClick={handleDownloadFile} disabled={isBusy}>
-                    Download file
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={requestDownloadSelectedFile}
+                      disabled={isBusy || downloadStatus === 'downloading'}
+                    >
+                      Download file
+                    </button>
+                    <span className="download-provider-hint">
+                      {`From: ${formatStorageProviderLabel( selectedDownloadProvider )}`}
+                    </span>
+                  </>
                 ) : null}
               </div>
               {uploadStatus === 'uploading' ? <p className="muted">{uploadMessage}</p> : null}
@@ -3613,11 +4203,31 @@ function VersionsPage() {
                 <p className="muted">{uploadMessage || 'Uploading...'}</p>
             </ModalDialog>
           ) : null}
+          {downloadStatus === 'downloading' ? (
+            <ModalDialog>
+                <h3>Downloading file</h3>
+                <GiphyInline reason="loading" mode="inline" />
+                <p className="muted">{downloadMessage || 'Downloading...'}</p>
+            </ModalDialog>
+          ) : null}
+          {emailNotifyStatus === 'sending' ? (
+            <ModalDialog>
+                <h3>Sending email notifications</h3>
+                <GiphyInline reason="loading" mode="inline" />
+                <p className="muted">{emailNotifyMessage || 'Sending notifications...'}</p>
+            </ModalDialog>
+          ) : null}
           {successMessage ? (
             <ModalDialog onClose={handleCloseSuccessMessage} initialFocusRef={successOkButtonRef}>
                 <h3>Success</h3>
                 <GiphyInline reason="good_job" mode="inline" showLabel={false} />
                 <p className="muted">{successMessage}</p>
+                {successEmailRecipients ? (
+                  <details className="success-email-recipients">
+                    <summary>{`Email recipients (${successEmailRecipients.to.length + successEmailRecipients.cc.length})`}</summary>
+                    <p className="muted">{formatEmailRecipientsLine( successEmailRecipients )}</p>
+                  </details>
+                ) : null}
                 <div className="actions">
                   <button ref={successOkButtonRef} type="button" onClick={handleCloseSuccessMessage}>
                     OK
@@ -3815,11 +4425,18 @@ function VersionsPage() {
                       onSortingChange={setCommentsSorting}
                       tableClassName="data-table--comments"
                       storageKey={`qt4_table_versions_thread_comments_${selectedThread.id}`}
+                      getRowClassName={( row ) =>
+                        highlightedCommentId === row.id ? 'data-table-row--selected comment-row--highlight' : ''
+                      }
                     />
                   ) : (
                     <div className="comment-list">
                       {selectedThreadComments.map( ( comment ) => (
-                        <article key={comment.id} className="project-card">
+                        <article
+                          id={buildCommentAnchorId( comment.id )}
+                          key={comment.id}
+                          className={`project-card ${highlightedCommentId === comment.id ? 'comment-card--highlight' : ''}`.trim()}
+                        >
                           <p className="muted">By: {formatUserLabel( comment.createdBy )}</p>
                           <p className="muted">{comment.createdAt ? formatTimeAgo( comment.createdAt ) : '-'}</p>
                           <p className="comment-body">{comment.body}</p>
@@ -3839,7 +4456,7 @@ function VersionsPage() {
                       placeholder="Write a comment"
                       disabled={isBusy}
                     />
-                    <button type="button" onClick={handleAddComment} disabled={isBusy || !canAddComment}>
+                    <button type="button" onClick={handleAddComment} disabled={isBusy}>
                       Add comment
                     </button>
                   </div>

@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ColumnDef, SortingState } from '@tanstack/react-table'
-import { addDays } from 'date-fns/addDays'
-import { addMonths } from 'date-fns/addMonths'
-import { addWeeks } from 'date-fns/addWeeks'
-import { format } from 'date-fns/format'
-import { getDay } from 'date-fns/getDay'
-import { parse } from 'date-fns/parse'
-import { startOfDay } from 'date-fns/startOfDay'
-import { startOfWeek } from 'date-fns/startOfWeek'
+import addDays from 'date-fns/addDays'
+import addMonths from 'date-fns/addMonths'
+import addWeeks from 'date-fns/addWeeks'
+import format from 'date-fns/format'
+import getDay from 'date-fns/getDay'
+import parse from 'date-fns/parse'
+import startOfDay from 'date-fns/startOfDay'
+import startOfWeek from 'date-fns/startOfWeek'
 import { enUS } from 'date-fns/locale'
 import {
   collection,
@@ -30,11 +30,21 @@ import BackStack from '../components/BackStack'
 import DataTable from '../components/DataTable'
 import ErrorChecklistModal from '../components/ErrorChecklistModal'
 import ModalDialog from '../components/ModalDialog'
-import { versionNumberToString } from '../domain/types'
+import {
+  type FileStorageProviderKind,
+  type NotificationProviderKind,
+  versionNumberToString,
+} from '../domain/types'
 import { GiphyInline } from '../giphy/GiphyProvider'
 import { buildAdminAuditErrorChecklist } from '../lib/errorChecklistBuilders'
 import { buildFilesApiUrl, getFilesApiConfigSummary } from '../lib/filesApi'
 import { db } from '../lib/firebase'
+import {
+  formatRuntimeConfigSummary,
+  getDefaultAppRuntimeConfig,
+  loadAppRuntimeConfig,
+  saveAppRuntimeConfig,
+} from '../lib/runtimeConfig'
 import { REVIEW_WINDOW_MS } from '../lib/reviewWindow'
 import { formatTimeAgo } from '../lib/time'
 
@@ -138,6 +148,7 @@ const calendarLocalizer = dateFnsLocalizer( {
 function AdminAuditPage() {
   const { user } = useAuth()
   const userId = user?.uid ?? ''
+  const defaultRuntimeConfig = getDefaultAppRuntimeConfig()
   const [isAdmin, setIsAdmin] = useState( false )
   const [isBusy, setIsBusy] = useState( false )
   const [error, setError] = useState<string | null>( null )
@@ -168,6 +179,16 @@ function AdminAuditPage() {
   const [filesApiStatus, setFilesApiStatus] = useState<'idle' | 'checking' | 'ok' | 'error'>( 'idle' )
   const [filesApiMessage, setFilesApiMessage] = useState<string>( '' )
   const [filesApiCheckedAt, setFilesApiCheckedAt] = useState<string>( '' )
+  const [runtimeConfigStatus, setRuntimeConfigStatus] = useState<'idle' | 'loading' | 'saving' | 'done' | 'error'>( 'idle' )
+  const [runtimeConfigMessage, setRuntimeConfigMessage] = useState( '' )
+  const [runtimeConfigLoadedAt, setRuntimeConfigLoadedAt] = useState( '' )
+  const [runtimeConfigSource, setRuntimeConfigSource] = useState<'firestore' | 'defaults'>( 'defaults' )
+  const [selectedFileStorageProvider, setSelectedFileStorageProvider] = useState<FileStorageProviderKind>(
+    defaultRuntimeConfig.fileStorageProvider,
+  )
+  const [selectedEmailProvider, setSelectedEmailProvider] = useState<NotificationProviderKind>(
+    defaultRuntimeConfig.emailProvider,
+  )
   const [modelUpdateStatus, setModelUpdateStatus] = useState<'idle' | 'running' | 'done' | 'error'>( 'idle' )
   const [modelUpdateMessage, setModelUpdateMessage] = useState<string>( '' )
   const [modelUpdateSummary, setModelUpdateSummary] = useState<string>( '' )
@@ -544,6 +565,79 @@ function AdminAuditPage() {
       window.localStorage.setItem( 'qt4_files_api_last_message', `Files API error: ${message}` )
     }
   }, [ user ] )
+
+  const loadRuntimeConfigFromFirestore = useCallback( async () => {
+    setRuntimeConfigStatus( 'loading' )
+    setRuntimeConfigMessage( '' )
+    try {
+      const { config, source } = await loadAppRuntimeConfig()
+      setSelectedFileStorageProvider( config.fileStorageProvider )
+      setSelectedEmailProvider( config.emailProvider )
+      setRuntimeConfigSource( source )
+      setRuntimeConfigStatus( 'done' )
+      setRuntimeConfigMessage(
+        source === 'firestore'
+          ? `Loaded: ${formatRuntimeConfigSummary( config )}.`
+          : `Using defaults: ${formatRuntimeConfigSummary( config )}.`,
+      )
+      const nowIso = new Date().toISOString()
+      setRuntimeConfigLoadedAt( nowIso )
+      window.localStorage.setItem( 'qt4_runtime_config_last_check', nowIso )
+      window.localStorage.setItem( 'qt4_runtime_config_last_status', 'done' )
+      window.localStorage.setItem( 'qt4_runtime_config_last_message', formatRuntimeConfigSummary( config ) )
+      window.localStorage.setItem( 'qt4_runtime_config_last_source', source )
+    } catch( err ) {
+      const message = err instanceof Error ? err.message : 'Unexpected error'
+      setRuntimeConfigStatus( 'error' )
+      setRuntimeConfigMessage( `Runtime configuration failed to load: ${message}` )
+      const nowIso = new Date().toISOString()
+      setRuntimeConfigLoadedAt( nowIso )
+      window.localStorage.setItem( 'qt4_runtime_config_last_check', nowIso )
+      window.localStorage.setItem( 'qt4_runtime_config_last_status', 'error' )
+      window.localStorage.setItem( 'qt4_runtime_config_last_message', `Runtime configuration failed to load: ${message}` )
+    }
+  }, [] )
+
+  const handleSaveRuntimeConfig = useCallback( async () => {
+    if( !isAdmin ) {
+      setRuntimeConfigStatus( 'error' )
+      setRuntimeConfigMessage( 'Admin access is required to update runtime configuration.' )
+      return
+    }
+    if( !userId ) {
+      setRuntimeConfigStatus( 'error' )
+      setRuntimeConfigMessage( 'Sign in before updating runtime configuration.' )
+      return
+    }
+    setRuntimeConfigStatus( 'saving' )
+    setRuntimeConfigMessage( 'Saving runtime configuration...' )
+    try {
+      await saveAppRuntimeConfig(
+        {
+          fileStorageProvider: selectedFileStorageProvider,
+          emailProvider: selectedEmailProvider,
+        },
+        userId,
+      )
+      setRuntimeConfigStatus( 'done' )
+      setRuntimeConfigSource( 'firestore' )
+      const summary = `Saved: ${formatRuntimeConfigSummary( {
+        fileStorageProvider: selectedFileStorageProvider,
+        emailProvider: selectedEmailProvider,
+      } )}.`
+      setRuntimeConfigMessage( summary )
+      const nowIso = new Date().toISOString()
+      setRuntimeConfigLoadedAt( nowIso )
+      window.localStorage.setItem( 'qt4_runtime_config_last_check', nowIso )
+      window.localStorage.setItem( 'qt4_runtime_config_last_status', 'done' )
+      window.localStorage.setItem( 'qt4_runtime_config_last_message', summary )
+      window.localStorage.setItem( 'qt4_runtime_config_last_source', 'firestore' )
+    } catch( err ) {
+      const message = err instanceof Error ? err.message : 'Unexpected error'
+      setRuntimeConfigStatus( 'error' )
+      setRuntimeConfigMessage( `Runtime configuration failed to save: ${message}` )
+    }
+  }, [ isAdmin, selectedEmailProvider, selectedFileStorageProvider, userId ] )
 
   const handleUpdateModel = async () => {
     if( !isAdmin ) {
@@ -1030,7 +1124,8 @@ function AdminAuditPage() {
       return
     }
     void checkFilesApi()
-  }, [ isAdmin, checkFilesApi ] )
+    void loadRuntimeConfigFromFirestore()
+  }, [ isAdmin, checkFilesApi, loadRuntimeConfigFromFirestore ] )
 
   useEffect( () => {
     const storedCheck = window.localStorage.getItem( 'qt4_files_api_last_check' )
@@ -1044,6 +1139,28 @@ function AdminAuditPage() {
     }
     if( storedMessage ) {
       setFilesApiMessage( storedMessage )
+    }
+    const storedRuntimeCheck = window.localStorage.getItem( 'qt4_runtime_config_last_check' )
+    const storedRuntimeStatus = window.localStorage.getItem( 'qt4_runtime_config_last_status' )
+    const storedRuntimeMessage = window.localStorage.getItem( 'qt4_runtime_config_last_message' )
+    const storedRuntimeSource = window.localStorage.getItem( 'qt4_runtime_config_last_source' )
+    if( storedRuntimeCheck ) {
+      setRuntimeConfigLoadedAt( storedRuntimeCheck )
+    }
+    if(
+      storedRuntimeStatus === 'idle'
+      || storedRuntimeStatus === 'loading'
+      || storedRuntimeStatus === 'saving'
+      || storedRuntimeStatus === 'done'
+      || storedRuntimeStatus === 'error'
+    ) {
+      setRuntimeConfigStatus( storedRuntimeStatus )
+    }
+    if( storedRuntimeMessage ) {
+      setRuntimeConfigMessage( storedRuntimeMessage )
+    }
+    if( storedRuntimeSource === 'firestore' || storedRuntimeSource === 'defaults' ) {
+      setRuntimeConfigSource( storedRuntimeSource )
     }
   }, [] )
 
@@ -1436,6 +1553,57 @@ function AdminAuditPage() {
             ) : null}
             {filesApiStatus === 'idle' ? (
               <p className="muted">{`Current Files API mode: ${getFilesApiConfigSummary()}.`}</p>
+            ) : null}
+          </section>
+        ) : null}
+        {isAdmin ? (
+          <section className="panel stack">
+            <h2>Runtime providers</h2>
+            <label className="field">
+              <span>File storage provider</span>
+              <select
+                value={selectedFileStorageProvider}
+                onChange={(event) => setSelectedFileStorageProvider( event.target.value as FileStorageProviderKind )}
+                disabled={runtimeConfigStatus === 'saving' || runtimeConfigStatus === 'loading'}
+              >
+                <option value="files-api">Files API</option>
+                <option value="firebase-storage">Firebase Storage</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>Email provider</span>
+              <select
+                value={selectedEmailProvider}
+                onChange={(event) => setSelectedEmailProvider( event.target.value as NotificationProviderKind )}
+                disabled={runtimeConfigStatus === 'saving' || runtimeConfigStatus === 'loading'}
+              >
+                <option value="files-api">Files API</option>
+                <option value="firebase-functions">Firebase Functions</option>
+              </select>
+            </label>
+            <div className="actions">
+              <button
+                type="button"
+                onClick={() => void loadRuntimeConfigFromFirestore()}
+                disabled={runtimeConfigStatus === 'saving' || runtimeConfigStatus === 'loading'}
+              >
+                {runtimeConfigStatus === 'loading' ? 'Loading...' : 'Reload config'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveRuntimeConfig()}
+                disabled={runtimeConfigStatus === 'saving' || runtimeConfigStatus === 'loading'}
+              >
+                {runtimeConfigStatus === 'saving' ? 'Saving...' : 'Save providers'}
+              </button>
+            </div>
+            {runtimeConfigStatus === 'error' ? <p className="error">{runtimeConfigMessage}</p> : null}
+            {runtimeConfigStatus !== 'error' && runtimeConfigMessage ? (
+              <p className="muted">{runtimeConfigMessage}</p>
+            ) : null}
+            <p className="muted">{`Source: ${runtimeConfigSource}. Defaults: ${formatRuntimeConfigSummary( defaultRuntimeConfig )}.`}</p>
+            {runtimeConfigLoadedAt ? (
+              <p className="muted">Last checked: {new Date( runtimeConfigLoadedAt ).toLocaleString()}</p>
             ) : null}
           </section>
         ) : null}
