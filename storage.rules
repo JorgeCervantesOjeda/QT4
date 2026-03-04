@@ -1,0 +1,32 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userProfile() {
+      return firestore.get(/databases/(default)/documents/userProfiles/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      return isSignedIn() && userProfile().data.isAdmin == true;
+    }
+
+    function projectMember(projectId) {
+      return firestore.get(/databases/(default)/documents/projectMembers/$(projectId + '_' + request.auth.uid));
+    }
+
+    function isProjectMember(projectId) {
+      return isSignedIn() && projectMember(projectId).data.role in ['leader', 'member'];
+    }
+
+    match /qt4/{projectId}/{documentId}/{versionId}/{fileName} {
+      allow read, write: if isAdmin() || isProjectMember(projectId);
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

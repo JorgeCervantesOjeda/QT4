@@ -351,6 +351,14 @@ service cloud.firestore {
       ];
     }
 
+    function isValidStorageProvider(value) {
+      return value in ['files-api', 'firebase-storage'];
+    }
+
+    function isValidEmailProvider(value) {
+      return value in ['files-api', 'firebase-functions'];
+    }
+
     match /userProfiles/{userId} {
       allow read: if isSelf(userId) || isAdmin();
       allow create: if isSelf(userId)
@@ -385,6 +393,18 @@ service cloud.firestore {
           'displayName',
           'updatedAt'
         ]);
+      allow delete: if false;
+    }
+
+    match /systemConfig/{configId} {
+      allow read: if isSignedIn();
+      allow create, update: if isAdmin()
+        && configId == 'runtime'
+        && request.resource.data.fileStorageProvider is string
+        && request.resource.data.emailProvider is string
+        && isValidStorageProvider(request.resource.data.fileStorageProvider)
+        && isValidEmailProvider(request.resource.data.emailProvider)
+        && request.resource.data.updatedBy == request.auth.uid;
       allow delete: if false;
     }
 
@@ -448,7 +468,8 @@ service cloud.firestore {
         && request.resource.data.fileKey is string
         && request.resource.data.fileName is string
         && request.resource.data.sizeBytes is int
-        && request.resource.data.storageProvider == 'files-api';
+        && request.resource.data.storageProvider is string
+        && isValidStorageProvider(request.resource.data.storageProvider);
       allow update, delete: if false;
     }
 

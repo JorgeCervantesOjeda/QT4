@@ -2,6 +2,7 @@
 import { getAnalytics, isSupported } from "firebase/analytics";
 import { browserSessionPersistence, getAuth, setPersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -17,6 +18,7 @@ const app = initializeApp( firebaseConfig );
 
 const auth = getAuth( app );
 const db = getFirestore( app );
+const storage = getStorage( app );
 void setPersistence( auth, browserSessionPersistence ).catch( () => {
   // ignore persistence setup errors
 } );
@@ -25,4 +27,4 @@ const analyticsPromise = import.meta.env.PROD
   ? isSupported().then( ( supported ) => ( supported ? getAnalytics( app ) : null ) )
   : Promise.resolve( null );
 
-export { app, auth, db, analyticsPromise };
+export { app, auth, db, storage, analyticsPromise };

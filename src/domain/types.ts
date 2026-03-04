@@ -25,6 +25,8 @@ export type VersionState =
 
 // Version number stored as integer count of hundredths (e.g. 1.00 -> 100, 0.01 -> 1)
 export type VersionNumber = number;
+export type FileStorageProviderKind = 'files-api' | 'firebase-storage';
+export type NotificationProviderKind = 'files-api' | 'firebase-functions';
 
 export const FIRST_VERSION_NUMBER: VersionNumber = 1; // 0.01
 
@@ -208,7 +210,7 @@ export interface FileRef {
   sizeBytes: number;
   isPermanent: boolean;
   expireAfterDays: number | null;
-  storageProvider: 'files-api';
+  storageProvider: FileStorageProviderKind;
   createdAt: string;
   createdBy: Id;
   updatedAt: string;

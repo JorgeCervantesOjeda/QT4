@@ -10,8 +10,10 @@
     "build": "tsc -b && vite build",
     "build:test": "tsc -b && vite build --mode test",
     "build:prod": "tsc -b && vite build --mode production",
-    "deploy:test": "npm run build:test && npx firebase-tools deploy --only hosting:test,firestore --project qualiteam-plus-test",
-    "deploy:prod": "npm run build:prod && npx firebase-tools deploy --only hosting:prod,firestore --project qualiteam-app",
+    "deploy:functions:test": "npx firebase-tools deploy --only functions --project qualiteam-plus-test",
+    "deploy:functions:prod": "npx firebase-tools deploy --only functions --project qualiteam-app",
+    "deploy:test": "npm run build:test && npx firebase-tools deploy --only hosting:test,firestore,storage --project qualiteam-plus-test",
+    "deploy:prod": "npm run build:prod && npx firebase-tools deploy --only hosting:prod,firestore,storage --project qualiteam-app",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -19,6 +21,7 @@
     "@tanstack/react-table": "^8.20.5",
     "date-fns": "^2.30.0",
     "firebase": "^12.8.0",
+    "firebase-functions": "^7.0.6",
     "react": "^19.2.0",
     "react-big-calendar": "^1.19.4",
     "react-dom": "^19.2.0",
@@ -39,4 +42,3 @@
     "vite": "^7.2.4"
   }
 }
-

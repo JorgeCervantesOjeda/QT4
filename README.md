@@ -74,6 +74,75 @@ Production recommendation:
 - Use `direct` mode and set `VITE_FILES_API_BASE_URL=https://archivos.dmas.cua.uam.mx/api/v1`.
 - Do not rely on `QT4_FILES_API_*` in production builds; those are for Vite dev proxy only.
 
+### Runtime provider defaults
+
+```env
+# Used when Firestore config document systemConfig/runtime does not exist
+VITE_DEFAULT_FILE_STORAGE_PROVIDER=files-api
+VITE_DEFAULT_EMAIL_PROVIDER=files-api
+
+# Used only when email provider is firebase-functions
+VITE_FIREBASE_NOTIFY_FUNCTION_URL=
+```
+
+Runtime resolution order:
+
+- First, `systemConfig/runtime` in Firestore (`fileStorageProvider`, `emailProvider`).
+- If missing/unreadable, fallback to env defaults above.
+
+When `emailProvider=firebase-functions`, the endpoint defined by
+`VITE_FIREBASE_NOTIFY_FUNCTION_URL` must accept:
+
+- `Authorization: Bearer <Firebase ID token>`
+- JSON body: `{ "to": string[], "cc": string[], "subject": string, "text": string }`
+
+### Firebase Functions email endpoint
+
+The repository includes `functions/notifyEmail` (HTTP function) for SMTP delivery using OAuth2 only.
+
+Setup:
+
+1. Install function dependencies:
+
+```bash
+npm --prefix functions install
+```
+
+2. Create `functions/.env.qualiteam-app` from `functions/.env.example` and set:
+
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_SECURE`
+- `SMTP_USER`
+- `SMTP_FROM`
+- `SMTP_OAUTH_CLIENT_ID`
+- `SMTP_OAUTH_CLIENT_SECRET`
+- `SMTP_OAUTH_REFRESH_TOKEN`
+- `NOTIFY_ALLOWED_ORIGINS` (optional)
+
+For local emulator usage, you can also copy the same values to `functions/.env.local`.
+Local dev origins (`http://localhost:5173`, `http://127.0.0.1:5173`) are allowed by default for CORS.
+
+Compatibility note:
+
+- The function also accepts the variable names already used in `archivos-api` (`MAIL_SMTP_HOST`, `MAIL_SMTP_PORT`, `MAIL_SMTP_USER`, `MAIL_FROM_ADDRESS`, `MAIL_OAUTH_CLIENT_ID`, `MAIL_OAUTH_CLIENT_SECRET`, `MAIL_OAUTH_REFRESH_TOKEN`).
+- The function also accepts legacy MailerAgent aliases from QualiTeam_NB8 (`QUALITEAM_GMAIL_USER`, `QUALITEAM_GMAIL_CLIENT_ID`, `QUALITEAM_GMAIL_CLIENT_SECRET`, `QUALITEAM_GMAIL_REFRESH_TOKEN`).
+- Password-based SMTP (`SMTP_PASS` / `MAIL_SMTP_PASS`) is not supported.
+
+3. Deploy the function:
+
+```bash
+npm run deploy:functions:prod
+```
+
+4. Copy the deployed function URL and set it as:
+
+```env
+VITE_FIREBASE_NOTIFY_FUNCTION_URL=https://.../notifyEmail
+```
+
+5. Rebuild/redeploy frontend and set `emailProvider=firebase-functions` in Admin Audit.
+
 ### Giphy (optional)
 
 ```env
@@ -112,6 +181,7 @@ If omitted, the app uses built-in fallback behavior.
 - Admin audit page:
   - activity report with table/calendar views
   - Files API connectivity check (`/files-api/me`)
+  - runtime provider selector (`files-api` or `firebase-storage`, and `files-api` or `firebase-functions`)
   - data model backfill/update action
 
 ## Data model maintenance
@@ -128,6 +198,8 @@ This action requires admin access and relies on `QT4/firestore.rules`.
 ## Notes
 
 - File uploads are limited to 20 MB and are allowed only when the selected version is in `In Creation`.
+- File download/delete uses the stored file metadata provider (`files.storageProvider`) so old files remain accessible after provider switches.
 - Session persistence uses browser session scope (logout or browser close ends the session).
 - Firestore rules and indexes are versioned in `QT4/firestore.rules` and `QT4/firestore.indexes.json`.
+- Firebase Storage rules are versioned in `QT4/storage.rules`.
 - Full deployment and switch guide: `QT4/FILES_API_DEPLOYMENT.md`.
