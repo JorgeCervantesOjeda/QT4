@@ -202,4 +202,5 @@ This action requires admin access and relies on `QT4/firestore.rules`.
 - Session persistence uses browser session scope (logout or browser close ends the session).
 - Firestore rules and indexes are versioned in `QT4/firestore.rules` and `QT4/firestore.indexes.json`.
 - Firebase Storage rules are versioned in `QT4/storage.rules`.
+- Migration execution and recovery guide: `QT4/PLAN_MIGRACION_QT4.md`.
 - Full deployment and switch guide: `QT4/FILES_API_DEPLOYMENT.md`.
