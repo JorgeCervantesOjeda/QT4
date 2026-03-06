@@ -807,6 +807,13 @@ function VersionsPage() {
     [ selectedVersion, isLeader, isAdmin ],
   )
 
+  const isProjectMemberUser = useMemo(
+    () => Boolean( userId && projectMembers.some( ( member ) => member.userId === userId ) ),
+    [ projectMembers, userId ],
+  )
+
+  const canCreateErrorReportActor = isProjectMemberUser || isAdmin
+
   const canStartReview = useMemo(
     () =>
       Boolean(
@@ -3091,6 +3098,10 @@ function VersionsPage() {
       setError( 'Select the latest Accepted version before creating an error report.' )
       return
     }
+    if( !canCreateErrorReportActor ) {
+      setError( 'Only project members or admins can create an error report.' )
+      return
+    }
     if( latestVersion.status !== 'Accepted' ) {
       setError( 'You can create an error report only when the latest version is Accepted.' )
       return
@@ -3874,6 +3885,10 @@ function VersionsPage() {
                     setError( 'Select the latest Accepted version before creating an error report.' )
                     return
                   }
+                  if( !canCreateErrorReportActor ) {
+                    setError( 'Only project members or admins can create an error report.' )
+                    return
+                  }
                   if( latestVersion.status !== 'Accepted' ) {
                     setError( 'You can create an error report only when the latest version is Accepted.' )
                     return
@@ -4473,7 +4488,3 @@ function VersionsPage() {
 }
 
 export default VersionsPage
-
-
-
-

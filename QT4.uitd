@@ -204,7 +204,7 @@ FRAGMENT "Versions Lifecycle And Modals" {
   TRANSITION from 6 to 17 if user clicks "Start review" AND "latest version is in 'In Creation' and has file and reviewers and reviewStartAt and reviewEndAt are recorded";
   TRANSITION from 6 to 16 if user clicks "Accept latest" AND "latest version is in 'In Review' and has file and has issues and has comments and no open issues and user is latest author or leader or admin";
   TRANSITION from 6 to 16 if user clicks "Reject latest" AND "latest version is in 'In Review' and has file and has issues and has comments and no open issues and user is latest author or leader or admin";
-  TRANSITION from 6 to 18 if user clicks "Create error report" AND "latest version is in 'Accepted'";
+  TRANSITION from 6 to 18 if user clicks "Create error report" AND "latest version is in 'Accepted' and user is project member or admin";
   TRANSITION from 6 to 6 if user uploads "Upload file" AND "selected version is in 'In Creation' and user is selected author or leader or admin and selected version has no file";
   TRANSITION from 6 to 17 if user uploads "Upload file" AND "selected version is in 'In Creation' and user is selected author or leader or admin and selected version already has file";
   TRANSITION from 6 to 6 if user downloads "Download file" AND "a file is linked to the selected version";
