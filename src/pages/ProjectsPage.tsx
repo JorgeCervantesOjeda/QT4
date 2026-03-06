@@ -70,10 +70,10 @@ function ProjectsPage() {
   const userId = user?.uid ?? ''
   const userEmail = user?.email ?? null
 
-  const formatUserLabel = useCallback( (memberUserId: string) => {
+  const formatUserLabel = useCallback( (memberUserId: string, fallbackEmail?: string | null) => {
     const entry = userDirectoryById[memberUserId]
     const displayName = entry?.displayName ?? ''
-    const email = entry?.email ?? ''
+    const email = entry?.email ?? fallbackEmail ?? ''
     if( displayName && email ) {
       return `${displayName} (${email})`
     }
@@ -83,8 +83,24 @@ function ProjectsPage() {
     if( email ) {
       return email
     }
+    if( memberUserId ) {
+      return memberUserId
+    }
     return 'Unknown user'
   }, [ userDirectoryById ] )
+
+  const resolveProjectLeader = useCallback( (projectId: string, leaderId: string) => {
+    const projectMembers = membersByProject[projectId] ?? []
+    if( leaderId ) {
+      const leaderById = projectMembers.find( ( member ) => member.userId === leaderId )
+      return formatUserLabel( leaderId, leaderById?.email ?? null )
+    }
+    const leaderByRole = projectMembers.find( ( member ) => member.role === 'leader' )
+    if( leaderByRole ) {
+      return formatUserLabel( leaderByRole.userId, leaderByRole.email ?? null )
+    }
+    return 'Unknown user'
+  }, [ membersByProject, formatUserLabel ] )
 
   const canSubmit = useMemo(
     () => name.trim().length > 0 && !isBusy,
@@ -93,22 +109,16 @@ function ProjectsPage() {
 
   const projectTableRows = useMemo(
     () =>
-      projects.map( ( project ) => {
-        const leader = ( membersByProject[project.id] ?? [] ).find(
-          ( member ) => member.role === 'leader',
-        )
-        return {
-          id: project.id,
-          shortId: project.shortId,
-          name: project.name,
-          leaderId: project.leaderId,
-          leaderName: leader ? formatUserLabel( leader.userId ) : 'Unknown user',
-          memberCount: ( membersByProject[project.id] ?? [] ).length,
-        }
-      } ),
-    [ projects, membersByProject, formatUserLabel ],
+      projects.map( ( project ) => ( {
+        id: project.id,
+        shortId: project.shortId,
+        name: project.name,
+        leaderId: project.leaderId,
+        leaderName: resolveProjectLeader( project.id, project.leaderId ),
+        memberCount: ( membersByProject[project.id] ?? [] ).length,
+      } ) ),
+    [ projects, membersByProject, resolveProjectLeader ],
   )
-
   const projectColumns = useMemo<ColumnDef<{ id: string; shortId: number | null; name: string; leaderId: string; leaderName: string; memberCount: number }>[]>( () => [
     {
       header: 'Short id',
@@ -782,21 +792,13 @@ function ProjectsPage() {
                     }}
                   >
                   <h3>{`${project.shortId ?? 'Unassigned'} - ${project.name}`}</h3>
-                    <p className="muted">
-                      Leader:{' '}
-                      {(() => {
-                        const leader = ( membersByProject[project.id] ?? [] ).find(
-                          ( member ) => member.role === 'leader',
-                        )
-                        return leader ? formatUserLabel( leader.userId ) : 'Unknown user'
-                      })()}
-                    </p>
+                    <p className="muted">Leader: {resolveProjectLeader( project.id, project.leaderId )}</p>
                     <div className="project-members">
                       <p className="muted">Members</p>
                       <ul className="member-list">
                         {( membersByProject[project.id] ?? [] ).map( ( member ) => (
                           <li key={`${project.id}-${member.userId}`}>
-                            <span>{formatUserLabel( member.userId )}</span>
+                            <span>{formatUserLabel( member.userId, member.email ?? null )}</span>
                             <span className="muted">({member.role})</span>
                           </li>
                         ) )}
