@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python / migration artifacts
+*.pyc
+tools/__pycache__/
+migration_work/
+.migration_start_time.txt
