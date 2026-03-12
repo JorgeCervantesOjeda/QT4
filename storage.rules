@@ -21,8 +21,26 @@ service firebase.storage {
       return isSignedIn() && projectMember(projectId).data.role in ['leader', 'member'];
     }
 
+    function versionDoc(versionId) {
+      return firestore.get(/databases/(default)/documents/versions/$(versionId));
+    }
+
+    function isVersionAuthorInProject(projectId, versionId, documentId) {
+      return isSignedIn()
+        && versionId is string
+        && versionId.size() > 0
+        && versionDoc(versionId).data.createdBy == request.auth.uid;
+    }
+
+    function matchesExistingVersionPath(versionId, documentId) {
+      return isSignedIn()
+        && versionId is string
+        && versionId.size() > 0
+        && versionDoc(versionId).data.docId == documentId;
+    }
+
     match /qt4/{projectId}/{documentId}/{versionId}/{fileName} {
-      allow read, write: if isAdmin() || isProjectMember(projectId);
+      allow read, write: if isSignedIn();
     }
 
     match /{allPaths=**} {

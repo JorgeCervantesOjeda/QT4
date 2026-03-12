@@ -1,4 +1,3 @@
-import { versionNumberToString } from '../domain/types'
 import { auth } from './firebase'
 
 type FilesApiMode = 'proxy' | 'direct'
@@ -106,12 +105,12 @@ const withSessionHeaders = async (headersInit?: HeadersInit): Promise<Headers> =
 export const buildFileKey = (params: {
   projectId: string
   documentId: string
-  versionNumber: number
+  versionId: string
   fileName: string
 }): string => {
   const projectSegment = sanitizeSegment( params.projectId )
   const docSegment = sanitizeSegment( params.documentId )
-  const versionSegment = `v${versionNumberToString( params.versionNumber )}`
+  const versionSegment = sanitizeSegment( params.versionId )
   const safeFileName = sanitizeFileName( params.fileName )
   const prefix = `qt4/${projectSegment}/${docSegment}/${versionSegment}/`
   let fileKey = `${prefix}${safeFileName}`

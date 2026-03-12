@@ -200,7 +200,7 @@ FRAGMENT "Versions Lifecycle And Modals" {
   DRAW { 6(14,15,16,17,18,19) };
   TRANSITION from 6 to 17 if user clicks "Create initial version" AND "no versions exist and user is latest author or leader or admin";
   TRANSITION from 6 to 17 if user clicks "Create next version" AND "latest version is in 'In Review' or 'Reviewed' and user is latest author or leader or admin";
-  TRANSITION from 6 to 17 if user clicks "Create next version" AND "latest version is in 'Accepted' and related error report versions are in 'Accepted' or 'Rejected'";
+  TRANSITION from 6 to 17 if user clicks "Create next version" AND "latest version is in 'Accepted' and at least one related error report latest version is in 'Accepted'";
   TRANSITION from 6 to 17 if user clicks "Start review" AND "latest version is in 'In Creation' and has file and reviewers and reviewStartAt and reviewEndAt are recorded";
   TRANSITION from 6 to 16 if user clicks "Accept latest" AND "latest version is in 'In Review' and has file and has issues and has comments and no open issues and user is latest author or leader or admin";
   TRANSITION from 6 to 16 if user clicks "Reject latest" AND "latest version is in 'In Review' and has file and has issues and has comments and no open issues and user is latest author or leader or admin";
@@ -208,7 +208,7 @@ FRAGMENT "Versions Lifecycle And Modals" {
   TRANSITION from 6 to 6 if user uploads "Upload file" AND "selected version is in 'In Creation' and user is selected author or leader or admin and selected version has no file";
   TRANSITION from 6 to 17 if user uploads "Upload file" AND "selected version is in 'In Creation' and user is selected author or leader or admin and selected version already has file";
   TRANSITION from 6 to 6 if user downloads "Download file" AND "a file is linked to the selected version";
-  TRANSITION from 6 to 6 if user clicks "Assign author" AND "selected version is in 'In Creation' and user is selected author or leader or admin";
+  TRANSITION from 6 to 6 if user clicks "Assign author" AND "selected version is in 'In Creation' and user is leader or admin";
   TRANSITION from 6 to 6 if user clicks "Assign reviewer" AND "selected version is in 'In Creation' and user is selected author or leader or admin and reviewer is project member and reviewer is not selected author";
   TRANSITION from 6 to 6 if user clicks "Create issue" AND "selected version is in active review time and user can participate in review and issue title is provided";
   TRANSITION from 6 to 6 if user clicks "Add comment" AND "selected issue is open and user can participate in review and comment body is provided and (selected version is in active review time or selected issue last comment is less than 1 hour old after review expiration)";

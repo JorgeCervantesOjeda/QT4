@@ -340,6 +340,7 @@ service cloud.firestore {
         || isVersionReviewerById(versionId);
     }
 
+
     function isValidVersionState(state) {
       return state in [
         'In Creation',
@@ -460,7 +461,15 @@ service cloud.firestore {
         || (resource.data.versionId is string
           && resource.data.versionId.size() > 0
           && canReviewAccessByVersionId(resource.data.versionId));
-      allow create: if (isProjectMember(request.resource.data.projectId) || isAdmin())
+      allow create: if (
+          isProjectMember(request.resource.data.projectId)
+          || isAdmin()
+          || (
+            request.resource.data.versionId is string
+            && request.resource.data.versionId.size() > 0
+            && isVersionAuthorById(request.resource.data.versionId)
+          )
+        )
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.projectId is string
         && request.resource.data.docId is string

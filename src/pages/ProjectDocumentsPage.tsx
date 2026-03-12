@@ -133,6 +133,13 @@ function ProjectDocumentsPage() {
       {
         header: 'Short id',
         accessorKey: 'shortId',
+        sortingFn: ( rowA, rowB, columnId ) => {
+          const leftRaw = rowA.getValue<number | null>( columnId )
+          const rightRaw = rowB.getValue<number | null>( columnId )
+          const left = typeof leftRaw === 'number' ? leftRaw : Number.POSITIVE_INFINITY
+          const right = typeof rightRaw === 'number' ? rightRaw : Number.POSITIVE_INFINITY
+          return left - right
+        },
         cell: ( info ) => String( info.getValue<number | null>() ?? 'Unassigned' ),
       },
       {
@@ -199,6 +206,11 @@ function ProjectDocumentsPage() {
     }
     const { id, desc } = sorting[0]
     const sorted = [ ...documentTableRows ].sort( ( a, b ) => {
+      if( id === 'shortId' ) {
+        const left = typeof a.shortId === 'number' ? a.shortId : Number.POSITIVE_INFINITY
+        const right = typeof b.shortId === 'number' ? b.shortId : Number.POSITIVE_INFINITY
+        return left - right
+      }
       const aValue = ( a as Record<string, unknown> )[id]
       const bValue = ( b as Record<string, unknown> )[id]
       if( typeof aValue === 'number' && typeof bValue === 'number' ) {

@@ -28,6 +28,7 @@ type DataTableProps<T> = {
   storageKey?: string
   enablePagination?: boolean
   initialPageSize?: number
+  onVisibleRowsChange?: (rows: T[]) => void
 }
 
 function DataTable<T>( {
@@ -41,6 +42,7 @@ function DataTable<T>( {
   storageKey,
   enablePagination = false,
   initialPageSize = 20,
+  onVisibleRowsChange,
 }: DataTableProps<T> ) {
   const columnPinning = useMemo<ColumnPinningState>( () => ( { left: [], right: [] } ), [] )
 
@@ -159,6 +161,13 @@ function DataTable<T>( {
     }
     window.localStorage.setItem( `${storageKey}:pagination`, JSON.stringify( pagination ) )
   }, [ enablePagination, storageKey, pagination ] )
+
+  useEffect( () => {
+    if( !onVisibleRowsChange ) {
+      return
+    }
+    onVisibleRowsChange( table.getRowModel().rows.map( ( row ) => row.original ) )
+  }, [ table, data, sorting, columnFilters, pagination, onVisibleRowsChange ] )
 
   return (
     <div className={`data-table ${tableClassName ?? ''}`.trim()}>

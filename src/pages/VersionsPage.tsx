@@ -139,8 +139,23 @@ const toTimestampDate = (value: unknown): Date | null => {
 const hasLinkedFileMetadata = (version: Pick<VersionSummary, 'hasFile' | 'fileRefId'> | null | undefined) =>
   Boolean( version?.hasFile && version.fileRefId )
 
+const isPermissionDeniedError = (value: unknown): boolean => {
+  if( !value || typeof value !== 'object' ) {
+    return false
+  }
+  const code = 'code' in value ? String( ( value as { code?: unknown } ).code ?? '' ) : ''
+  const message = value instanceof Error ? value.message.toLowerCase() : ''
+  return (
+    code.includes( 'permission-denied' ) ||
+    message.includes( 'permission-denied' ) ||
+    message.includes( 'missing or insufficient permissions' )
+  )
+}
+
 const DOWNLOAD_SLOW_NOTICE_MS = 5000
 const DOWNLOAD_TIMEOUT_MS = 25000
+const ISSUE_TITLE_MAX_LENGTH = 120
+const normalizeIssueTitleInput = (value: string) => value.replace( /\s+/g, ' ' ).slice( 0, ISSUE_TITLE_MAX_LENGTH )
 
 const formatStorageProviderLabel = (provider: FileStorageProviderKind | null): string => {
   if( provider === 'firebase-storage' ) {
@@ -301,7 +316,7 @@ const formatEmailRecipientsLine = (recipients: { to: string[]; cc: string[] }) =
 
 function VersionsPage() {
   const { docId } = useParams()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuth()
   const userId = user?.uid ?? ''
   const navigate = useNavigate()
@@ -326,6 +341,7 @@ function VersionsPage() {
   const [emailNotifyMessage, setEmailNotifyMessage] = useState<string>( '' )
   const uploadInputRef = useRef<HTMLInputElement | null>( null )
   const [selectedFileRef, setSelectedFileRef] = useState<FileRefSummary | null>( null )
+  const [fileMetadataNotice, setFileMetadataNotice] = useState<string | null>( null )
   const [isErrorReportModalOpen, setIsErrorReportModalOpen] = useState( false )
   const [versionDecisionModal, setVersionDecisionModal] = useState<'accept' | 'reject' | null>( null )
   const [pendingVersionAction, setPendingVersionAction] = useState<PendingVersionAction | null>( null )
@@ -362,6 +378,7 @@ function VersionsPage() {
   const lastErrorRef = useRef<string | null>( null )
   const successOkButtonRef = useRef<HTMLButtonElement | null>( null )
   const commentInputRef = useRef<HTMLTextAreaElement | null>( null )
+  const preservedThreadNavigationScrollYRef = useRef<number | null>( null )
   const versionsActionsRef = useRef<HTMLDivElement | null>( null )
   const filePanelRef = useRef<HTMLElement | null>( null )
   const reviewIssuesPanelRef = useRef<HTMLElement | null>( null )
@@ -372,6 +389,7 @@ function VersionsPage() {
     isLoading: false,
   })
   const [threads, setThreads] = useState<ThreadSummary[]>([] )
+  const [visibleThreadRows, setVisibleThreadRows] = useState<ThreadSummary[]>([] )
   const [commentsByThread, setCommentsByThread] = useState<Record<string, CommentSummary[]>>( {} )
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>( null )
   const [highlightedCommentId, setHighlightedCommentId] = useState<string | null>( null )
@@ -557,6 +575,20 @@ function VersionsPage() {
     }
     return 'Unknown user'
   }, [ userDirectoryById, projectMembers, userId, user?.displayName, user?.email ] )
+
+  const orderedThreads = useMemo(
+    () => ( threadsViewMode === 'table' ? visibleThreadRows : threads ),
+    [ threadsViewMode, visibleThreadRows, threads ],
+  )
+  const selectedThreadIndex = useMemo(
+    () => orderedThreads.findIndex( ( thread ) => thread.id === selectedThreadId ),
+    [ orderedThreads, selectedThreadId ],
+  )
+  const hasPreviousThread = selectedThreadIndex > 0
+  const hasNextThread = selectedThreadIndex >= 0 && selectedThreadIndex < orderedThreads.length - 1
+  const threadNavigationStatusLabel = selectedThreadIndex >= 0
+    ? `Issue ${selectedThreadIndex + 1} of ${orderedThreads.length}`
+    : 'Selected issue is hidden by the current table filters.'
 
   const resolveUserEmail = useCallback( (memberUserId: string): string | null => {
     const entry = userDirectoryById[memberUserId]
@@ -1455,6 +1487,7 @@ function VersionsPage() {
   useEffect( () => {
     if( !selectedVersion?.id ) {
       setThreads( [] )
+      setVisibleThreadRows( [] )
       setCommentsByThread( {} )
       setSelectedThreadId( null )
       setNewThreadTitle( '' )
@@ -1467,6 +1500,7 @@ function VersionsPage() {
     // This avoids interacting with threads from the previously selected version
     // while the new realtime snapshot is still loading.
     setThreads( [] )
+    setVisibleThreadRows( [] )
     setCommentsByThread( {} )
     setSelectedThreadId( null )
     setNewThreadTitle( '' )
@@ -1491,14 +1525,9 @@ function VersionsPage() {
           }
         } )
         setThreads( ( previous ) => ( areThreadsEqual( previous, nextThreads ) ? previous : nextThreads ) )
-        if( threadIdFromQuery && lastAppliedThreadQueryRef.current !== threadIdFromQuery && nextThreads.some( ( thread ) => thread.id === threadIdFromQuery ) ) {
-          lastAppliedThreadQueryRef.current = threadIdFromQuery
-          setSelectedThreadId( threadIdFromQuery )
-        } else {
-          setSelectedThreadId( ( current ) =>
-            current && nextThreads.some( ( thread ) => thread.id === current ) ? current : null,
-          )
-        }
+        setSelectedThreadId( ( current ) =>
+          current && nextThreads.some( ( thread ) => thread.id === current ) ? current : null,
+        )
         setIsLoadingThreads( false )
       },
       ( err ) => {
@@ -1543,10 +1572,46 @@ function VersionsPage() {
       threadsUnsub()
       commentsUnsub()
     }
-  }, [ selectedVersion?.id, threadIdFromQuery ] )
+  }, [ selectedVersion?.id ] )
+
+  useEffect( () => {
+    if( !threadIdFromQuery ) {
+      lastAppliedThreadQueryRef.current = null
+      return
+    }
+    if( lastAppliedThreadQueryRef.current === threadIdFromQuery ) {
+      return
+    }
+    if( !threads.some( ( thread ) => thread.id === threadIdFromQuery ) ) {
+      return
+    }
+    lastAppliedThreadQueryRef.current = threadIdFromQuery
+    setSelectedThreadId( ( current ) => ( current === threadIdFromQuery ? current : threadIdFromQuery ) )
+  }, [ threadIdFromQuery, threads ] )
 
   useEffect( () => {
     setNewCommentBody( '' )
+  }, [ selectedThreadId ] )
+
+  useEffect( () => {
+    if( preservedThreadNavigationScrollYRef.current === null ) {
+      return
+    }
+    const targetScrollY = preservedThreadNavigationScrollYRef.current
+    let secondFrame: number | null = null
+    const firstFrame = window.requestAnimationFrame( () => {
+      window.scrollTo( { top: targetScrollY, behavior: 'auto' } )
+      secondFrame = window.requestAnimationFrame( () => {
+        window.scrollTo( { top: targetScrollY, behavior: 'auto' } )
+        preservedThreadNavigationScrollYRef.current = null
+      } )
+    } )
+    return () => {
+      window.cancelAnimationFrame( firstFrame )
+      if( secondFrame !== null ) {
+        window.cancelAnimationFrame( secondFrame )
+      }
+    }
   }, [ selectedThreadId ] )
 
   useEffect( () => {
@@ -1655,6 +1720,7 @@ function VersionsPage() {
     const fileRefId = selectedVersion?.fileRefId ?? null
     if( !fileRefId ) {
       setSelectedFileRef( null )
+      setFileMetadataNotice( null )
       return () => {
         isActive = false
       }
@@ -1665,6 +1731,7 @@ function VersionsPage() {
         if( !snapshot.exists() ) {
           if( isActive ) {
             setSelectedFileRef( null )
+            setFileMetadataNotice( 'The linked file metadata no longer exists. Upload or replace the file to restore access.' )
           }
           return
         }
@@ -1685,9 +1752,16 @@ function VersionsPage() {
             docId: ( data.docId as string ) ?? '',
             versionId: ( data.versionId as string ) ?? '',
           } )
+          setFileMetadataNotice( null )
         }
       } catch( err ) {
         if( isActive ) {
+          if( isPermissionDeniedError( err ) ) {
+            setSelectedFileRef( null )
+            setFileMetadataNotice( 'You do not have permission to read linked file metadata for this version.' )
+            return
+          }
+          setFileMetadataNotice( null )
           const message = err instanceof Error ? err.message : 'Unexpected error'
           setError( `File metadata failed to load: ${message}` )
         }
@@ -2072,6 +2146,43 @@ function VersionsPage() {
     },
     [],
   )
+
+  const selectThreadKeepingViewport = useCallback( (threadId: string) => {
+    if( !threadId ) {
+      return
+    }
+    preservedThreadNavigationScrollYRef.current = window.scrollY
+    if( dashboardFocusTarget === 'comments' && selectedVersion?.id ) {
+      lastAppliedDashboardFocusRef.current = `${dashboardFocusTarget}|${selectedVersion.id}|${threadId}`
+    }
+    lastAppliedCommentQueryRef.current = null
+    setHighlightedCommentId( null )
+    const nextSearchParams = new URLSearchParams( searchParams )
+    nextSearchParams.set( 'threadId', threadId )
+    nextSearchParams.delete( 'commentId' )
+    setSearchParams( nextSearchParams, {
+      replace: true,
+      preventScrollReset: true,
+    } )
+    setSelectedThreadId( ( current ) => {
+      if( current === threadId ) {
+        preservedThreadNavigationScrollYRef.current = null
+        return current
+      }
+      return threadId
+    } )
+  }, [ dashboardFocusTarget, selectedVersion?.id, searchParams, setSearchParams ] )
+
+  const handleSelectAdjacentThread = useCallback( (direction: -1 | 1) => {
+    if( selectedThreadIndex < 0 ) {
+      return
+    }
+    const targetThread = orderedThreads[selectedThreadIndex + direction]
+    if( !targetThread ) {
+      return
+    }
+    selectThreadKeepingViewport( targetThread.id )
+  }, [ selectedThreadIndex, orderedThreads, selectThreadKeepingViewport ] )
 
   const isVersionReviewExpired = (version?: Pick<VersionSummary, 'status' | 'reviewEndAt'> | null) =>
     Boolean(
@@ -2561,7 +2672,7 @@ function VersionsPage() {
     const fileKey = buildFileKey( {
       projectId,
       documentId: docId,
-      versionNumber: selectedVersion.number,
+      versionId: selectedVersion.id,
       fileName: file.name,
     } )
     let uploadedNewFile = false
@@ -3329,7 +3440,7 @@ function VersionsPage() {
     try {
       const threadRef = doc( collection( db, 'threads' ) )
       const versionRef = doc( db, 'versions', selectedVersion.id )
-      const threadTitle = newThreadTitle.trim()
+      const threadTitle = normalizeIssueTitleInput( newThreadTitle ).trim()
       await runTransaction( db, async ( transaction ) => {
         const versionSnap = await transaction.get( versionRef )
         if( !versionSnap.exists() ) {
@@ -3601,10 +3712,10 @@ function VersionsPage() {
     if( !canChangeThreadStatus( thread ) ) {
       return
     }
-    setSelectedThreadId( ( current ) => ( current === thread.id ? current : thread.id ) )
+    selectThreadKeepingViewport( thread.id )
     setError( null )
     setPendingThreadStatusChange( thread )
-  }, [ canChangeThreadStatus ] )
+  }, [ canChangeThreadStatus, selectThreadKeepingViewport ] )
 
   const threadColumns = useMemo<ColumnDef<ThreadSummary>[]>( () => [
     {
@@ -4038,6 +4149,7 @@ function VersionsPage() {
               ) : (
                 <p className="muted">No file linked yet.</p>
               )}
+              {fileMetadataNotice ? <p className="muted">{fileMetadataNotice}</p> : null}
               <div className="actions">
                 <input
                   ref={uploadInputRef}
@@ -4286,17 +4398,24 @@ function VersionsPage() {
               <p className="muted">
                 Issues: {selectedVersion.numThreads} - Open: {selectedVersion.numOpenThreads} - Comments: {selectedVersion.numComments}
               </p>
-              <div className="actions actions--capture-row">
-                <input
-                  type="text"
-                  value={newThreadTitle}
-                  onChange={( event ) => setNewThreadTitle( event.target.value )}
-                  placeholder="New issue title"
-                  disabled={isBusy}
-                />
-                <button type="button" onClick={handleCreateThread} disabled={isBusy}>
-                  Create issue
-                </button>
+              <div className="stack issue-title-capture">
+                <div className="actions actions--capture-row">
+                  <input
+                    type="text"
+                    className="issue-title-input"
+                    value={newThreadTitle}
+                    onChange={( event ) => setNewThreadTitle( normalizeIssueTitleInput( event.target.value ) )}
+                    placeholder="New issue title"
+                    maxLength={ISSUE_TITLE_MAX_LENGTH}
+                    disabled={isBusy}
+                  />
+                  <button type="button" onClick={handleCreateThread} disabled={isBusy}>
+                    Create issue
+                  </button>
+                </div>
+                <p className="issue-title-hint muted">
+                  Single-line title. Maximum {ISSUE_TITLE_MAX_LENGTH} characters.
+                </p>
               </div>
               {isLoadingThreads ? (
                 <p className="muted">Loading issues...</p>
@@ -4332,6 +4451,9 @@ function VersionsPage() {
                       data={threads}
                       sorting={threadsSorting}
                       onSortingChange={setThreadsSorting}
+                      onVisibleRowsChange={( nextRows ) =>
+                        setVisibleThreadRows( ( previous ) => ( areThreadsEqual( previous, nextRows ) ? previous : nextRows ) )
+                      }
                       tableClassName="data-table--threads"
                       storageKey={`qt4_table_versions_threads_${selectedVersion.id}`}
                       getRowClassName={( row ) => {
@@ -4344,7 +4466,7 @@ function VersionsPage() {
                           selectedThreadId === row.id ? 'data-table-row--selected' : ''
                         }`.trim()
                       }}
-                      onRowClick={( row ) => setSelectedThreadId( row.id )}
+                      onRowClick={( row ) => selectThreadKeepingViewport( row.id )}
                     />
                   ) : (
                     <div className="project-grid">
@@ -4360,13 +4482,13 @@ function VersionsPage() {
                                 : 'project-card--thread-open'
                               : 'project-card--thread-closed'
                           } ${selectedThreadId === thread.id ? 'project-card--thread-selected' : ''}`}
-                          onClick={() => setSelectedThreadId( thread.id )}
+                          onClick={() => selectThreadKeepingViewport( thread.id )}
                           role="button"
                           tabIndex={0}
                           onKeyDown={( event ) => {
                             if( event.key === 'Enter' || event.key === ' ' ) {
                               event.preventDefault()
-                              setSelectedThreadId( thread.id )
+                              selectThreadKeepingViewport( thread.id )
                             }
                           }}
                         >
@@ -4398,7 +4520,28 @@ function VersionsPage() {
               )}
               {selectedThread ? (
                 <div className="stack">
-                  <p className="muted">Selected issue: {selectedThread.title}</p>
+                  <p className="muted selected-thread-title">
+                    Selected issue: <span>{selectedThread.title}</span>
+                  </p>
+                  <div className="actions actions--thread-navigation">
+                    <p className="thread-navigation-status muted">{threadNavigationStatusLabel}</p>
+                    <div className="thread-navigation-buttons">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectAdjacentThread( -1 )}
+                        disabled={isBusy || !hasPreviousThread}
+                      >
+                        Previous issue
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectAdjacentThread( 1 )}
+                        disabled={isBusy || !hasNextThread}
+                      >
+                        Next issue
+                      </button>
+                    </div>
+                  </div>
                   <div className="actions">
                     <button
                       type="button"
