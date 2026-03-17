@@ -112,7 +112,7 @@ const buildVersionsErrorChecklist = (
     return [
       ...shared,
       { label: '(a latest version exists)', ok: context.hasLatestVersion },
-      { label: "(latest version status = 'In Review')", ok: context.latestVersionInReview },
+      { label: "(latest version is in review time or grace)", ok: context.latestVersionInReview },
       { label: '(latest version has a file)', ok: context.latestVersionHasFile },
       { label: '(latest version issue count >= 1)', ok: context.latestVersionHasIssues },
       {
@@ -245,7 +245,7 @@ const buildVersionsErrorChecklist = (
     return [
       ...shared,
       { label: '(a version is selected)', ok: context.hasSelectedVersion },
-      { label: "(selected version is in active review time)", ok: context.selectedVersionInActiveReview },
+      { label: "(selected version is in active review time or grace)", ok: context.selectedVersionInActiveReview },
       {
         parts: [
           { label: '(user_is_selected_version_author)', ok: context.userIsSelectedVersionAuthor },
@@ -265,7 +265,7 @@ const buildVersionsErrorChecklist = (
       { label: '(an issue is selected)', ok: context.hasSelectedThread },
       {
         groups: [
-          [ { label: "(selected version is in active review time)", ok: context.selectedVersionInActiveReview } ],
+          [ { label: "(selected version is in active review time or grace)", ok: context.selectedVersionInActiveReview } ],
           [ { label: '(selected version comment window is still open)', ok: context.selectedVersionCommentWindowOpen } ],
         ],
         groupOperator: 'or',
@@ -302,7 +302,7 @@ const buildVersionsErrorChecklist = (
     return [
       ...shared,
       { label: '(an issue is selected)', ok: context.hasSelectedThread },
-      { label: "(selected version is in active review time)", ok: context.selectedVersionInActiveReview },
+      { label: "(selected version is in active review time or grace)", ok: context.selectedVersionInActiveReview },
       {
         parts: [
           { label: '(user_is_selected_version_author)', ok: context.userIsSelectedVersionAuthor },

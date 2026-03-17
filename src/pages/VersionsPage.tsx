@@ -47,6 +47,7 @@ import {
   canAddCommentInWindow,
   formatApproxCountdown,
   getCommentWindowRemainingMs,
+  ONE_HOUR_MS,
   REVIEW_WINDOW_MS,
   shouldAutoSetReviewed,
 } from '../lib/reviewWindow'
@@ -437,7 +438,6 @@ function VersionsPage() {
   const canCreateVersionActor = isLatestAuthor || isLeader || isAdmin
   const isReviewer = Boolean( selectedVersion && selectedVersion.reviewerIds.includes( userId ) )
   const canParticipateReview = isSelectedAuthor || isLeader || isReviewer || isAdmin
-  const latestVersionInReview = Boolean( latestVersion && latestVersion.status === 'In Review' )
   const latestVersionInReviewed = Boolean( latestVersion && latestVersion.status === 'Reviewed' )
   const latestVersionInAccepted = Boolean( latestVersion && latestVersion.status === 'Accepted' )
   const selectedVersionInReview = Boolean( selectedVersion && selectedVersion.status === 'In Review' )
@@ -449,12 +449,8 @@ function VersionsPage() {
     () => ( selectedThreadId ? commentsByThread[selectedThreadId] ?? [] : [] ),
     [ selectedThreadId, commentsByThread ],
   )
-  const selectedThreadLatestCommentAt = useMemo( () => {
-    const fromThread = selectedThread?.lastCommentAt ?? null
-    if( fromThread ) {
-      return fromThread
-    }
-    const fromComments = selectedThreadComments.reduce<Date | null>(
+  const getLatestCommentAtFromList = useCallback( (comments: CommentSummary[]) =>
+    comments.reduce<Date | null>(
       ( latest, comment ) => {
         if( !comment.createdAt ) {
           return latest
@@ -465,13 +461,93 @@ function VersionsPage() {
         return latest
       },
       null,
-    )
-    return fromComments
-  }, [ selectedThread?.lastCommentAt, selectedThreadComments ] )
+    ), [] )
+  const getThreadLatestCommentAt = useCallback( (thread?: Pick<ThreadSummary, 'id' | 'lastCommentAt'> | null) => {
+    if( !thread ) {
+      return null
+    }
+    const fromThread = thread.lastCommentAt ?? null
+    if( fromThread ) {
+      return fromThread
+    }
+    return getLatestCommentAtFromList( commentsByThread[thread.id] ?? [] )
+  }, [ commentsByThread, getLatestCommentAtFromList ] )
+  const selectedThreadLatestCommentAt = useMemo(
+    () => getThreadLatestCommentAt( selectedThread ),
+    [ selectedThread, getThreadLatestCommentAt ],
+  )
+  const latestVersionIsSelected = Boolean( latestVersion && selectedVersion && latestVersion.id === selectedVersion.id )
+  const latestSelectedVersionCommentAt = useMemo( () => {
+    const comments = Object.values( commentsByThread ).flat()
+    return comments.reduce<Date | null>( ( latest, comment ) => {
+      if( !comment.createdAt ) {
+        return latest
+      }
+      if( !latest || comment.createdAt.getTime() > latest.getTime() ) {
+        return comment.createdAt
+      }
+      return latest
+    }, null )
+  }, [ commentsByThread ] )
+  const selectedVersionRecentCommentGraceRemainingMs = useMemo( () => {
+    if( !selectedVersion?.reviewEndAt || !latestSelectedVersionCommentAt ) {
+      return 0
+    }
+    if( selectedVersion.reviewEndAt.getTime() > clockNowMs ) {
+      return 0
+    }
+    const remainingMs = ONE_HOUR_MS - ( clockNowMs - latestSelectedVersionCommentAt.getTime() )
+    return remainingMs > 0 ? remainingMs : 0
+  }, [ selectedVersion?.reviewEndAt, latestSelectedVersionCommentAt, clockNowMs ] )
+  const selectedVersionGraceRemainingMs = useMemo( () => {
+    if( !selectedVersion || selectedVersion.status !== 'In Review' || !selectedVersion.reviewEndAt ) {
+      return 0
+    }
+    if( selectedVersion.reviewEndAt.getTime() > clockNowMs ) {
+      return 0
+    }
+    return threads.reduce( ( maxRemaining, thread ) => {
+      if( thread.status !== 'open' ) {
+        return maxRemaining
+      }
+      const remainingMs = getCommentWindowRemainingMs(
+        selectedVersion.status,
+        selectedVersion.reviewEndAt,
+        getThreadLatestCommentAt( thread ),
+        clockNowMs,
+      )
+      if( remainingMs === null || remainingMs <= 0 ) {
+        return maxRemaining
+      }
+      return Math.max( maxRemaining, remainingMs )
+    }, 0 )
+  }, [ selectedVersion, threads, clockNowMs, getThreadLatestCommentAt ] )
+  const selectedVersionHasGraceIssues = selectedVersionGraceRemainingMs > 0
+  const selectedVersionReviewGraceRemainingMs = Math.max(
+    selectedVersionGraceRemainingMs,
+    selectedVersionRecentCommentGraceRemainingMs,
+  )
+  const selectedVersionHasReviewGrace = selectedVersionReviewGraceRemainingMs > 0
   const selectedVersionInActiveReview = Boolean(
     selectedVersion &&
     selectedVersion.status === 'In Review' &&
-    ( !selectedVersion.reviewEndAt || selectedVersion.reviewEndAt.getTime() > clockNowMs ),
+    (
+      !selectedVersion.reviewEndAt ||
+      selectedVersion.reviewEndAt.getTime() > clockNowMs ||
+      selectedVersionHasGraceIssues
+    ),
+  )
+  const latestVersionInReviewDecisionWindow = Boolean(
+    latestVersion &&
+    (
+      latestVersion.status === 'In Review' ||
+      ( latestVersion.status === 'Reviewed' && latestVersionIsSelected && selectedVersionHasReviewGrace )
+    ) &&
+    (
+      !latestVersion.reviewEndAt ||
+      latestVersion.reviewEndAt.getTime() > clockNowMs ||
+      ( latestVersionIsSelected && selectedVersionHasReviewGrace )
+    ),
   )
   const canCreateThread = Boolean(
     selectedVersion &&
@@ -493,7 +569,7 @@ function VersionsPage() {
     } ),
   )
   const getThreadCommentWindowMeta = useCallback(
-    (thread?: Pick<ThreadSummary, 'status' | 'lastCommentAt'> | null) => {
+    (thread?: Pick<ThreadSummary, 'id' | 'status' | 'lastCommentAt'> | null) => {
       if( !selectedVersion ) {
         return { label: 'Unavailable', state: 'unavailable' as const }
       }
@@ -509,7 +585,7 @@ function VersionsPage() {
       const remainingMs = getCommentWindowRemainingMs(
         selectedVersion.status,
         selectedVersion.reviewEndAt,
-        thread?.lastCommentAt,
+        getThreadLatestCommentAt( thread ),
         clockNowMs,
       )
       if( remainingMs === null ) {
@@ -523,7 +599,7 @@ function VersionsPage() {
       }
       return { label: `Grace ${formatApproxCountdown( remainingMs )}`, state: 'grace' as const }
     },
-    [ selectedVersion, clockNowMs ],
+    [ selectedVersion, clockNowMs, getThreadLatestCommentAt ],
   )
   const commentWindowCountdownLabel = useMemo( () => {
     if( !selectedVersion || !selectedThread ) {
@@ -538,18 +614,6 @@ function VersionsPage() {
     }
     return getThreadCommentWindowMeta( selectedThread ).state
   }, [ selectedVersion, selectedThread, getThreadCommentWindowMeta ] )
-  const latestSelectedVersionCommentAt = useMemo( () => {
-    const comments = Object.values( commentsByThread ).flat()
-    return comments.reduce<Date | null>( ( latest, comment ) => {
-      if( !comment.createdAt ) {
-        return latest
-      }
-      if( !latest || comment.createdAt.getTime() > latest.getTime() ) {
-        return comment.createdAt
-      }
-      return latest
-    }, null )
-  }, [ commentsByThread ] )
   const hasSelectedVersionComments = useMemo(
     () => Object.values( commentsByThread ).some( ( threadComments ) => threadComments.length > 0 ),
     [ commentsByThread ],
@@ -862,14 +926,14 @@ function VersionsPage() {
     () =>
       Boolean(
         latestVersion &&
-          latestVersion.status === 'In Review' &&
+          latestVersionInReviewDecisionWindow &&
           latestVersion.hasFile &&
           latestVersion.numThreads > 0 &&
           latestVersion.numThreadsWithTwoPlusComments > 0 &&
           latestVersion.numOpenThreads === 0 &&
           canApproveVersion,
       ),
-    [ latestVersion, canApproveVersion ],
+    [ latestVersion, latestVersionInReviewDecisionWindow, canApproveVersion ],
   )
 
   const errorChecklist = useMemo( () => buildVersionsErrorChecklist( error, {
@@ -884,7 +948,7 @@ function VersionsPage() {
     userIsReviewer: isReviewer,
     userIsAdmin: isAdmin,
     hasLatestVersion: Boolean( latestVersion ),
-    latestVersionInReview,
+    latestVersionInReview: latestVersionInReviewDecisionWindow,
     latestVersionInReviewed,
     latestVersionInCreation: Boolean( selectedVersion && selectedVersion.status === 'In Creation' ),
     latestVersionInAccepted,
@@ -931,7 +995,7 @@ function VersionsPage() {
     isReviewer,
     isAdmin,
     latestVersion,
-    latestVersionInReview,
+    latestVersionInReviewDecisionWindow,
     latestVersionInReviewed,
     latestVersionInAccepted,
     errorReportGate.isBlocking,
@@ -2233,7 +2297,7 @@ function VersionsPage() {
       case 'Accepted':
         return '#c8f7c5'
       case 'Rejected':
-        return '#bfbfbf'
+        return '#f4c7c3'
       case 'Replaced':
         return '#d3d3d3'
       case 'In Creation':
@@ -2243,7 +2307,7 @@ function VersionsPage() {
   }
 
   const selectedReviewTimerState = useMemo<
-    'active' | 'expired' | 'noExpiration' | 'inactive'
+    'active' | 'grace' | 'expired' | 'noExpiration' | 'inactive'
   >( () => {
     if( !selectedVersion || selectedVersion.status !== 'In Review' ) {
       return 'inactive'
@@ -2251,8 +2315,11 @@ function VersionsPage() {
     if( !selectedVersion.reviewEndAt ) {
       return 'noExpiration'
     }
-    return selectedVersion.reviewEndAt.getTime() <= clockNowMs ? 'expired' : 'active'
-  }, [ selectedVersion, clockNowMs ] )
+    if( selectedVersion.reviewEndAt.getTime() > clockNowMs ) {
+      return 'active'
+    }
+    return selectedVersionHasReviewGrace ? 'grace' : 'expired'
+  }, [ selectedVersion, clockNowMs, selectedVersionHasReviewGrace ] )
 
   const selectedReviewTimerLabel = useMemo( () => {
     if( !selectedVersion || selectedVersion.status !== 'In Review' ) {
@@ -2263,10 +2330,13 @@ function VersionsPage() {
     }
     const remainingMs = selectedVersion.reviewEndAt.getTime() - clockNowMs
     if( remainingMs <= 0 ) {
+      if( selectedVersionHasReviewGrace ) {
+        return `Grace ${formatApproxCountdown( selectedVersionReviewGraceRemainingMs )}`
+      }
       return 'Expired'
     }
     return formatApproxCountdown( remainingMs )
-  }, [ selectedVersion, clockNowMs ] )
+  }, [ selectedVersion, clockNowMs, selectedVersionHasReviewGrace, selectedVersionReviewGraceRemainingMs ] )
 
   useEffect( () => {
     setClockNowMs( Date.now() )
@@ -2315,6 +2385,15 @@ function VersionsPage() {
     if( autoReviewUpdateRef.current === latestVersion.id ) {
       return
     }
+    if( latestVersionIsSelected && isLoadingThreads ) {
+      return
+    }
+    if( latestVersion.numComments > 0 && latestVersionIsSelected && !latestSelectedVersionCommentAt ) {
+      return
+    }
+    if( latestVersionIsSelected && selectedVersionHasReviewGrace ) {
+      return
+    }
     const shouldMarkReviewed = shouldAutoSetReviewed( {
       versionStatus: latestVersion.status,
       reviewEndAt: latestVersion.reviewEndAt,
@@ -2357,6 +2436,9 @@ function VersionsPage() {
     clockNowMs,
     userId,
     canManageLatestVersion,
+    latestVersionIsSelected,
+    isLoadingThreads,
+    selectedVersionHasReviewGrace,
   ] )
 
   useEffect( () => {
@@ -2575,7 +2657,6 @@ function VersionsPage() {
     projectId,
     docId,
   ] )
-
   const handleAssignAuthor = useCallback( async (authorId: string) => {
     if( !selectedVersion || !userId ) {
       setError( 'Select a version to change the author.' )
@@ -3043,7 +3124,7 @@ function VersionsPage() {
       return
     }
     if( !canAcceptOrReject ) {
-      setError( 'To accept, the latest version must be In Review, have a file, all issues closed, and at least one issue with two or more comments; you must be author, leader, or admin.' )
+      setError( 'To accept, the latest version must be in review time or grace, have a file, all issues closed, and at least one issue with two or more comments; you must be author, leader, or admin.' )
       return
     }
 
@@ -3066,7 +3147,7 @@ function VersionsPage() {
         updatedAt: serverTimestamp(),
         updatedBy: userId,
       } )
-      if( previousAccepted ) {
+      if( previousAccepted && ( isLeader || isAdmin || previousAccepted.createdBy === userId ) ) {
         batch.update( doc( db, 'versions', previousAccepted.id ), {
           status: 'Replaced',
           updatedAt: serverTimestamp(),
@@ -3149,7 +3230,7 @@ function VersionsPage() {
       return
     }
     if( !canAcceptOrReject ) {
-      setError( 'To reject, the latest version must be In Review, have a file, all issues closed, and at least one issue with two or more comments; you must be author, leader, or admin.' )
+      setError( 'To reject, the latest version must be in review time or grace, have a file, all issues closed, and at least one issue with two or more comments; you must be author, leader, or admin.' )
       return
     }
 
@@ -3170,7 +3251,7 @@ function VersionsPage() {
         updatedAt: serverTimestamp(),
         updatedBy: userId,
       } )
-      if( previousAccepted ) {
+      if( previousAccepted && ( isLeader || isAdmin || previousAccepted.createdBy === userId ) ) {
         batch.update( doc( db, 'versions', previousAccepted.id ), {
           status: 'Replaced',
           updatedAt: serverTimestamp(),
@@ -3337,8 +3418,8 @@ function VersionsPage() {
     if( !canAcceptOrReject ) {
       setError(
         decision === 'accept'
-          ? 'To accept, the latest version must be In Review, have a file, all issues closed, and at least one issue with two or more comments; you must be author, leader, or admin.'
-          : 'To reject, the latest version must be In Review, have a file, all issues closed, and at least one issue with two or more comments; you must be author, leader, or admin.',
+          ? 'To accept, the latest version must be in review time or grace, have a file, all issues closed, and at least one issue with two or more comments; you must be author, leader, or admin.'
+          : 'To reject, the latest version must be in review time or grace, have a file, all issues closed, and at least one issue with two or more comments; you must be author, leader, or admin.',
       )
       return
     }
@@ -3431,7 +3512,7 @@ function VersionsPage() {
       return
     }
     if( !canCreateThread ) {
-      setError( 'To create an issue, the version must be in active review time, you must be the author, leader, or reviewer, and the title cannot be empty.' )
+      setError( 'To create an issue, the version must be in active review time or grace, you must be the author, leader, or reviewer, and the title cannot be empty.' )
       return
     }
     const lockedVersionId = selectedVersion.id
@@ -3697,16 +3778,17 @@ function VersionsPage() {
       return false
     }
     if( !canParticipateReview || !selectedVersionInActiveReview ) {
-      setError( 'To close or reopen issues, the version must be in active review time and you must be the author, leader, or reviewer.' )
+      setError( 'To close or reopen issues, the version must be in active review time or grace and you must be the author, leader, or reviewer.' )
       return false
     }
-    const commentsCount = Number( thread.commentCount ?? 0 )
+    const loadedCommentsCount = commentsByThread[thread.id]?.length ?? 0
+    const commentsCount = Math.max( Number( thread.commentCount ?? 0 ), loadedCommentsCount )
     if( commentsCount < 2 ) {
       setError( 'To close or reopen an issue, it must have at least two comments.' )
       return false
     }
     return true
-  }, [ selectedVersion, projectId, docId, userId, canParticipateReview, selectedVersionInActiveReview ] )
+  }, [ selectedVersion, projectId, docId, userId, canParticipateReview, selectedVersionInActiveReview, commentsByThread ] )
 
   const requestThreadStatusChangeConfirmation = useCallback( (thread: ThreadSummary) => {
     if( !canChangeThreadStatus( thread ) ) {

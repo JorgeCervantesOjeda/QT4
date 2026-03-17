@@ -137,6 +137,11 @@ service cloud.firestore {
         && request.resource.data.status == 'Reviewed'
         && request.resource.data.number == resource.data.number;
     }
+    function isReplacedTransition() {
+      return resource.data.status == 'Accepted'
+        && request.resource.data.status == 'Replaced'
+        && request.resource.data.number == resource.data.number;
+    }
 
     function isReviewStatsOnlyUpdate(versionId) {
       return request.resource.data.status == resource.data.status
@@ -580,6 +585,7 @@ service cloud.firestore {
             || isReviewedTransition()
             || isAcceptTransition()
             || isRejectTransition()
+            || isReplacedTransition()
           )
         )
         || isReviewStatsOnlyUpdate(versionId)
