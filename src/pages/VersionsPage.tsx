@@ -1589,9 +1589,12 @@ function VersionsPage() {
           }
         } )
         setThreads( ( previous ) => ( areThreadsEqual( previous, nextThreads ) ? previous : nextThreads ) )
-        setSelectedThreadId( ( current ) =>
-          current && nextThreads.some( ( thread ) => thread.id === current ) ? current : null,
-        )
+        setSelectedThreadId( ( current ) => {
+          if( current && nextThreads.some( ( thread ) => thread.id === current ) ) {
+            return current
+          }
+          return nextThreads[0]?.id ?? null
+        } )
         setIsLoadingThreads( false )
       },
       ( err ) => {
@@ -2657,6 +2660,71 @@ function VersionsPage() {
     projectId,
     docId,
   ] )
+
+
+  const handleToggleAllReviewers = useCallback( async (checked: boolean) => {
+    if( !selectedVersion || !userId ) {
+      setError( 'Select a version to assign reviewers.' )
+      return
+    }
+    if( !canAssignReviewers ) {
+      if( selectedVersion.status !== 'In Creation' ) {
+        setError( 'You can assign reviewers only while the version is In Creation.' )
+      } else {
+        setError( 'You can assign reviewers only if you are the author, project leader, or admin.' )
+      }
+      return
+    }
+
+    const nextReviewerIds = checked ? allowedReviewerIds : []
+    const previousReviewerIds = selectedReviewerIds
+    setSelectedReviewerIds( nextReviewerIds )
+    setIsBusy( true )
+    setError( null )
+    try {
+      await updateDoc( doc( db, 'versions', selectedVersion.id ), {
+        reviewerIds: nextReviewerIds,
+        updatedAt: serverTimestamp(),
+        updatedBy: userId,
+      } )
+    } catch( err ) {
+      setSelectedReviewerIds( previousReviewerIds )
+      const message = err instanceof Error ? err.message : 'Unexpected error'
+      setError( message )
+      setIsBusy( false )
+      return
+    }
+    try {
+      await logAudit( {
+        actorId: userId,
+        actorEmail: user?.email ?? null,
+        action: 'updateReviewers',
+        entityType: 'version',
+        entityId: selectedVersion.id,
+        projectId,
+        docId,
+        versionId: selectedVersion.id,
+        metadata: {
+          reviewerIds: nextReviewerIds,
+          source: checked ? 'selectAll' : 'clearAll',
+        },
+      } )
+    } catch( err ) {
+      console.warn( 'Audit log failed (toggle all reviewers):', err )
+    } finally {
+      setIsBusy( false )
+    }
+  }, [
+    selectedVersion,
+    userId,
+    canAssignReviewers,
+    allowedReviewerIds,
+    selectedReviewerIds,
+    user?.email,
+    projectId,
+    docId,
+  ] )
+
   const handleAssignAuthor = useCallback( async (authorId: string) => {
     if( !selectedVersion || !userId ) {
       setError( 'Select a version to change the author.' )
@@ -3735,6 +3803,8 @@ function VersionsPage() {
         const commentDirectUrl = `${origin}/documents/${encodeURIComponent( docId )}/versions?${commentUrlQuery.toString()}`
         const docLabel = `${documentData?.shortId ?? documentData?.id ?? 'Document'} - ${documentData?.title ?? ''}`.trim()
         const versionLabel = versionNumberToString( selectedVersion.number )
+        const docShortIdLabel = Number.isFinite( documentData?.shortId ) ? String( documentData?.shortId ) : 'Unassigned'
+        const threadTitleLabel = selectedThread.title.trim() || 'Untitled issue'
         const commentBodyForEmail = commentBody.length > 1600
           ? `${commentBody.slice( 0, 1600 )}...`
           : commentBody
@@ -3744,7 +3814,7 @@ function VersionsPage() {
           await notifyEmailUsingActiveProvider( {
             to: toRecipients,
             cc: ccRecipients,
-            subject: `New comment: ${docLabel} v${versionLabel}`,
+            subject: `New Comment: ${docShortIdLabel} - ${threadTitleLabel}`,
             text: `A new comment was added.\nDocument: ${docLabel}\nVersion: ${versionLabel}\nIssue: ${selectedThread.title}\nAuthor: ${formatUserLabel( userId )}\n\nComment:\n${commentBodyForEmail}\n\nOpen this comment directly:\n${commentDirectUrl}\n`,
           } )
           sentCommentEmailRecipients = { to: [ ...toRecipients ], cc: [ ...ccRecipients ] }
@@ -3989,7 +4059,7 @@ function VersionsPage() {
           </div>
           {documentData?.type === 'errorReport' ? (
             <p className="muted">
-              For document:{' '}
+              This document is an error report for:{' '}
               {baseDocumentData
                 ? `${baseDocumentData.shortId ?? 'Unassigned'} - ${baseDocumentData.title}`
                 : documentData?.baseDocId
@@ -4147,7 +4217,7 @@ function VersionsPage() {
                 return (
                   <article
                     key={version.id}
-                    className={`project-card ${versionStatusClassName( version )} ${
+                    className={`project-card version-card ${versionStatusClassName( version )} ${
                       isSelected ? 'project-card--selected' : ''
                     }`}
                     onClick={() => openReviewIssuesForVersion( version.id )}
@@ -4210,7 +4280,7 @@ function VersionsPage() {
               </p>
               {documentData?.type === 'errorReport' ? (
                 <p className="muted">
-                  For document:{' '}
+                  This version belongs to an error report for:{' '}
                   {baseDocumentData
                     ? `${baseDocumentData.shortId ?? 'Unassigned'} - ${baseDocumentData.title}`
                     : documentData?.baseDocId
@@ -4454,6 +4524,17 @@ function VersionsPage() {
               <p className="muted">Select the version author before starting review.</p>
               <h3>Reviewer Assignment (Before Review)</h3>
               <p className="muted">Select reviewers before starting review.</p>
+              <div className="actions">
+                <label className="checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={allowedReviewerIds.length > 0 && selectedReviewerIds.length === allowedReviewerIds.length}
+                    onChange={( event ) => handleToggleAllReviewers( event.target.checked )}
+                    disabled={isBusy || !canAssignReviewers || allowedReviewerIds.length === 0}
+                  />
+                  <span>Select all reviewers</span>
+                </label>
+              </div>
               <DataTable
                 key={`qt4_table_members_${projectId ?? 'unknown'}`}
                 columns={memberColumns}
