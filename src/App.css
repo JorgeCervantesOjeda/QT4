@@ -88,7 +88,7 @@
 }
 
 .brand-title-link:hover {
-  text-decoration: underline;
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
 }
 
 .brand-version {
@@ -143,8 +143,7 @@
 }
 
 .brand-session-button:hover {
-  background: rgba(255, 255, 255, 0.3);
-  text-decoration: none;
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
 }
 
 .back-stack {
@@ -223,8 +222,7 @@
 }
 
 .context-nav-button:hover {
-  text-decoration: none;
-  border-color: var(--qt-accent-strong);
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
 }
 
 .document-title-project {
@@ -481,9 +479,14 @@
 }
 
 .view-toggle button[aria-pressed="true"] {
-  background: rgba(214, 105, 21, 0.12);
-  border-color: rgba(214, 105, 21, 0.5);
-  box-shadow: inset 0 0 0 1px rgba(214, 105, 21, 0.3);
+  border-color: #3f9b45;
+  border-width: 2px;
+  box-shadow: none;
+}
+
+.view-toggle button:focus,
+.view-toggle button:focus-visible {
+  outline: none;
 }
 
 .version-select--in-creation {
@@ -507,7 +510,7 @@
 }
 
 .version-select--rejected {
-  background: #bfbfbf;
+  background: #f4c7c3;
 }
 
 .version-select--replaced {
@@ -526,32 +529,23 @@
 }
 
 .data-table tr[role="button"]:not(.data-table-row--selected):hover td {
-  background: rgba(255, 106, 0, 0.12);
-  box-shadow: inset 0 0 0 2px rgba(214, 105, 21, 0.35);
-  cursor: pointer;
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
 }
 
 .data-table tr.data-table-row--selected td {
-  box-shadow:
-    inset 0 2px 0 rgba(63, 155, 69, 0.72),
-    inset 0 -2px 0 rgba(63, 155, 69, 0.72),
-    0 0 12px rgba(63, 155, 69, 0.24);
+  border-top: 2px solid #3f9b45;
+  border-bottom: 2px solid #3f9b45;
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
 }
 
 .data-table tr.data-table-row--selected td:first-child {
-  box-shadow:
-    inset 2px 0 0 rgba(63, 155, 69, 0.72),
-    inset 0 2px 0 rgba(63, 155, 69, 0.72),
-    inset 0 -2px 0 rgba(63, 155, 69, 0.72),
-    0 0 12px rgba(63, 155, 69, 0.24);
+  border-left: 2px solid #3f9b45;
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
 }
 
 .data-table tr.data-table-row--selected td:last-child {
-  box-shadow:
-    inset -2px 0 0 rgba(63, 155, 69, 0.72),
-    inset 0 2px 0 rgba(63, 155, 69, 0.72),
-    inset 0 -2px 0 rgba(63, 155, 69, 0.72),
-    0 0 12px rgba(63, 155, 69, 0.24);
+  border-right: 2px solid #3f9b45;
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
 }
 
 .data-table tr.status-card--in-creation td {
@@ -575,7 +569,7 @@
 }
 
 .data-table tr.status-card--rejected td {
-  background: #bfbfbf;
+  background: #f4c7c3;
 }
 
 .data-table tr.status-card--replaced td {
@@ -642,32 +636,15 @@
 }
 
 .data-table--threads tr.data-table-row--selected td {
-  box-shadow:
-    inset 0 2px 0 rgba(63, 155, 69, 0.8),
-    inset 0 -2px 0 rgba(63, 155, 69, 0.8),
-    0 0 0 2px rgba(63, 155, 69, 0.2),
-    0 0 16px rgba(63, 155, 69, 0.34),
-    0 0 28px rgba(63, 155, 69, 0.2);
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
 }
 
 .data-table--threads tr.data-table-row--selected td:first-child {
-  box-shadow:
-    inset 2px 0 0 rgba(63, 155, 69, 0.8),
-    inset 0 2px 0 rgba(63, 155, 69, 0.8),
-    inset 0 -2px 0 rgba(63, 155, 69, 0.8),
-    0 0 0 2px rgba(63, 155, 69, 0.2),
-    0 0 16px rgba(63, 155, 69, 0.34),
-    0 0 28px rgba(63, 155, 69, 0.2);
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
 }
 
 .data-table--threads tr.data-table-row--selected td:last-child {
-  box-shadow:
-    inset -2px 0 0 rgba(63, 155, 69, 0.8),
-    inset 0 2px 0 rgba(63, 155, 69, 0.8),
-    inset 0 -2px 0 rgba(63, 155, 69, 0.8),
-    0 0 0 2px rgba(63, 155, 69, 0.2),
-    0 0 16px rgba(63, 155, 69, 0.34),
-    0 0 28px rgba(63, 155, 69, 0.2);
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
 }
 
 .data-table--threads th:nth-child(1),
@@ -838,7 +815,7 @@
 }
 
 .field select.version-select--rejected {
-  background: #bfbfbf;
+  background: #f4c7c3;
 }
 
 .field select.version-select--replaced {
@@ -971,8 +948,7 @@
 
 .audit-calendar .rbc-toolbar button.rbc-active,
 .audit-calendar .rbc-toolbar button:active {
-  background: rgba(214, 105, 21, 0.12);
-  border-color: rgba(214, 105, 21, 0.45);
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
 }
 
 .audit-calendar .rbc-event {
@@ -1017,29 +993,20 @@
   overflow: hidden;
 }
 
-.project-card[role="button"]:hover,
-.project-card:hover {
-  border-color: var(--qt-accent-strong);
-  background: #fff6eb;
-  cursor: pointer;
+.project-card[role="button"]:hover:not(.version-card),
+.project-card:hover:not(.version-card) {
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
 }
 
 .project-card--selected {
   border-color: #3f9b45;
-  box-shadow:
-    0 0 0 2px rgba(63, 155, 69, 0.22),
-    0 0 14px rgba(63, 155, 69, 0.32),
-    0 0 28px rgba(63, 155, 69, 0.2);
+  border-width: 2px;
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
 }
 
-.project-card--selected[role="button"]:hover,
-.project-card--selected:hover {
-  border-color: #3f9b45;
-  background: #f4fff3;
-  box-shadow:
-    0 0 0 2px rgba(63, 155, 69, 0.26),
-    0 0 16px rgba(63, 155, 69, 0.36),
-    0 0 32px rgba(63, 155, 69, 0.24);
+.project-card--selected[role="button"]:hover:not(.version-card),
+.project-card--selected:hover:not(.version-card) {
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
 }
 
 .project-card--thread {
@@ -1086,6 +1053,11 @@
   border-color: #d4b200;
 }
 
+.review-timer--grace {
+  background: #ffe1b5;
+  border-color: #d66915;
+}
+
 .review-timer--expired {
   background: #ffb347;
   border-color: #d66915;
@@ -1117,20 +1089,13 @@
 
 .project-card--thread-selected {
   border-color: #3f9b45;
-  box-shadow:
-    0 0 0 2px rgba(63, 155, 69, 0.22),
-    0 0 14px rgba(63, 155, 69, 0.32),
-    0 0 28px rgba(63, 155, 69, 0.2);
+  border-width: 2px;
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
 }
 
 .project-card--thread-selected[role="button"]:hover,
 .project-card--thread-selected:hover {
-  border-color: #3f9b45;
-  background: #f4fff3;
-  box-shadow:
-    0 0 0 2px rgba(63, 155, 69, 0.26),
-    0 0 16px rgba(63, 155, 69, 0.36),
-    0 0 32px rgba(63, 155, 69, 0.24);
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
 }
 
 .modal-overlay {
@@ -1467,7 +1432,7 @@
 }
 
 .status-card--rejected {
-  background: #bfbfbf;
+  background: #f4c7c3;
 }
 
 .status-card--replaced {
@@ -1503,7 +1468,7 @@
 }
 
 .project-card.status-card--rejected {
-  background: #bfbfbf;
+  background: #f4c7c3;
 }
 
 .project-card.status-card--replaced {
@@ -1561,16 +1526,26 @@
   min-width: 0;
 }
 
-.project-card[role="button"]:hover:not(.project-card--selected):not(.project-card--thread-selected) {
-  border-color: var(--qt-accent-strong);
-  background: #fff6eb;
-  cursor: pointer;
+.version-card[role="button"]:hover:not(.project-card--selected),
+.version-card:hover:not(.project-card--selected) {
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
+}
+
+.version-card.project-card--selected[role="button"]:hover,
+.version-card.project-card--selected:hover {
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
+}
+
+.data-table--versions tr[role="button"]:not(.data-table-row--selected):hover td {
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
+}
+
+.project-card[role="button"]:hover:not(.project-card--selected):not(.project-card--thread-selected):not(.version-card) {
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
 }
 
 .data-table tr[role="button"]:not(.data-table-row--selected):hover td {
-  background: rgba(255, 106, 0, 0.12) !important;
-  box-shadow: inset 0 0 0 2px rgba(214, 105, 21, 0.35);
-  cursor: pointer;
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
 }
 
 .project-members {
@@ -1679,7 +1654,7 @@
 }
 
 .link:hover {
-  text-decoration: underline;
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
 }
 
 .back-link {
@@ -1695,7 +1670,7 @@
 }
 
 .back-link:hover {
-  text-decoration: none;
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
 }
 
 .back-link--button {
@@ -1708,9 +1683,7 @@
 }
 
 .back-link--button:hover:not(:disabled) {
-  border-color: var(--qt-accent-strong);
-  background: #fff3e6;
-  color: var(--qt-accent-strong);
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
 }
 
 button {
@@ -1730,9 +1703,7 @@ button:disabled {
 }
 
 button:hover:not(:disabled) {
-  border-color: #000;
-  background: var(--qt-accent-strong);
-  color: #fff;
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
 }
 
 button.ghost {
@@ -1775,4 +1746,16 @@ button.ghost {
   .comment-list {
     grid-template-columns: 1fr;
   }
+}
+
+
+
+
+.project-card[role="button"]:hover,
+.project-card:hover {
+  border-color: inherit !important;
+}
+
+.data-table tr[role="button"]:not(.data-table-row--selected):hover td {
+  border-color: inherit !important;
 }
