@@ -1,6 +1,7 @@
-import { useMemo, useState, type FormEvent } from 'react'
-import { sendPasswordResetEmail, signInWithEmailAndPassword } from 'firebase/auth'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { browserLocalPersistence, sendPasswordResetEmail, setPersistence, signInWithEmailAndPassword } from 'firebase/auth'
 import { Link, useLocation, useNavigate, type Location } from 'react-router-dom'
+import { useAuth } from '../auth/useAuth'
 import AppBrand from '../components/AppBrand'
 import ErrorChecklistModal from '../components/ErrorChecklistModal'
 import { useErrorChecklistModal } from '../hooks/useErrorChecklistModal'
@@ -19,6 +20,7 @@ function LoginPage() {
   const [resetNotice, setResetNotice] = useState<string | null>( null )
   const { error, errorChecklist, openError, clearError } = useErrorChecklistModal()
 
+  const { user, loading } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const state = location.state as LocationState | null
@@ -39,6 +41,13 @@ function LoginPage() {
     return `${pathname}${search}${hash}` || '/app'
   }, [ state ] )
 
+  useEffect( () => {
+    if( loading || !user ) {
+      return
+    }
+    navigate( nextPath, { replace: true } )
+  }, [ loading, user, navigate, nextPath ] )
+
   const handleSubmit = async ( event: FormEvent<HTMLFormElement> ) => {
     event.preventDefault()
     const normalizedEmail = email.trim()
@@ -53,6 +62,7 @@ function LoginPage() {
     setResetNotice( null )
     setIsBusy( true )
     try {
+      await setPersistence( auth, browserLocalPersistence )
       await signInWithEmailAndPassword( auth, normalizedEmail, password )
       setPassword( '' )
       navigate( nextPath, { replace: true } )

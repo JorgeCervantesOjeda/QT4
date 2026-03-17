@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth'
+import { browserLocalPersistence, createUserWithEmailAndPassword, setPersistence, updateProfile } from 'firebase/auth'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { Link, useNavigate } from 'react-router-dom'
 import AppBrand from '../components/AppBrand'
@@ -29,6 +29,7 @@ function RegisterPage() {
     clearError()
     setIsBusy( true )
     try {
+      await setPersistence( auth, browserLocalPersistence )
       const result = await createUserWithEmailAndPassword( auth, normalizedEmail, password )
       if( displayName.trim() ) {
         await updateProfile( result.user, { displayName: displayName.trim() } )
