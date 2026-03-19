@@ -1033,19 +1033,79 @@ function AdminAuditPage() {
   const handleRepairReviewExpirations = async () => {
     if( !isAdmin ) {
       setReviewRepairStatus( 'error' )
-      setReviewRepairMessage( 'Admin access is required to repair review expirations.' )
+      setReviewRepairMessage( 'Admin access is required to repair legacy timestamps.' )
       return
     }
     if( !userId ) {
       setReviewRepairStatus( 'error' )
-      setReviewRepairMessage( 'Sign in before repairing review expirations.' )
+      setReviewRepairMessage( 'Sign in before repairing legacy timestamps.' )
       return
     }
     setReviewRepairStatus( 'running' )
-    setReviewRepairMessage( 'Loading versions...' )
+    setReviewRepairMessage( 'Loading documents and versions...' )
     setReviewRepairSummary( '' )
     try {
-      const versionsSnapshot = await getDocs( collection( db, 'versions' ) )
+      const [ documentsSnapshot, versionsSnapshot ] = await Promise.all( [
+        getDocs( collection( db, 'documents' ) ),
+        getDocs( collection( db, 'versions' ) ),
+      ] )
+
+      const inferredVersionCreatedAtByDocId = new Map<string, Date>()
+      versionsSnapshot.docs.forEach( ( snapshot ) => {
+        const data = snapshot.data()
+        const docId = ( data.docId as string | undefined ) ?? ''
+        if( !docId ) {
+          return
+        }
+        const currentCreatedAt = toTimestampDate( data.createdAt )
+        const reviewStartAt = toTimestampDate( data.reviewStartAt )
+        const updatedAt = toTimestampDate( data.updatedAt )
+        const currentReviewEndAt = toTimestampDate( data.reviewEndAt )
+        const inferredCreatedAt =
+          currentCreatedAt ??
+          reviewStartAt ??
+          updatedAt ??
+          ( currentReviewEndAt ? new Date( currentReviewEndAt.getTime() - REVIEW_WINDOW_MS ) : null )
+        if( !inferredCreatedAt ) {
+          return
+        }
+        const currentEarliest = inferredVersionCreatedAtByDocId.get( docId )
+        if( !currentEarliest || inferredCreatedAt.getTime() < currentEarliest.getTime() ) {
+          inferredVersionCreatedAtByDocId.set( docId, inferredCreatedAt )
+        }
+      } )
+
+      const documentUpdates = documentsSnapshot.docs.flatMap( ( snapshot ) => {
+        const data = snapshot.data()
+        const currentCreatedAt = toTimestampDate( data.createdAt )
+        const updatedAt = toTimestampDate( data.updatedAt )
+        const inferredFromVersion = inferredVersionCreatedAtByDocId.get( snapshot.id ) ?? null
+        const inferredCreatedAt =
+          currentCreatedAt ??
+          inferredFromVersion ??
+          updatedAt ??
+          new Date()
+        if( currentCreatedAt ) {
+          return []
+        }
+        let createdAtSource: 'versionCreatedAt' | 'updatedAt' | 'currentTime' = 'currentTime'
+        if( inferredFromVersion ) {
+          createdAtSource = 'versionCreatedAt'
+        } else if( updatedAt ) {
+          createdAtSource = 'updatedAt'
+        }
+        return [
+          {
+            ref: doc( db, 'documents', snapshot.id ),
+            data: {
+              createdAt: Timestamp.fromDate( inferredCreatedAt ),
+              updatedAt: serverTimestamp(),
+              updatedBy: userId,
+            },
+            createdAtSource,
+          },
+        ]
+      } )
 
       const updates = versionsSnapshot.docs.flatMap( ( snapshot ) => {
         const data = snapshot.data()
@@ -1102,13 +1162,36 @@ function AdminAuditPage() {
       } )
 
       if( updates.length === 0 ) {
-        setReviewRepairStatus( 'done' )
-        setReviewRepairMessage( 'No repairs needed. Version timestamps are already complete.' )
-        setReviewRepairSummary( `Versions scanned: ${versionsSnapshot.docs.length}.` )
-        return
+        if( documentUpdates.length === 0 ) {
+          setReviewRepairStatus( 'done' )
+          setReviewRepairMessage( 'No repairs needed. Document and version timestamps are already complete.' )
+          setReviewRepairSummary( `Documents scanned: ${documentsSnapshot.docs.length}. Versions scanned: ${versionsSnapshot.docs.length}.` )
+          return
+        }
       }
 
       setReviewRepairMessage( 'Applying timestamp repairs...' )
+      const documentUpdateChunks = chunkArray( documentUpdates, 400 )
+      for( const chunk of documentUpdateChunks ) {
+        const batch = writeBatch( db )
+        chunk.forEach( ( update ) => {
+          batch.update( update.ref, update.data )
+        } )
+        await batch.commit()
+      }
+
+      if( updates.length === 0 ) {
+        setReviewRepairStatus( 'done' )
+        const documentsFromVersion = documentUpdates.filter( ( update ) => update.createdAtSource === 'versionCreatedAt' ).length
+        const documentsFromUpdatedAt = documentUpdates.filter( ( update ) => update.createdAtSource === 'updatedAt' ).length
+        const documentsFromCurrentTime = documentUpdates.filter( ( update ) => update.createdAtSource === 'currentTime' ).length
+        setReviewRepairMessage( 'Legacy timestamp repair completed.' )
+        setReviewRepairSummary(
+          `Documents scanned: ${documentsSnapshot.docs.length}. document createdAt repaired: ${documentUpdates.length} (version createdAt: ${documentsFromVersion}, updatedAt: ${documentsFromUpdatedAt}, current time: ${documentsFromCurrentTime}). Versions scanned: ${versionsSnapshot.docs.length}.`,
+        )
+        return
+      }
+
       const updateChunks = chunkArray( updates, 400 )
       for( const chunk of updateChunks ) {
         const batch = writeBatch( db )
@@ -1125,30 +1208,34 @@ function AdminAuditPage() {
       const createdAtFromUpdatedAt = updates.filter( ( update ) => update.createdAtSource === 'updatedAt' ).length
       const createdAtFromReviewEndAt = updates.filter( ( update ) => update.createdAtSource === 'reviewEndAt' ).length
       const createdAtFromCurrentTime = updates.filter( ( update ) => update.createdAtSource === 'currentTime' ).length
+      const documentCreatedAtRepaired = documentUpdates.length
+      const documentsFromVersion = documentUpdates.filter( ( update ) => update.createdAtSource === 'versionCreatedAt' ).length
+      const documentsFromUpdatedAt = documentUpdates.filter( ( update ) => update.createdAtSource === 'updatedAt' ).length
+      const documentsFromCurrentTime = documentUpdates.filter( ( update ) => update.createdAtSource === 'currentTime' ).length
       const scannedInReview = versionsSnapshot.docs.filter(
         ( snapshot ) => ( ( snapshot.data().status as string | undefined ) ?? '' ) === 'In Review',
       ).length
       setReviewRepairStatus( 'done' )
-      setReviewRepairMessage( 'Version timestamp repair completed.' )
+      setReviewRepairMessage( 'Legacy timestamp repair completed.' )
       setReviewRepairSummary(
-        `Versions scanned: ${versionsSnapshot.docs.length}. In Review scanned: ${scannedInReview}. createdAt repaired: ${repairedCreatedAt} (reviewStartAt: ${createdAtFromReviewStart}, updatedAt: ${createdAtFromUpdatedAt}, reviewEndAt fallback: ${createdAtFromReviewEndAt}, current time: ${createdAtFromCurrentTime}). reviewEndAt repaired: ${repairedReviewEndAt} (based on reviewStartAt: ${basedOnReviewStart}).`,
+        `Documents scanned: ${documentsSnapshot.docs.length}. document createdAt repaired: ${documentCreatedAtRepaired} (version createdAt: ${documentsFromVersion}, updatedAt: ${documentsFromUpdatedAt}, current time: ${documentsFromCurrentTime}). Versions scanned: ${versionsSnapshot.docs.length}. In Review scanned: ${scannedInReview}. version createdAt repaired: ${repairedCreatedAt} (reviewStartAt: ${createdAtFromReviewStart}, updatedAt: ${createdAtFromUpdatedAt}, reviewEndAt fallback: ${createdAtFromReviewEndAt}, current time: ${createdAtFromCurrentTime}). version reviewEndAt repaired: ${repairedReviewEndAt} (based on reviewStartAt: ${basedOnReviewStart}).`,
       )
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
       setReviewRepairStatus( 'error' )
-      setReviewRepairMessage( `Version timestamp repair failed: ${message}` )
+      setReviewRepairMessage( `Legacy timestamp repair failed: ${message}` )
     }
   }
 
   const requestReviewRepairConfirmation = () => {
     if( !isAdmin ) {
       setReviewRepairStatus( 'error' )
-      setReviewRepairMessage( 'Admin access is required to repair review expirations.' )
+      setReviewRepairMessage( 'Admin access is required to repair legacy timestamps.' )
       return
     }
     if( !userId ) {
       setReviewRepairStatus( 'error' )
-      setReviewRepairMessage( 'Sign in before repairing review expirations.' )
+      setReviewRepairMessage( 'Sign in before repairing legacy timestamps.' )
       return
     }
     setConfirmReviewRepair( true )
@@ -1666,14 +1753,14 @@ function AdminAuditPage() {
         ) : null}
         {isAdmin ? (
           <section className="panel stack">
-            <h2>Review expiration repair</h2>
+            <h2>Legacy timestamp repair</h2>
             <div className="actions">
               <button
                 type="button"
                 onClick={requestReviewRepairConfirmation}
                 disabled={reviewRepairStatus === 'running'}
               >
-                {reviewRepairStatus === 'running' ? 'Repairing...' : 'Repair legacy version timestamps'}
+                {reviewRepairStatus === 'running' ? 'Repairing...' : 'Repair legacy document and version timestamps'}
               </button>
             </div>
             {reviewRepairStatus === 'running' ? <p className="muted">{reviewRepairMessage}</p> : null}
@@ -1682,7 +1769,7 @@ function AdminAuditPage() {
             {reviewRepairStatus === 'error' ? <p className="error">{reviewRepairMessage}</p> : null}
             {reviewRepairStatus === 'idle' ? (
               <p className="muted">
-                Repairs legacy version timestamps by backfilling missing `createdAt` and missing `reviewEndAt` on `In Review` versions.
+                Repairs legacy timestamps by backfilling missing `documents.createdAt`, missing `versions.createdAt`, and missing `reviewEndAt` on `In Review` versions.
               </p>
             ) : null}
           </section>
@@ -1711,10 +1798,10 @@ function AdminAuditPage() {
         ) : null}
         {confirmReviewRepair ? (
           <ModalDialog onClose={() => setConfirmReviewRepair( false )}>
-              <h3>Repair version timestamps</h3>
+              <h3>Repair legacy timestamps</h3>
               <GiphyInline reason="thinking" mode="inline" />
               <p className="muted">
-                Confirm backfilling missing `createdAt` and missing `reviewEndAt` for legacy versions.
+                Confirm backfilling missing `documents.createdAt`, missing `versions.createdAt`, and missing `reviewEndAt` for legacy `In Review` versions.
               </p>
               <div className="actions">
                 <button

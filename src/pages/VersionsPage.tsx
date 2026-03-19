@@ -51,7 +51,7 @@ import {
   REVIEW_WINDOW_MS,
   shouldAutoSetReviewed,
 } from '../lib/reviewWindow'
-import { formatTimeAgo } from '../lib/time'
+import { formatTimeAgoWithTimestamp, formatTimestamp } from '../lib/time'
 import { normalizeFileStorageProvider } from '../lib/runtimeConfig'
 
 type VersionSummary = {
@@ -59,6 +59,8 @@ type VersionSummary = {
   number: number
   status: string
   createdBy: string
+  createdAt?: Date | null
+  activityAt?: Date | null
   reviewerIds: string[]
   reviewStartAt?: Date | null
   reviewEndAt?: Date | null
@@ -76,6 +78,7 @@ type DocumentSummary = {
   projectId: string
   title: string
   createdBy: string
+  authorId?: string | null
   type: string
   shortId: number | null
   baseDocId?: string | null
@@ -212,6 +215,8 @@ const areVersionsEqual = (left: VersionSummary[], right: VersionSummary[]) => {
       a.number !== b.number ||
       a.status !== b.status ||
       a.createdBy !== b.createdBy ||
+      toDateMs( a.createdAt ) !== toDateMs( b.createdAt ) ||
+      toDateMs( a.activityAt ) !== toDateMs( b.activityAt ) ||
       !areStringArraysEqual( a.reviewerIds, b.reviewerIds ) ||
       toDateMs( a.reviewStartAt ) !== toDateMs( b.reviewStartAt ) ||
       toDateMs( a.reviewEndAt ) !== toDateMs( b.reviewEndAt ) ||
@@ -356,6 +361,9 @@ function VersionsPage() {
   const [versionDecisionModal, setVersionDecisionModal] = useState<'accept' | 'reject' | null>( null )
   const [pendingVersionAction, setPendingVersionAction] = useState<PendingVersionAction | null>( null )
   const [pendingUploadFile, setPendingUploadFile] = useState<File | null>( null )
+  const [isDocumentTitleModalOpen, setIsDocumentTitleModalOpen] = useState( false )
+  const [documentTitleDraft, setDocumentTitleDraft] = useState( '' )
+  const [documentTitleError, setDocumentTitleError] = useState<string | null>( null )
   const [errorReportTitle, setErrorReportTitle] = useState( '' )
   const [errorReportTitleError, setErrorReportTitleError] = useState<string | null>( null )
   const [viewMode, setViewMode] = useState<'card' | 'table'>( () => {
@@ -387,6 +395,7 @@ function VersionsPage() {
   const [warningMessage, setWarningMessage] = useState<string | null>( null )
   const lastErrorRef = useRef<string | null>( null )
   const successOkButtonRef = useRef<HTMLButtonElement | null>( null )
+  const documentTitleInputRef = useRef<HTMLInputElement | null>( null )
   const commentInputRef = useRef<HTMLTextAreaElement | null>( null )
   const preservedThreadNavigationScrollYRef = useRef<number | null>( null )
   const versionsActionsRef = useRef<HTMLDivElement | null>( null )
@@ -439,11 +448,17 @@ function VersionsPage() {
     return getEffectiveFileStorageProviderHint()
   }, [ selectedVersion?.id, selectedFileRef?.storageProvider ] )
   const documentAuthorId = documentData?.createdBy ?? ''
+  const currentDocumentAuthorId = documentData?.authorId ?? documentAuthorId
   const latestAuthorId = latestVersion?.createdBy ?? documentAuthorId
   const isSelectedAuthor = Boolean(
     userId && ( selectedVersion ? selectedVersion.createdBy === userId : documentAuthorId === userId ),
   )
   const isLatestAuthor = Boolean( userId && latestAuthorId && latestAuthorId === userId )
+  const canEditDocumentTitle = Boolean(
+    userId &&
+    documentData &&
+    ( currentDocumentAuthorId === userId || isLeader || isAdmin ),
+  )
   const canManageLatestVersion = isLatestAuthor || isLeader || isAdmin
   const canApproveVersion = isLatestAuthor || isLeader || isAdmin
   const canCreateVersionActor = isLatestAuthor || isLeader || isAdmin
@@ -1087,9 +1102,9 @@ function VersionsPage() {
         }
         const remainingMs = version.reviewEndAt.getTime() - clockNowMs
         if( remainingMs <= 0 ) {
-          return 'Main window ended'
+          return `Main window ended (${formatTimestamp( version.reviewEndAt )})`
         }
-        return formatApproxCountdown( remainingMs )
+        return `${formatApproxCountdown( remainingMs )} (${formatTimestamp( version.reviewEndAt )})`
       },
     },
   ], [ formatUserLabel, clockNowMs, requestDownloadVersionFile, isBusy, downloadStatus, getVersionDownloadProvider ] )
@@ -1109,7 +1124,7 @@ function VersionsPage() {
       accessorKey: 'createdAt',
       cell: ( info ) => {
         const value = info.getValue<Date | undefined>()
-        return value ? formatTimeAgo( value ) : '-'
+        return value ? formatTimeAgoWithTimestamp( value ) : '-'
       },
     },
   ], [ formatUserLabel ] )
@@ -1202,6 +1217,7 @@ function VersionsPage() {
         projectId: loadedProjectId,
         title: ( documentRaw.title as string ) ?? 'Untitled document',
         createdBy: loadedAuthorId,
+        authorId: ( documentRaw.authorId as string | undefined ) ?? loadedAuthorId,
         type: loadedType,
         shortId: detectedShortId,
         baseDocId: loadedBaseDocId,
@@ -1249,6 +1265,8 @@ function VersionsPage() {
           number: Number( data.number ?? FIRST_VERSION_NUMBER ),
           status: ( data.status as string ) ?? 'In Creation',
           createdBy: ( data.createdBy as string ) ?? '',
+          createdAt: toTimestampDate( data.createdAt ),
+          activityAt: toTimestampDate( data.activityAt ) ?? toTimestampDate( data.updatedAt ),
           reviewerIds: ( data.reviewerIds as string[] | undefined ) ?? [],
           reviewStartAt: toTimestampDate( data.reviewStartAt ),
           reviewEndAt: toTimestampDate( data.reviewEndAt ),
@@ -1483,6 +1501,7 @@ function VersionsPage() {
           projectId: loadedProjectId,
           title: ( data.title as string ) ?? 'Untitled document',
           createdBy: loadedAuthorId,
+          authorId: ( data.authorId as string | undefined ) ?? loadedAuthorId,
           type: ( data.type as string | undefined ) ?? 'document',
           shortId: detectedShortId,
           baseDocId: nextBaseDocId,
@@ -2218,6 +2237,76 @@ function VersionsPage() {
     }
   }
 
+  const requestDocumentTitleEdit = useCallback( () => {
+    if( !documentData ) {
+      return
+    }
+    setDocumentTitleDraft( documentData.title )
+    setDocumentTitleError( null )
+    setIsDocumentTitleModalOpen( true )
+  }, [ documentData ] )
+
+  const handleSaveDocumentTitle = useCallback( async () => {
+    if( !docId || !documentData || !userId ) {
+      setDocumentTitleError( 'Sign in and select a document before editing the title.' )
+      return
+    }
+    if( !canEditDocumentTitle ) {
+      setDocumentTitleError( 'Only the author, project leader, or admin can edit the document title.' )
+      return
+    }
+    const trimmedTitle = documentTitleDraft.trim()
+    if( trimmedTitle.length === 0 ) {
+      setDocumentTitleError( 'Document title cannot be empty.' )
+      return
+    }
+    if( trimmedTitle === documentData.title ) {
+      setIsDocumentTitleModalOpen( false )
+      setDocumentTitleError( null )
+      return
+    }
+    setDocumentTitleError( null )
+    setError( null )
+    setSuccessMessage( null )
+    setIsBusy( true )
+    try {
+      await updateDoc( doc( db, 'documents', docId ), {
+        title: trimmedTitle,
+        updatedAt: serverTimestamp(),
+        updatedBy: userId,
+      } )
+      setDocumentData( ( previous ) => previous ? { ...previous, title: trimmedTitle } : previous )
+      setIsDocumentTitleModalOpen( false )
+      setSuccessEmailRecipients( null )
+      setSuccessMessage( 'Document title updated successfully.' )
+      await logAudit( {
+        actorId: userId,
+        actorEmail: user?.email ?? null,
+        action: 'updateDocumentTitle',
+        entityType: 'document',
+        entityId: docId,
+        projectId,
+        docId,
+        metadata: {
+          title: trimmedTitle,
+        },
+      } )
+    } catch( err ) {
+      const message = err instanceof Error ? err.message : 'Unexpected error'
+      setDocumentTitleError( message )
+    } finally {
+      setIsBusy( false )
+    }
+  }, [
+    docId,
+    documentData,
+    userId,
+    canEditDocumentTitle,
+    documentTitleDraft,
+    user?.email,
+    projectId,
+  ] )
+
   const reloadAndRestoreSelection = useCallback(
     async (versionId: string | null, threadId?: string | null) => {
       setSelectedVersionId( ( current ) => ( current === versionId ? current : versionId ) )
@@ -2510,6 +2599,7 @@ function VersionsPage() {
           acceptedErrorReportId: null,
           previousVersionId: latestVersion?.id ?? null,
           createdAt: serverTimestamp(),
+          activityAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           updatedBy: userId,
         }
@@ -2724,7 +2814,7 @@ function VersionsPage() {
   ] )
 
   const handleAssignAuthor = useCallback( async (authorId: string) => {
-    if( !selectedVersion || !userId ) {
+    if( !selectedVersion || !userId || !docId ) {
       setError( 'Select a version to change the author.' )
       return
     }
@@ -2757,12 +2847,19 @@ function VersionsPage() {
     setSelectedReviewerIds( sanitizedReviewerIds )
     setIsBusy( true )
     try {
-      await updateDoc( doc( db, 'versions', selectedVersion.id ), {
+      const batch = writeBatch( db )
+      batch.update( doc( db, 'versions', selectedVersion.id ), {
         createdBy: authorId,
         reviewerIds: sanitizedReviewerIds,
         updatedAt: serverTimestamp(),
         updatedBy: userId,
       } )
+      batch.update( doc( db, 'documents', docId ), {
+        authorId,
+        updatedAt: serverTimestamp(),
+        updatedBy: userId,
+      } )
+      await batch.commit()
     } catch( err ) {
       setSelectedAuthorId( previousAuthorId )
       setSelectedReviewerIds( previousReviewerIds )
@@ -2863,6 +2960,7 @@ function VersionsPage() {
         fileRefId: fileRefDoc.id,
         fileUploadedAt: serverTimestamp(),
         fileUploadedBy: userId,
+        activityAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         updatedBy: userId,
       } )
@@ -3072,6 +3170,7 @@ function VersionsPage() {
         status: 'In Review',
         reviewStartAt: serverTimestamp(),
         reviewEndAt,
+        activityAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         updatedBy: userId,
       } )
@@ -3210,12 +3309,14 @@ function VersionsPage() {
       batch.update( doc( db, 'versions', latestVersion.id ), {
         number: promotedNumber,
         status: 'Accepted',
+        activityAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         updatedBy: userId,
       } )
       if( previousAccepted && ( isLeader || isAdmin || previousAccepted.createdBy === userId ) ) {
         batch.update( doc( db, 'versions', previousAccepted.id ), {
           status: 'Replaced',
+          activityAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           updatedBy: userId,
         } )
@@ -3314,12 +3415,14 @@ function VersionsPage() {
       const batch = writeBatch( db )
       batch.update( doc( db, 'versions', latestVersion.id ), {
         status: 'Rejected',
+        activityAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         updatedBy: userId,
       } )
       if( previousAccepted && ( isLeader || isAdmin || previousAccepted.createdBy === userId ) ) {
         batch.update( doc( db, 'versions', previousAccepted.id ), {
           status: 'Replaced',
+          activityAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           updatedBy: userId,
         } )
@@ -3396,6 +3499,7 @@ function VersionsPage() {
           baseDocId: docId,
           baseVersionId: latestVersion.id,
           createdBy: userId,
+          authorId: userId,
           updatedBy: userId,
           shortId: nextNumber,
           createdAt: serverTimestamp(),
@@ -3425,6 +3529,7 @@ function VersionsPage() {
           acceptedErrorReportId: null,
           previousVersionId: null,
           createdAt: serverTimestamp(),
+          activityAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           updatedBy: userId,
         } )
@@ -3627,6 +3732,7 @@ function VersionsPage() {
           numOpenThreads: currentStats.numOpenThreads + 1,
           numComments: currentStats.numComments,
           numThreadsWithTwoPlusComments: currentStats.numThreadsWithTwoPlusComments,
+          activityAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           updatedBy: userId,
         } )
@@ -3740,6 +3846,7 @@ function VersionsPage() {
           numOpenThreads: currentStats.numOpenThreads,
           numComments: currentStats.numComments + 1,
           numThreadsWithTwoPlusComments: currentStats.numThreadsWithTwoPlusComments + incrementTwoPlusCounter,
+          activityAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           updatedBy: userId,
         } )
@@ -3964,6 +4071,7 @@ function VersionsPage() {
           numOpenThreads: nextOpenThreads,
           numComments: currentStats.numComments,
           numThreadsWithTwoPlusComments: currentStats.numThreadsWithTwoPlusComments,
+          activityAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           updatedBy: userId,
         } )
@@ -4054,6 +4162,16 @@ function VersionsPage() {
                 {`${documentData?.shortId ?? 'Unassigned'} - ${documentData?.title ?? docId ?? 'Unknown'}`}
               </span>
             </div>
+            {canEditDocumentTitle ? (
+              <button
+                type="button"
+                className="ghost"
+                onClick={requestDocumentTitleEdit}
+                disabled={isBusy || !documentData}
+              >
+                Edit title
+              </button>
+            ) : null}
           </div>
           {documentData?.type === 'errorReport' ? (
             <p className="muted">
@@ -4231,6 +4349,8 @@ function VersionsPage() {
                   <h3>Version {versionNumberToString( version.number )}</h3>
                   <p className="muted">{version.status}</p>
                   <p className="muted">Author: {formatUserLabel( version.createdBy )}</p>
+                  <p className="muted">Created: {formatTimeAgoWithTimestamp( version.createdAt )}</p>
+                  <p className="muted">Last activity: {formatTimeAgoWithTimestamp( version.activityAt ?? version.createdAt )}</p>
                   <p className="muted">Reviewers: {version.reviewerIds.length}</p>
                   <p className="muted">
                     Issues: {version.numThreads} - Open: {version.numOpenThreads} - Comments: {version.numComments}
@@ -4245,8 +4365,8 @@ function VersionsPage() {
                       : !version.reviewEndAt
                         ? 'No expiration'
                         : version.reviewEndAt.getTime() <= clockNowMs
-                          ? 'Main window ended'
-                          : formatApproxCountdown( version.reviewEndAt.getTime() - clockNowMs )}
+                          ? `Main window ended (${formatTimestamp( version.reviewEndAt )})`
+                          : `${formatApproxCountdown( version.reviewEndAt.getTime() - clockNowMs )} (${formatTimestamp( version.reviewEndAt )})`}
                   </p>
                   {hasLinkedFileMetadata( version ) ? (
                     <div className="actions">
@@ -4311,7 +4431,7 @@ function VersionsPage() {
                         Latest accepted version: {versionNumberToString( report.latestVersionNumber )}
                       </p>
                       <p className="muted">
-                        Accepted: {report.acceptedAt ? formatTimeAgo( report.acceptedAt ) : 'Unknown'}
+                        Accepted: {formatTimeAgoWithTimestamp( report.acceptedAt )}
                       </p>
                     </article>
                   ) )}
@@ -4381,6 +4501,45 @@ function VersionsPage() {
               {uploadStatus === 'error' ? <p className="error">{uploadMessage}</p> : null}
               <p className="muted">Max size: 20 MB. Uploads are allowed only in In Creation.</p>
             </section>
+          ) : null}
+          {isDocumentTitleModalOpen ? (
+            <ModalDialog
+              onClose={() => {
+                setIsDocumentTitleModalOpen( false )
+                setDocumentTitleError( null )
+              }}
+              initialFocusRef={documentTitleInputRef}
+            >
+                <h3>Edit document title</h3>
+                <GiphyInline reason="thinking" mode="inline" />
+                <label className="field">
+                  <span>Title</span>
+                  <input
+                    ref={documentTitleInputRef}
+                    type="text"
+                    value={documentTitleDraft}
+                    onChange={( event ) => setDocumentTitleDraft( event.target.value )}
+                    placeholder="Enter document title"
+                    disabled={isBusy}
+                  />
+                </label>
+                {documentTitleError ? <p className="error">{documentTitleError}</p> : null}
+                <div className="actions">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsDocumentTitleModalOpen( false )
+                      setDocumentTitleError( null )
+                    }}
+                    disabled={isBusy}
+                  >
+                    Cancel
+                  </button>
+                  <button type="button" onClick={() => void handleSaveDocumentTitle()} disabled={isBusy}>
+                    Save title
+                  </button>
+                </div>
+            </ModalDialog>
           ) : null}
           {isErrorReportModalOpen ? (
             <ModalDialog
@@ -4788,7 +4947,7 @@ function VersionsPage() {
                           className={`project-card ${highlightedCommentId === comment.id ? 'comment-card--highlight' : ''}`.trim()}
                         >
                           <p className="muted">By: {formatUserLabel( comment.createdBy )}</p>
-                          <p className="muted">{comment.createdAt ? formatTimeAgo( comment.createdAt ) : '-'}</p>
+                          <p className="muted">{formatTimeAgoWithTimestamp( comment.createdAt )}</p>
                           <p className="comment-body">{comment.body}</p>
                         </article>
                       ) )}

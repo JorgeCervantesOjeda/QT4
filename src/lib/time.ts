@@ -21,3 +21,20 @@ export const formatTimeAgo = (value?: Date | null) => {
   }
   return formatter.format( 0, 'second' )
 }
+
+export const formatTimestamp = (value?: Date | null) => {
+  if( !value ) {
+    return 'Unknown'
+  }
+  return new Intl.DateTimeFormat( 'en', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  } ).format( value )
+}
+
+export const formatTimeAgoWithTimestamp = (value?: Date | null) => {
+  if( !value ) {
+    return 'Unknown'
+  }
+  return `${formatTimeAgo( value )} (${formatTimestamp( value )})`
+}

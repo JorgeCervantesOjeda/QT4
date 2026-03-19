@@ -39,7 +39,11 @@ service cloud.firestore {
     }
 
     function isDocumentAuthor() {
-      return isSignedIn() && resource.data.createdBy == request.auth.uid;
+      let authorId = (
+        resource.data.authorId is string
+        && resource.data.authorId.size() > 0
+      ) ? resource.data.authorId : resource.data.createdBy;
+      return isSignedIn() && authorId == request.auth.uid;
     }
 
     function isShortIdAssignment() {
@@ -451,6 +455,7 @@ service cloud.firestore {
         && request.resource.data.title.matches('.*\\S.*')
         && request.resource.data.shortId is int
         && request.resource.data.shortId > 0
+        && request.resource.data.authorId == request.auth.uid
         && request.resource.data.createdBy == request.auth.uid;
       allow update: if (
           (isProjectLeader(resource.data.projectId) || isDocumentAuthor() || isAdmin())

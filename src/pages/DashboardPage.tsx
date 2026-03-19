@@ -21,7 +21,7 @@ import {
   type DashboardTask,
   type DashboardTaskType,
 } from '../lib/dashboard'
-import { formatTimeAgo } from '../lib/time'
+import { formatTimeAgoWithTimestamp } from '../lib/time'
 
 type DashboardSectionKey = DashboardTaskType | 'expired' | 'activeTable'
 const DASHBOARD_COLLAPSE_STORAGE_KEY = 'qt4_dashboard_collapsed_sections_v2'
@@ -75,6 +75,20 @@ function DashboardPage() {
     }
   } )
   const [sorting, setSorting] = useState<SortingState>( [ { id: 'createdAt', desc: false } ] )
+  const [expiredSorting, setExpiredSorting] = useState<SortingState>( () => {
+    const storedSorting = window.localStorage.getItem( 'qt4_dashboard_expired_sorting' )
+    if( storedSorting ) {
+      try {
+        const parsed = JSON.parse( storedSorting ) as SortingState
+        if( Array.isArray( parsed ) ) {
+          return parsed
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
+    return [ { id: 'createdAtMs', desc: true } ]
+  } )
   const isLoadingTasks = activeRefreshScope !== null
   const refreshScopeLabel: Record<DashboardRefreshScope, string> = {
     all: 'all sections',
@@ -124,6 +138,10 @@ function DashboardPage() {
     () => taskTableRows.filter( ( task ) => task.lifecycleState !== 'expired' ),
     [ taskTableRows ],
   )
+  const expiredTaskTableRows = useMemo(
+    () => taskTableRows.filter( ( task ) => task.lifecycleState === 'expired' ),
+    [ taskTableRows ],
+  )
 
   const taskColumns = useMemo<ColumnDef<DashboardTask & { createdAtMs: number }>[]>( 
     () => [
@@ -142,7 +160,7 @@ function DashboardPage() {
       {
         header: 'Created',
         accessorKey: 'createdAtMs',
-        cell: ( info ) => formatTimeAgo( info.row.original.createdAt ),
+        cell: ( info ) => formatTimeAgoWithTimestamp( info.row.original.createdAt ),
       },
     ],
     [],
@@ -327,6 +345,10 @@ function DashboardPage() {
     window.localStorage.setItem( 'qt4_dashboard_sorting', JSON.stringify( sorting ) )
   }, [ sorting ] )
 
+  useEffect( () => {
+    window.localStorage.setItem( 'qt4_dashboard_expired_sorting', JSON.stringify( expiredSorting ) )
+  }, [ expiredSorting ] )
+
   const toggleSection = (sectionKey: DashboardSectionKey) => {
     setCollapsedSections( ( previous ) => ( {
       ...previous,
@@ -395,7 +417,7 @@ function DashboardPage() {
       <h4>{task.title}</h4>
       <p className="muted">{task.detail}</p>
       <p className="muted">
-        Created: {task.createdAt ? formatTimeAgo( task.createdAt ) : 'Unknown'}
+        Created: {formatTimeAgoWithTimestamp( task.createdAt )}
       </p>
       {task.visualState === 'reviewGrace' ? <p className="muted">Reply or review is in grace period.</p> : null}
     </article>
@@ -476,6 +498,30 @@ function DashboardPage() {
     </div>
   )
 
+  const renderExpiredTableSection = () =>
+    renderTableSection(
+      'Expired Uncompleted Tasks',
+      'expired',
+      expiredTaskTableRows.length > 0 ? (
+        <>
+          <p className="muted">Refresh reviewer and reply sections to recalculate expired tasks.</p>
+          <DataTable
+            columns={taskColumns}
+            data={expiredTaskTableRows}
+            sorting={expiredSorting}
+            onSortingChange={setExpiredSorting}
+            tableClassName="data-table--dashboard"
+            getRowClassName={( row ) => resolveTaskVisualClassName( row )}
+            storageKey="qt4_table_dashboard_expired"
+            enablePagination
+            initialPageSize={10}
+            onRowClick={( row ) => navigate( row.link )}
+          />
+        </>
+      ) : null,
+      'No tasks expired without completion.',
+    )
+
   return (
     <div className="app-shell">
       <BackStack links={[]} />
@@ -494,7 +540,7 @@ function DashboardPage() {
         <section className="panel">
           <p className="muted">User: {user?.email ?? 'No email'}</p>
           <p className="dashboard-refresh">
-            Last refresh: {dashboardUpdatedAt ? formatTimeAgo( dashboardUpdatedAt ) : 'Not refreshed yet'}
+            Last refresh: {dashboardUpdatedAt ? formatTimeAgoWithTimestamp( dashboardUpdatedAt ) : 'Not refreshed yet'}
           </p>
           <div className="actions actions--dashboard-primary">
             <Link className="link" to="/projects">
@@ -636,12 +682,10 @@ function DashboardPage() {
                 {renderSection( 'Replies Needed', 'reply', 'reply', taskGroups.reply )}
                 {renderSection( 'In Review (Reviewer, no comments)', 'reviewer', 'reviewer', taskGroups.reviewer )}
                 {renderSection( 'Accepted Versions With Accepted Error Reports', 'acceptedReport', 'acceptedReport', taskGroups.acceptedReport )}
-                {renderSection( 'Expired Uncompleted Tasks', 'expired', null, taskGroups.expired, 'No tasks expired without completion.' )}
+                {renderExpiredTableSection()}
               </div>
             )}
-            {viewMode === 'table'
-              ? renderSection( 'Expired Uncompleted Tasks', 'expired', null, taskGroups.expired, 'No tasks expired without completion.' )
-              : null}
+            {viewMode === 'table' ? renderExpiredTableSection() : null}
           </section>
         ) : null}
       </main>

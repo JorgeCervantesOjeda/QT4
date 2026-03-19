@@ -5,9 +5,7 @@ import {
   doc,
   getDoc,
   getDocs,
-  limit,
   onSnapshot,
-  orderBy,
   query,
   QuerySnapshot,
   runTransaction,
@@ -26,7 +24,7 @@ import { useErrorChecklistModal } from '../hooks/useErrorChecklistModal'
 import { FIRST_VERSION_NUMBER, versionNumberToString } from '../domain/types'
 import { logAudit } from '../lib/audit'
 import { db } from '../lib/firebase'
-import { formatTimeAgo } from '../lib/time'
+import { formatTimeAgoWithTimestamp } from '../lib/time'
 
 type DocumentSummary = {
   id: string
@@ -62,6 +60,43 @@ const pickLatestDate = ( ...values: Array<Date | null | undefined> ): Date | nul
     }
   }
   return latest
+}
+
+const toSnapshotDate = (value: unknown): Date | null => {
+  if( !value ) {
+    return null
+  }
+  if( typeof value === 'object' && value && 'toDate' in value && typeof ( value as { toDate?: () => Date } ).toDate === 'function' ) {
+    return ( value as { toDate: () => Date } ).toDate()
+  }
+  if( value instanceof Date ) {
+    return value
+  }
+  return null
+}
+
+const resolveVersionDocumentActivityAt = (versionData: Record<string, unknown>): Date | null => {
+  const status = typeof versionData.status === 'string' ? versionData.status : null
+  const createdAt = toSnapshotDate( versionData.createdAt )
+  const updatedAt = toSnapshotDate( versionData.updatedAt )
+  const activityAt = toSnapshotDate( versionData.activityAt )
+  const fileUploadedAt = toSnapshotDate( versionData.fileUploadedAt )
+  const reviewStartAt = toSnapshotDate( versionData.reviewStartAt )
+  const reviewEndAt = toSnapshotDate( versionData.reviewEndAt )
+
+  if( activityAt ) {
+    return pickLatestDate( activityAt, fileUploadedAt, reviewStartAt, reviewEndAt, createdAt )
+  }
+
+  if( status === 'Accepted' || status === 'Rejected' || status === 'Replaced' ) {
+    return pickLatestDate( updatedAt, fileUploadedAt, reviewStartAt, reviewEndAt, createdAt )
+  }
+
+  if( status === 'Reviewed' ) {
+    return pickLatestDate( reviewEndAt, fileUploadedAt, reviewStartAt, createdAt )
+  }
+
+  return pickLatestDate( fileUploadedAt, reviewStartAt, createdAt )
 }
 
 function ProjectDocumentsPage() {
@@ -194,7 +229,7 @@ function ProjectDocumentsPage() {
       {
         header: 'Last activity',
         accessorKey: 'updatedAtMs',
-        cell: ( info ) => formatTimeAgo( info.row.original.lastActivityAt ),
+        cell: ( info ) => formatTimeAgoWithTimestamp( info.row.original.lastActivityAt ),
       },
     ],
     [ baseDocumentById ],
@@ -317,8 +352,8 @@ function ProjectDocumentsPage() {
 
       const baseDocuments = snapshot.docs.map( ( docSnapshot ) => {
         const data = docSnapshot.data()
-        const createdAt = data.createdAt?.toDate?.() ?? null
-        const updatedAt = data.updatedAt?.toDate?.() ?? null
+        const createdAt = toSnapshotDate( data.createdAt )
+        const updatedAt = toSnapshotDate( data.updatedAt )
         return {
           id: docSnapshot.id,
           title: ( data.title as string ) ?? '',
@@ -336,53 +371,90 @@ function ProjectDocumentsPage() {
       } )
 
       step = 'latest-versions'
-      const latestVersions = await Promise.all(
-        baseDocuments.map( async ( documentItem ) => {
-          try {
-            const versionQuery = query(
-              collection( db, 'versions' ),
-              where( 'projectId', '==', projectId ),
-              where( 'docId', '==', documentItem.id ),
-              orderBy( 'number', 'desc' ),
-              limit( 1 ),
-            )
-            const versionSnapshot = await getDocs( versionQuery )
-            const versionData = versionSnapshot.docs[0]?.data()
-            if( !versionData ) {
-              return { documentItem, isMine: documentItem.createdBy === userId }
-            }
-            const createdBy = ( versionData.createdBy as string | undefined ) ?? ''
-            const reviewerIds = ( versionData.reviewerIds as string[] | undefined ) ?? []
-            const isMine = createdBy === userId || reviewerIds.includes( userId )
-            const latestVersionNumber = Number( versionData.number ?? 0 )
-            const latestStatus = ( versionData.status as string | undefined ) ?? 'In Creation'
-            const latestVersionUpdatedAt = versionData.updatedAt?.toDate?.() ?? null
-            const latestVersionCreatedAt = versionData.createdAt?.toDate?.() ?? null
-            const latestReviewEndAt = versionData.reviewEndAt?.toDate?.() ?? null
-            return {
-              documentItem: {
-                ...documentItem,
-                latestVersionNumber,
-                latestStatus,
-                latestReviewEndAt,
-                lastActivityAt: pickLatestDate(
-                  documentItem.updatedAt,
-                  documentItem.createdAt,
-                  latestVersionUpdatedAt,
-                  latestVersionCreatedAt,
-                ),
-              },
-              isMine,
-            }
-          } catch( err ) {
-            console.warn( 'ProjectDocuments latest version read failed', {
-              documentId: documentItem.id,
-              error: err,
-            } )
-            return { documentItem, isMine: documentItem.createdBy === userId }
-          }
-        } ),
+      const versionsSnapshot = await getDocs(
+        query( collection( db, 'versions' ), where( 'projectId', '==', projectId ) ),
       )
+      const versionSummaryByDocId = new Map<string, {
+        latestNumber: number
+        latestStatus: string
+        latestReviewEndAt: Date | null
+        latestVersionCreatedAt: Date | null
+        latestVersionActivityAt: Date | null
+        latestCreatedBy: string
+        latestReviewerIds: string[]
+        earliestVersionCreatedAt: Date | null
+      }>()
+      versionsSnapshot.docs.forEach( ( versionSnapshot ) => {
+        const versionData = versionSnapshot.data()
+        const versionDocId = ( versionData.docId as string | undefined ) ?? ''
+        if( !versionDocId ) {
+          return
+        }
+        const versionNumber = Number( versionData.number ?? 0 )
+        const versionCreatedAt = toSnapshotDate( versionData.createdAt )
+        const versionActivityAt = resolveVersionDocumentActivityAt( versionData )
+        const current = versionSummaryByDocId.get( versionDocId )
+
+        if( !current || versionNumber >= current.latestNumber ) {
+          versionSummaryByDocId.set( versionDocId, {
+            latestNumber: versionNumber,
+            latestStatus: ( versionData.status as string | undefined ) ?? 'In Creation',
+            latestReviewEndAt: toSnapshotDate( versionData.reviewEndAt ),
+            latestVersionCreatedAt: versionCreatedAt,
+            latestVersionActivityAt: versionActivityAt,
+            latestCreatedBy: ( versionData.createdBy as string | undefined ) ?? '',
+            latestReviewerIds: ( versionData.reviewerIds as string[] | undefined ) ?? [],
+            earliestVersionCreatedAt:
+              current?.earliestVersionCreatedAt && versionCreatedAt
+                ? new Date( Math.min( current.earliestVersionCreatedAt.getTime(), versionCreatedAt.getTime() ) )
+                : current?.earliestVersionCreatedAt ?? versionCreatedAt,
+          } )
+          return
+        }
+
+        if( versionCreatedAt ) {
+          current.earliestVersionCreatedAt = current.earliestVersionCreatedAt
+            ? new Date( Math.min( current.earliestVersionCreatedAt.getTime(), versionCreatedAt.getTime() ) )
+            : versionCreatedAt
+        }
+      } )
+
+      const latestVersions = baseDocuments.map( ( documentItem ) => {
+        const versionSummary = versionSummaryByDocId.get( documentItem.id )
+        if( !versionSummary ) {
+          return {
+            documentItem: {
+              ...documentItem,
+              createdAt: documentItem.createdAt ?? documentItem.updatedAt ?? null,
+            },
+            isMine: documentItem.createdBy === userId,
+          }
+        }
+        const isMine =
+          versionSummary.latestCreatedBy === userId ||
+          versionSummary.latestReviewerIds.includes( userId )
+        const resolvedCreatedAt =
+          documentItem.createdAt ??
+          versionSummary.earliestVersionCreatedAt ??
+          documentItem.updatedAt ??
+          null
+        return {
+          documentItem: {
+            ...documentItem,
+            createdAt: resolvedCreatedAt,
+            latestVersionNumber: versionSummary.latestNumber,
+            latestStatus: versionSummary.latestStatus,
+            latestReviewEndAt: versionSummary.latestReviewEndAt,
+            lastActivityAt: pickLatestDate(
+              documentItem.updatedAt,
+              resolvedCreatedAt,
+              versionSummary.latestVersionActivityAt,
+              versionSummary.latestVersionCreatedAt,
+            ),
+          },
+          isMine,
+        }
+      } )
       if( filter === 'mine' && userId ) {
         const filtered = latestVersions
           .filter( ( entry ) => entry.isMine )
@@ -557,6 +629,7 @@ function ProjectDocumentsPage() {
           projectId,
           title: title.trim(),
           createdBy: userId,
+          authorId: userId,
           updatedBy: userId,
           shortId: nextNumber,
           createdAt: serverTimestamp(),
@@ -586,6 +659,7 @@ function ProjectDocumentsPage() {
           acceptedErrorReportId: null,
           previousVersionId: null,
           createdAt: serverTimestamp(),
+          activityAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           updatedBy: userId,
         } )
@@ -814,11 +888,8 @@ function ProjectDocumentsPage() {
                         : 'No versions yet'}
                     </p>
                     <p className="muted">Creator: {formatUserLabel( documentItem.createdBy )}</p>
-                    <p className="muted">Created: {formatTimeAgo( documentItem.createdAt )}</p>
-                    <p className="muted">Last activity: {formatTimeAgo( documentItem.lastActivityAt )}</p>
-                    <div className="actions">
-                      <span className="muted">Open versions</span>
-                    </div>
+                    <p className="muted">Created: {formatTimeAgoWithTimestamp( documentItem.createdAt )}</p>
+                    <p className="muted">Last activity: {formatTimeAgoWithTimestamp( documentItem.lastActivityAt )}</p>
                   </article>
                 ) )}
               </div>
