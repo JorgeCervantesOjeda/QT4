@@ -1042,46 +1042,73 @@ function AdminAuditPage() {
       return
     }
     setReviewRepairStatus( 'running' )
-    setReviewRepairMessage( 'Loading In Review versions...' )
+    setReviewRepairMessage( 'Loading versions...' )
     setReviewRepairSummary( '' )
     try {
-      const versionsSnapshot = await getDocs(
-        query( collection( db, 'versions' ), where( 'status', '==', 'In Review' ) ),
-      )
+      const versionsSnapshot = await getDocs( collection( db, 'versions' ) )
 
       const updates = versionsSnapshot.docs.flatMap( ( snapshot ) => {
         const data = snapshot.data()
+        const status = ( data.status as string | undefined ) ?? ''
+        const currentCreatedAt = toTimestampDate( data.createdAt )
+        const reviewStartAt = toTimestampDate( data.reviewStartAt )
+        const updatedAt = toTimestampDate( data.updatedAt )
         const currentReviewEndAt = toTimestampDate( data.reviewEndAt )
-        if( currentReviewEndAt ) {
+        const inferredCreatedAt =
+          currentCreatedAt ??
+          reviewStartAt ??
+          updatedAt ??
+          ( currentReviewEndAt ? new Date( currentReviewEndAt.getTime() - REVIEW_WINDOW_MS ) : null ) ??
+          new Date()
+        const nextData: Record<string, unknown> = {
+          updatedAt: serverTimestamp(),
+          updatedBy: userId,
+        }
+        let repairedCreatedAt = false
+        let repairedReviewEndAt = false
+        let createdAtSource: 'reviewStartAt' | 'updatedAt' | 'reviewEndAt' | 'currentTime' | null = null
+        if( !currentCreatedAt ) {
+          nextData.createdAt = Timestamp.fromDate( inferredCreatedAt )
+          repairedCreatedAt = true
+          if( reviewStartAt ) {
+            createdAtSource = 'reviewStartAt'
+          } else if( updatedAt ) {
+            createdAtSource = 'updatedAt'
+          } else if( currentReviewEndAt ) {
+            createdAtSource = 'reviewEndAt'
+          } else {
+            createdAtSource = 'currentTime'
+          }
+        }
+        if( status === 'In Review' && !currentReviewEndAt ) {
+          const reviewBaseDate = reviewStartAt ?? currentCreatedAt ?? inferredCreatedAt
+          const nextReviewEndAt = new Date( reviewBaseDate.getTime() + REVIEW_WINDOW_MS )
+          nextData.reviewEndAt = Timestamp.fromDate( nextReviewEndAt )
+          repairedReviewEndAt = true
+        }
+        if( !repairedCreatedAt && !repairedReviewEndAt ) {
           return []
         }
-        const baseDate =
-          toTimestampDate( data.reviewStartAt ) ??
-          toTimestampDate( data.updatedAt ) ??
-          toTimestampDate( data.createdAt ) ??
-          new Date()
-        const nextReviewEndAt = new Date( baseDate.getTime() + REVIEW_WINDOW_MS )
         return [
           {
             ref: doc( db, 'versions', snapshot.id ),
-            data: {
-              reviewEndAt: Timestamp.fromDate( nextReviewEndAt ),
-              updatedAt: serverTimestamp(),
-              updatedBy: userId,
-            },
-            usedReviewStartAt: Boolean( toTimestampDate( data.reviewStartAt ) ),
+            data: nextData,
+            repairedCreatedAt,
+            repairedReviewEndAt,
+            createdAtSource,
+            usedReviewStartAt: repairedReviewEndAt && Boolean( reviewStartAt ),
           },
         ]
       } )
 
       if( updates.length === 0 ) {
         setReviewRepairStatus( 'done' )
-        setReviewRepairMessage( 'No repairs needed. All In Review versions already have reviewEndAt.' )
-        setReviewRepairSummary( `In Review versions scanned: ${versionsSnapshot.docs.length}.` )
+        setReviewRepairMessage( 'No repairs needed. Version timestamps are already complete.' )
+        setReviewRepairSummary( `Versions scanned: ${versionsSnapshot.docs.length}.` )
         return
       }
 
-      setReviewRepairMessage( 'Applying review expiration repairs...' )
+      setReviewRepairMessage( 'Applying timestamp repairs...' )
       const updateChunks = chunkArray( updates, 400 )
       for( const chunk of updateChunks ) {
         const batch = writeBatch( db )
@@ -1091,17 +1118,25 @@ function AdminAuditPage() {
         await batch.commit()
       }
 
+      const repairedCreatedAt = updates.filter( ( update ) => update.repairedCreatedAt ).length
+      const repairedReviewEndAt = updates.filter( ( update ) => update.repairedReviewEndAt ).length
       const basedOnReviewStart = updates.filter( ( update ) => update.usedReviewStartAt ).length
-      const basedOnFallbackDate = updates.length - basedOnReviewStart
+      const createdAtFromReviewStart = updates.filter( ( update ) => update.createdAtSource === 'reviewStartAt' ).length
+      const createdAtFromUpdatedAt = updates.filter( ( update ) => update.createdAtSource === 'updatedAt' ).length
+      const createdAtFromReviewEndAt = updates.filter( ( update ) => update.createdAtSource === 'reviewEndAt' ).length
+      const createdAtFromCurrentTime = updates.filter( ( update ) => update.createdAtSource === 'currentTime' ).length
+      const scannedInReview = versionsSnapshot.docs.filter(
+        ( snapshot ) => ( ( snapshot.data().status as string | undefined ) ?? '' ) === 'In Review',
+      ).length
       setReviewRepairStatus( 'done' )
-      setReviewRepairMessage( 'Review expiration repair completed.' )
+      setReviewRepairMessage( 'Version timestamp repair completed.' )
       setReviewRepairSummary(
-        `In Review scanned: ${versionsSnapshot.docs.length}. Repaired: ${updates.length}. Based on reviewStartAt: ${basedOnReviewStart}. Based on fallback date: ${basedOnFallbackDate}.`,
+        `Versions scanned: ${versionsSnapshot.docs.length}. In Review scanned: ${scannedInReview}. createdAt repaired: ${repairedCreatedAt} (reviewStartAt: ${createdAtFromReviewStart}, updatedAt: ${createdAtFromUpdatedAt}, reviewEndAt fallback: ${createdAtFromReviewEndAt}, current time: ${createdAtFromCurrentTime}). reviewEndAt repaired: ${repairedReviewEndAt} (based on reviewStartAt: ${basedOnReviewStart}).`,
       )
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
       setReviewRepairStatus( 'error' )
-      setReviewRepairMessage( `Review expiration repair failed: ${message}` )
+      setReviewRepairMessage( `Version timestamp repair failed: ${message}` )
     }
   }
 
@@ -1638,7 +1673,7 @@ function AdminAuditPage() {
                 onClick={requestReviewRepairConfirmation}
                 disabled={reviewRepairStatus === 'running'}
               >
-                {reviewRepairStatus === 'running' ? 'Repairing...' : 'Repair In Review expirations'}
+                {reviewRepairStatus === 'running' ? 'Repairing...' : 'Repair legacy version timestamps'}
               </button>
             </div>
             {reviewRepairStatus === 'running' ? <p className="muted">{reviewRepairMessage}</p> : null}
@@ -1647,7 +1682,7 @@ function AdminAuditPage() {
             {reviewRepairStatus === 'error' ? <p className="error">{reviewRepairMessage}</p> : null}
             {reviewRepairStatus === 'idle' ? (
               <p className="muted">
-                Adds missing review expiration (`reviewEndAt`) to versions in `In Review`.
+                Repairs legacy version timestamps by backfilling missing `createdAt` and missing `reviewEndAt` on `In Review` versions.
               </p>
             ) : null}
           </section>
@@ -1676,10 +1711,10 @@ function AdminAuditPage() {
         ) : null}
         {confirmReviewRepair ? (
           <ModalDialog onClose={() => setConfirmReviewRepair( false )}>
-              <h3>Repair review expirations</h3>
+              <h3>Repair version timestamps</h3>
               <GiphyInline reason="thinking" mode="inline" />
               <p className="muted">
-                Confirm backfilling `reviewEndAt` on `In Review` versions that do not have expiration yet.
+                Confirm backfilling missing `createdAt` and missing `reviewEndAt` for legacy versions.
               </p>
               <div className="actions">
                 <button

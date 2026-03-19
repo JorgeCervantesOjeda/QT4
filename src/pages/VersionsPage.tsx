@@ -121,6 +121,15 @@ type CommentSummary = {
   createdAt?: Date
 }
 
+type AcceptedErrorReportSummary = {
+  docId: string
+  title: string
+  shortId: number | null
+  latestVersionId: string
+  latestVersionNumber: number
+  acceptedAt?: Date | null
+}
+
 type PendingVersionAction = 'createVersion' | 'startReview' | 'replaceFile'
 type DashboardFocusTarget = 'actions' | 'file' | 'issues' | 'comments'
 
@@ -389,6 +398,8 @@ function VersionsPage() {
     isBlocking: false,
     isLoading: false,
   })
+  const [acceptedErrorReports, setAcceptedErrorReports] = useState<AcceptedErrorReportSummary[]>([] )
+  const [acceptedErrorReportsStatus, setAcceptedErrorReportsStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>( 'idle' )
   const [threads, setThreads] = useState<ThreadSummary[]>([] )
   const [visibleThreadRows, setVisibleThreadRows] = useState<ThreadSummary[]>([] )
   const [commentsByThread, setCommentsByThread] = useState<Record<string, CommentSummary[]>>( {} )
@@ -1064,8 +1075,8 @@ function VersionsPage() {
       },
     },
     {
-      header: 'Review time left',
-      id: 'reviewTimeLeft',
+      header: 'Review period',
+      id: 'reviewPeriod',
       cell: ( info ) => {
         const version = info.row.original
         if( version.status !== 'In Review' ) {
@@ -1076,7 +1087,7 @@ function VersionsPage() {
         }
         const remainingMs = version.reviewEndAt.getTime() - clockNowMs
         if( remainingMs <= 0 ) {
-          return 'Expired'
+          return 'Main window ended'
         }
         return formatApproxCountdown( remainingMs )
       },
@@ -1102,6 +1113,61 @@ function VersionsPage() {
       },
     },
   ], [ formatUserLabel ] )
+
+  const loadAcceptedErrorReportsForBaseVersion = useCallback(
+    async (activeProjectId: string, baseVersionId: string): Promise<AcceptedErrorReportSummary[]> => {
+      if( !activeProjectId || !baseVersionId ) {
+        return []
+      }
+      const errorReportsSnapshot = await getDocs(
+        query(
+          collection( db, 'documents' ),
+          where( 'projectId', '==', activeProjectId ),
+          where( 'type', '==', 'errorReport' ),
+          where( 'baseVersionId', '==', baseVersionId ),
+        ),
+      )
+      if( errorReportsSnapshot.empty ) {
+        return []
+      }
+      const reportSummaries = await Promise.all(
+        errorReportsSnapshot.docs.map( async ( reportSnapshot ) => {
+          const reportData = reportSnapshot.data()
+          const reportVersionSnapshot = await getDocs(
+            query(
+              collection( db, 'versions' ),
+              where( 'projectId', '==', activeProjectId ),
+              where( 'docId', '==', reportSnapshot.id ),
+              orderBy( 'number', 'desc' ),
+              limit( 1 ),
+            ),
+          )
+          const latestVersionSnapshot = reportVersionSnapshot.docs[0]
+          const latestVersionData = latestVersionSnapshot?.data()
+          const latestVersionStatus = ( latestVersionData?.status as string | undefined ) ?? ''
+          if( latestVersionStatus !== 'Accepted' || !latestVersionSnapshot ) {
+            return null
+          }
+          return {
+            docId: reportSnapshot.id,
+            title: ( reportData.title as string | undefined ) ?? 'Untitled error report',
+            shortId: Number.isFinite( reportData.shortId ) ? Number( reportData.shortId ) : null,
+            latestVersionId: latestVersionSnapshot.id,
+            latestVersionNumber: Number( latestVersionData?.number ?? FIRST_VERSION_NUMBER ),
+            acceptedAt: toTimestampDate( latestVersionData?.updatedAt ) ?? toTimestampDate( latestVersionData?.createdAt ),
+          }
+        } ),
+      )
+      return reportSummaries
+        .filter( Boolean )
+        .sort( ( left, right ) => {
+          const leftAcceptedAt = left?.acceptedAt?.getTime() ?? 0
+          const rightAcceptedAt = right?.acceptedAt?.getTime() ?? 0
+          return rightAcceptedAt - leftAcceptedAt
+        } ) as AcceptedErrorReportSummary[]
+    },
+    [],
+  )
 
 
   const loadDocumentAndVersions = useCallback( async () => {
@@ -1195,7 +1261,6 @@ function VersionsPage() {
           acceptedErrorReportId: ( data.acceptedErrorReportId as string | null | undefined ) ?? null,
         }
       } )
-      const latestVersionLocal = nextVersions[0] ?? null
       setVersions( ( previous ) => ( areVersionsEqual( previous, nextVersions ) ? previous : nextVersions ) )
 
       const members = membersSnapshot.docs.map( ( memberSnapshot ) => {
@@ -1375,51 +1440,6 @@ function VersionsPage() {
       setUserDirectoryById( ( previous ) => {
         return areUserDirectoryEqual( previous, nextDirectoryById ) ? previous : nextDirectoryById
       } )
-
-      step = 'error-reports'
-      if( latestVersionLocal && latestVersionLocal.status === 'Accepted' ) {
-        setErrorReportGate( { isBlocking: false, isLoading: true } )
-        const errorReportsSnapshot = await getDocs(
-          query(
-            collection( db, 'documents' ),
-            where( 'projectId', '==', loadedProjectId ),
-            where( 'type', '==', 'errorReport' ),
-            where( 'baseVersionId', '==', latestVersionLocal.id ),
-          ),
-        )
-        const errorReportDocs = errorReportsSnapshot.docs.map( ( docSnapshot ) => docSnapshot.id )
-        if( errorReportDocs.length === 0 ) {
-          setErrorReportGate( { isBlocking: true, isLoading: false } )
-        } else {
-          const latestReportVersions = await Promise.all(
-            errorReportDocs.map( async ( reportDocId ) => {
-              const reportVersionSnapshot = await getDocs(
-                query(
-                  collection( db, 'versions' ),
-                  where( 'projectId', '==', loadedProjectId ),
-                  where( 'docId', '==', reportDocId ),
-                  orderBy( 'number', 'desc' ),
-                  limit( 1 ),
-                ),
-              )
-              const reportData = reportVersionSnapshot.docs[0]?.data()
-              return {
-                reportDocId,
-                latestVersionId: reportVersionSnapshot.docs[0]?.id ?? null,
-                latestVersionNumber: Number( reportData?.number ?? FIRST_VERSION_NUMBER ),
-                latestVersionStatus: ( reportData?.status as string | undefined ) ?? '',
-              }
-            } ),
-          )
-          const hasAcceptedErrorReport = latestReportVersions.some(
-            ( report ) => report.latestVersionStatus === 'Accepted',
-          )
-          const isBlocking = !hasAcceptedErrorReport
-          setErrorReportGate( { isBlocking, isLoading: false } )
-        }
-      } else {
-        setErrorReportGate( { isBlocking: false, isLoading: false } )
-      }
 
       step = 'access'
     } catch( err ) {
@@ -1934,49 +1954,11 @@ function VersionsPage() {
     setErrorReportGate( { isBlocking: true, isLoading: true } )
     void ( async () => {
       try {
-        const errorReportsSnapshot = await getDocs(
-          query(
-            collection( db, 'documents' ),
-            where( 'projectId', '==', activeProjectId ),
-            where( 'type', '==', 'errorReport' ),
-            where( 'baseVersionId', '==', latestVersion.id ),
-          ),
-        )
-        const errorReportDocs = errorReportsSnapshot.docs.map( ( docSnapshot ) => docSnapshot.id )
+        const latestReportVersions = await loadAcceptedErrorReportsForBaseVersion( activeProjectId, latestVersion.id )
         if( !isActive ) {
           return
         }
-        if( errorReportDocs.length === 0 ) {
-          setErrorReportGate( { isBlocking: true, isLoading: false } )
-          return
-        }
-        const latestReportVersions = await Promise.all(
-          errorReportDocs.map( async ( reportDocId ) => {
-            const reportVersionSnapshot = await getDocs(
-              query(
-                collection( db, 'versions' ),
-                where( 'projectId', '==', activeProjectId ),
-                where( 'docId', '==', reportDocId ),
-                orderBy( 'number', 'desc' ),
-                limit( 1 ),
-              ),
-            )
-            const reportData = reportVersionSnapshot.docs[0]?.data()
-            return {
-              reportDocId,
-              latestVersionId: reportVersionSnapshot.docs[0]?.id ?? null,
-              latestVersionNumber: Number( reportData?.number ?? FIRST_VERSION_NUMBER ),
-              latestVersionStatus: ( reportData?.status as string | undefined ) ?? '',
-            }
-          } ),
-        )
-        if( !isActive ) {
-          return
-        }
-        const hasAcceptedErrorReport = latestReportVersions.some(
-          ( report ) => report.latestVersionStatus === 'Accepted',
-        )
-        const isBlocking = !hasAcceptedErrorReport
+        const isBlocking = latestReportVersions.length === 0
         setErrorReportGate( { isBlocking, isLoading: false } )
       } catch( err ) {
         if( !isActive ) {
@@ -1991,7 +1973,40 @@ function VersionsPage() {
     return () => {
       isActive = false
     }
-  }, [ documentData?.projectId, projectIdFromQuery, latestVersion?.id, latestVersion?.status, latestVersion ] )
+  }, [ documentData?.projectId, projectIdFromQuery, latestVersion?.id, latestVersion?.status, latestVersion, loadAcceptedErrorReportsForBaseVersion ] )
+
+  useEffect( () => {
+    const activeProjectId = documentData?.projectId ?? projectIdFromQuery
+    if( !activeProjectId || !selectedVersion ) {
+      setAcceptedErrorReports( [] )
+      setAcceptedErrorReportsStatus( 'idle' )
+      return
+    }
+
+    let isActive = true
+    setAcceptedErrorReportsStatus( 'loading' )
+    void ( async () => {
+      try {
+        const nextAcceptedReports = await loadAcceptedErrorReportsForBaseVersion( activeProjectId, selectedVersion.id )
+        if( !isActive ) {
+          return
+        }
+        setAcceptedErrorReports( nextAcceptedReports )
+        setAcceptedErrorReportsStatus( 'ready' )
+      } catch( err ) {
+        if( !isActive ) {
+          return
+        }
+        console.error( 'Accepted error reports failed to load:', err )
+        setAcceptedErrorReports( [] )
+        setAcceptedErrorReportsStatus( 'error' )
+      }
+    } )()
+
+    return () => {
+      isActive = false
+    }
+  }, [ documentData?.projectId, projectIdFromQuery, selectedVersion?.id, loadAcceptedErrorReportsForBaseVersion, selectedVersion ] )
 
   useEffect( () => {
     const candidateIds = new Set<string>()
@@ -2251,25 +2266,11 @@ function VersionsPage() {
     selectThreadKeepingViewport( targetThread.id )
   }, [ selectedThreadIndex, orderedThreads, selectThreadKeepingViewport ] )
 
-  const isVersionReviewExpired = (version?: Pick<VersionSummary, 'status' | 'reviewEndAt'> | null) =>
-    Boolean(
-      version &&
-      version.status === 'In Review' &&
-      version.reviewEndAt &&
-      version.reviewEndAt.getTime() <= clockNowMs,
-    )
-
   const versionStatusClassName = (version?: Pick<VersionSummary, 'status' | 'reviewEndAt'> | null) => {
-    if( isVersionReviewExpired( version ) ) {
-      return 'status-card--in-review-expired'
-    }
     return statusClassName( version?.status )
   }
 
   const versionSelectStatusClassName = (version?: Pick<VersionSummary, 'status' | 'reviewEndAt'> | null) => {
-    if( isVersionReviewExpired( version ) ) {
-      return 'version-select--in-review-expired'
-    }
     switch( version?.status ) {
       case 'In Creation':
         return 'version-select--in-creation'
@@ -2289,9 +2290,6 @@ function VersionsPage() {
   }
 
   const versionStatusColor = (version?: Pick<VersionSummary, 'status' | 'reviewEndAt'> | null) => {
-    if( isVersionReviewExpired( version ) ) {
-      return '#ffb347'
-    }
     switch( version?.status ) {
       case 'In Review':
         return '#fff59d'
@@ -4241,13 +4239,13 @@ function VersionsPage() {
                     Uploaded: {!version.hasFile ? 'No' : version.fileRefId ? 'Yes' : 'Missing metadata'}
                   </p>
                   <p className="muted">
-                    Review time left:{' '}
+                    Review period:{' '}
                     {version.status !== 'In Review'
                       ? '-'
                       : !version.reviewEndAt
                         ? 'No expiration'
                         : version.reviewEndAt.getTime() <= clockNowMs
-                          ? 'Expired'
+                          ? 'Main window ended'
                           : formatApproxCountdown( version.reviewEndAt.getTime() - clockNowMs )}
                   </p>
                   {hasLinkedFileMetadata( version ) ? (
@@ -4289,6 +4287,47 @@ function VersionsPage() {
                 </p>
               ) : null}
             </div>
+          ) : null}
+          {selectedVersion ? (
+            <section className="panel stack">
+              <div className="panel-header">
+                <h3>Accepted error reports for selected version</h3>
+                <p className="muted">{acceptedErrorReports.length}</p>
+              </div>
+              {acceptedErrorReportsStatus === 'loading' ? (
+                <p className="muted">Loading accepted error reports...</p>
+              ) : acceptedErrorReportsStatus === 'error' ? (
+                <p className="muted">Accepted error reports could not be loaded right now.</p>
+              ) : acceptedErrorReports.length === 0 ? (
+                <p className="muted">No accepted error reports are linked to this version.</p>
+              ) : (
+                <div className="project-grid">
+                  {acceptedErrorReports.map( ( report ) => (
+                    <article
+                      key={report.docId}
+                      className="project-card status-card--accepted"
+                      onClick={() => navigate( `/documents/${report.docId}/versions?projectId=${projectId}` )}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={( event ) => {
+                        if( event.key === 'Enter' || event.key === ' ' ) {
+                          event.preventDefault()
+                          navigate( `/documents/${report.docId}/versions?projectId=${projectId}` )
+                        }
+                      }}
+                    >
+                      <h4>{`${report.shortId ?? 'Unassigned'} - ${report.title}`}</h4>
+                      <p className="muted">
+                        Latest accepted version: {versionNumberToString( report.latestVersionNumber )}
+                      </p>
+                      <p className="muted">
+                        Accepted: {report.acceptedAt ? formatTimeAgo( report.acceptedAt ) : 'Unknown'}
+                      </p>
+                    </article>
+                  ) )}
+                </div>
+              )}
+            </section>
           ) : null}
           {selectedVersion ? (
             <section ref={filePanelRef} className="panel stack">

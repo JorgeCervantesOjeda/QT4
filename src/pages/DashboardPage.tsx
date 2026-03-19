@@ -70,11 +70,16 @@ function DashboardPage() {
 
   const taskGroups = useMemo(
     () => ( {
-      authoring: tasks.filter( ( task ) => task.type === 'authoring' ),
-      reply: tasks.filter( ( task ) => task.type === 'reply' ),
-      reviewer: tasks.filter( ( task ) => task.type === 'reviewer' ),
-      acceptedReport: tasks.filter( ( task ) => task.type === 'acceptedReport' ),
+      authoring: tasks.filter( ( task ) => task.type === 'authoring' && task.lifecycleState !== 'expired' ),
+      reply: tasks.filter( ( task ) => task.type === 'reply' && task.lifecycleState !== 'expired' ),
+      reviewer: tasks.filter( ( task ) => task.type === 'reviewer' && task.lifecycleState !== 'expired' ),
+      acceptedReport: tasks.filter( ( task ) => task.type === 'acceptedReport' && task.lifecycleState !== 'expired' ),
+      expired: tasks.filter( ( task ) => task.lifecycleState === 'expired' ),
     } ),
+    [ tasks ],
+  )
+  const activeTasks = useMemo(
+    () => tasks.filter( ( task ) => task.lifecycleState !== 'expired' ),
     [ tasks ],
   )
 
@@ -85,6 +90,10 @@ function DashboardPage() {
         createdAtMs: task.createdAt ? task.createdAt.getTime() : 0,
       } ) ),
     [ tasks ],
+  )
+  const activeTaskTableRows = useMemo(
+    () => taskTableRows.filter( ( task ) => task.lifecycleState !== 'expired' ),
+    [ taskTableRows ],
   )
 
   const taskColumns = useMemo<ColumnDef<DashboardTask & { createdAtMs: number }>[]>( 
@@ -292,9 +301,15 @@ function DashboardPage() {
     return `${String( hours ).padStart( 2, '0' )}:${String( minutes ).padStart( 2, '0' )}:${String( seconds ).padStart( 2, '0' )}`
   }
 
-  const resolveTaskStatusClassName = (task: Pick<DashboardTask, 'type' | 'reviewEndAt'>) => {
+  const resolveTaskStatusClassName = (task: Pick<DashboardTask, 'type' | 'reviewEndAt' | 'reviewPeriodState' | 'lifecycleState'>) => {
+    if( task.lifecycleState === 'expired' ) {
+      return 'status-card--in-review-expired'
+    }
     if( task.type !== 'reviewer' ) {
       return ''
+    }
+    if( task.reviewPeriodState === 'grace' ) {
+      return 'status-card--in-review'
     }
     if( task.reviewEndAt && task.reviewEndAt.getTime() <= nowMs ) {
       return 'status-card--in-review-expired'
@@ -326,23 +341,30 @@ function DashboardPage() {
 
   const renderSection = (
     title: string,
-    scope: DashboardTaskType,
+    scope: DashboardTaskType | null,
     sectionTasks: DashboardTask[],
+    emptyMessage: string = 'No pending tasks in this section.',
   ) => (
     <div className="stack">
       <div className="panel-header">
         <h3>{title}</h3>
         <div className="actions">
-          <button
-            type="button"
-            className="ghost"
-            ref={bindRefreshButtonRef( scope )}
-            onClick={() => triggerLoadTasks( scope )}
-            disabled={isLoadingTasks}
-          >
-            Refresh section
-          </button>
-          <span className="muted">Since refresh: {formatElapsed( lastRefreshByScope[scope] )}</span>
+          {scope ? (
+            <>
+              <button
+                type="button"
+                className="ghost"
+                ref={bindRefreshButtonRef( scope )}
+                onClick={() => triggerLoadTasks( scope )}
+                disabled={isLoadingTasks}
+              >
+                Refresh section
+              </button>
+              <span className="muted">Since refresh: {formatElapsed( lastRefreshByScope[scope] )}</span>
+            </>
+          ) : (
+            <span className="muted">Refresh reviewer and reply sections to recalculate expired tasks.</span>
+          )}
         </div>
       </div>
       {sectionTasks.length > 0 ? (
@@ -350,7 +372,7 @@ function DashboardPage() {
           {sectionTasks.map( ( task ) => renderTaskCard( task ) )}
         </div>
       ) : (
-        <p className="muted">No pending tasks in this section.</p>
+        <p className="muted">{emptyMessage}</p>
       )}
     </div>
   )
@@ -428,7 +450,7 @@ function DashboardPage() {
                 </div>
               </label>
             </div>
-            {tasks.length === 0 ? (
+            {activeTasks.length === 0 ? (
               <p className="muted">No pending tasks right now. Use a refresh button to load data.</p>
             ) : null}
             {viewMode === 'table' ? (
@@ -477,7 +499,7 @@ function DashboardPage() {
               </div>
               <DataTable
                   columns={taskColumns}
-                  data={taskTableRows}
+                  data={activeTaskTableRows}
                   sorting={sorting}
                   onSortingChange={setSorting}
                   tableClassName="data-table--dashboard"
@@ -492,8 +514,12 @@ function DashboardPage() {
                 {renderSection( 'Replies Needed', 'reply', taskGroups.reply )}
                 {renderSection( 'In Review (Reviewer, no comments)', 'reviewer', taskGroups.reviewer )}
                 {renderSection( 'Accepted Versions With Accepted Error Reports', 'acceptedReport', taskGroups.acceptedReport )}
+                {renderSection( 'Expired Uncompleted Tasks', null, taskGroups.expired, 'No tasks expired without completion.' )}
               </div>
             )}
+            {viewMode === 'table'
+              ? renderSection( 'Expired Uncompleted Tasks', null, taskGroups.expired, 'No tasks expired without completion.' )
+              : null}
           </section>
         )}
       </main>

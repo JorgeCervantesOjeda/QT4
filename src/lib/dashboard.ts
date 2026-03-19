@@ -14,16 +14,19 @@ import type { QueryConstraint } from 'firebase/firestore'
 import { versionNumberToString } from '../domain/types'
 import { logAudit } from './audit'
 import { db } from './firebase'
+import { canAddCommentInWindow } from './reviewWindow'
 
 export type DashboardTask = {
   id: string
   type: 'authoring' | 'reply' | 'reviewer' | 'acceptedReport'
+  lifecycleState?: 'active' | 'expired'
   title: string
   detail: string
   projectId: string
   link: string
   createdAt?: Date | null
   reviewEndAt?: Date | null
+  reviewPeriodState?: 'active' | 'grace'
 }
 
 export type DashboardTaskType = DashboardTask['type']
@@ -68,6 +71,7 @@ type ReplyTask = {
   id: string
   versionId: string
   threadId: string
+  lifecycleState: 'active' | 'expired'
 }
 
 const appendQueryParam = (link: string, key: string, value: string): string => {
@@ -132,10 +136,26 @@ const toThreadRecord = (snapshot: { id: string; data: () => Record<string, unkno
   }
 }
 
+const isReviewWindowActionable = (
+  version: Pick<VersionRecord, 'status' | 'reviewEndAt'>,
+  thread: Pick<ThreadRecord, 'status' | 'lastCommentAt'>,
+  nowMs: number,
+): boolean =>
+  canAddCommentInWindow( {
+    versionStatus: version.status,
+    reviewEndAt: version.reviewEndAt ?? null,
+    threadStatus: thread.status,
+    lastThreadCommentAt: thread.lastCommentAt ?? null,
+    canParticipate: true,
+    hasBody: true,
+    nowMs,
+  } )
+
 export const buildDashboardTasks = async (
   userId: string,
   options: BuildDashboardTasksOptions = {},
 ): Promise<DashboardTask[]> => {
+  const nowMs = Date.now()
   const requestedTypes = options.types && options.types.length > 0
     ? new Set<DashboardTaskType>( options.types )
     : null
@@ -188,7 +208,7 @@ export const buildDashboardTasks = async (
     return snapshots.flatMap( ( snapshot ) => snapshot.docs ).map( toVersionRecord )
   }
 
-  const [ authoringVersions, reviewerVersions ] = await Promise.all( [
+  const [ authoringVersions, reviewerCandidateVersions ] = await Promise.all( [
     needsAuthoring
       ? fetchVersionsForProjects( [
         where( 'createdBy', '==', userId ),
@@ -198,10 +218,12 @@ export const buildDashboardTasks = async (
     needsReviewer || needsReply
       ? fetchVersionsForProjects( [
         where( 'reviewerIds', 'array-contains', userId ),
-        where( 'status', '==', 'In Review' ),
       ] )
       : Promise.resolve( [] ),
   ] )
+  const reviewerVersions = reviewerCandidateVersions.filter(
+    ( version ) => version.status === 'In Review' || version.status === 'Reviewed',
+  )
 
   const userCommentsSnapshot = needsReviewer || needsReply
     ? await getDocs(
@@ -213,10 +235,18 @@ export const buildDashboardTasks = async (
     : null
 
   const authorReviewVersions = needsReply
-    ? await fetchVersionsForProjects( [
-      where( 'createdBy', '==', userId ),
-      where( 'status', '==', 'In Review' ),
-    ] )
+    ? (
+      await Promise.all( [
+        fetchVersionsForProjects( [
+          where( 'createdBy', '==', userId ),
+          where( 'status', '==', 'In Review' ),
+        ] ),
+        fetchVersionsForProjects( [
+          where( 'createdBy', '==', userId ),
+          where( 'status', '==', 'Reviewed' ),
+        ] ),
+      ] )
+    ).flat()
     : []
 
   const leaderProjectIds = needsReply
@@ -225,7 +255,7 @@ export const buildDashboardTasks = async (
   const leaderProjectChunks = chunkArray( leaderProjectIds, 10 ).filter( ( chunk ) => chunk.length > 0 )
   const leaderReviewSnapshots = needsReply
     ? await Promise.all(
-      leaderProjectChunks.map( ( chunk ) =>
+      leaderProjectChunks.flatMap( ( chunk ) => ( [
         getDocs(
           query(
             collection( db, 'versions' ),
@@ -233,7 +263,14 @@ export const buildDashboardTasks = async (
             where( 'status', '==', 'In Review' ),
           ),
         ),
-      ),
+        getDocs(
+          query(
+            collection( db, 'versions' ),
+            where( 'projectId', 'in', chunk ),
+            where( 'status', '==', 'Reviewed' ),
+          ),
+        ),
+      ] ) ),
     )
     : []
   const leaderReviewVersions = leaderReviewSnapshots.flatMap( ( snapshot ) => snapshot.docs ).map( toVersionRecord )
@@ -273,36 +310,46 @@ export const buildDashboardTasks = async (
     acc[version.id] = version
     return acc
   }, {} )
+  const reviewAccessVersionIds = Array.from(
+    new Set(
+      reviewAccessVersions
+        .filter( ( version ) => version.status === 'In Review' || version.status === 'Reviewed' )
+        .map( ( version ) => version.id )
+        .filter( Boolean ),
+    ),
+  )
+  const reviewAccessVersionIdSet = new Set( reviewAccessVersionIds )
+  const threadVersionChunks = chunkArray( reviewAccessVersionIds, 10 ).filter( ( chunk ) => chunk.length > 0 )
+  const reviewThreadSnapshots = ( needsReviewer || needsReply ) && threadVersionChunks.length > 0
+    ? await Promise.all(
+      threadVersionChunks.map( ( chunk ) =>
+        getDocs(
+          query(
+            collection( db, 'threads' ),
+            where( 'versionId', 'in', chunk ),
+            where( 'status', '==', 'open' ),
+          ),
+        ),
+      ),
+    )
+    : []
+  const openReviewThreads = reviewThreadSnapshots
+    .flatMap( ( snapshot ) => snapshot.docs )
+    .map( toThreadRecord )
+    .filter( ( thread ) => reviewAccessVersionIdSet.has( thread.versionId ) )
+  const openThreadsByVersionId = openReviewThreads.reduce<Record<string, ThreadRecord[]>>( ( acc, thread ) => {
+    if( !acc[thread.versionId] ) {
+      acc[thread.versionId] = []
+    }
+    acc[thread.versionId].push( thread )
+    return acc
+  }, {} )
   const repliedThreadTasks: ReplyTask[] = []
   const replyThreadById = new Map<string, ThreadRecord>()
   const replyTaskThreadIds = new Set<string>()
   if( needsReply ) {
     try {
-      const reviewVersionIdList = Array.from(
-        new Set(
-          reviewAccessVersions
-            .filter( ( version ) => version.status === 'In Review' )
-            .map( ( version ) => version.id )
-            .filter( Boolean ),
-        ),
-      )
-      const reviewVersionIds = new Set( reviewVersionIdList )
-      const threadVersionChunks = chunkArray( reviewVersionIdList, 10 ).filter( ( chunk ) => chunk.length > 0 )
-      const threadSnapshots = await Promise.all(
-        threadVersionChunks.map( ( chunk ) =>
-          getDocs(
-            query(
-              collection( db, 'threads' ),
-              where( 'versionId', 'in', chunk ),
-              where( 'status', '==', 'open' ),
-            ),
-          ),
-        ),
-      )
-      const threads = threadSnapshots
-        .flatMap( ( snapshot ) => snapshot.docs )
-        .map( toThreadRecord )
-        .filter( ( thread ) => reviewVersionIds.has( thread.versionId ) )
+      const threads = openReviewThreads
       for( const thread of threads ) {
         const version = reviewAccessVersionById[thread.versionId]
         if( !version ) {
@@ -314,6 +361,20 @@ export const buildDashboardTasks = async (
         const hasComments = thread.commentCount > 0 || Boolean( thread.lastCommentAt )
         const latestUserCommentAtMs = userCommentLatestByThread.get( thread.id ) ?? 0
         const latestUserCommentAt = latestUserCommentAtMs ? new Date( latestUserCommentAtMs ) : null
+        const hasPendingReply =
+          ( !latestUserCommentAt && canDetectWithoutParticipation && hasComments ) ||
+          Boolean(
+            latestUserCommentAt &&
+            thread.lastCommentAt &&
+            thread.lastCommentAt.getTime() > latestUserCommentAt.getTime() &&
+            thread.lastCommentBy &&
+            thread.lastCommentBy !== userId,
+          )
+        if( !hasPendingReply ) {
+          continue
+        }
+        const canReplyNow = isReviewWindowActionable( version, thread, nowMs )
+        const lifecycleState: 'active' | 'expired' = canReplyNow ? 'active' : 'expired'
         if( !latestUserCommentAt && canDetectWithoutParticipation && hasComments ) {
           if( !replyTaskThreadIds.has( thread.id ) ) {
             replyTaskThreadIds.add( thread.id )
@@ -321,6 +382,7 @@ export const buildDashboardTasks = async (
               id: thread.id,
               versionId: thread.versionId,
               threadId: thread.id,
+              lifecycleState,
             } )
             replyThreadById.set( thread.id, {
               ...thread,
@@ -346,6 +408,7 @@ export const buildDashboardTasks = async (
               id: thread.id,
               versionId: thread.versionId,
               threadId: thread.id,
+              lifecycleState,
             } )
             replyThreadById.set( thread.id, {
               ...thread,
@@ -551,6 +614,25 @@ export const buildDashboardTasks = async (
       if( userCommentedVersionIds.has( version.id ) ) {
         return
       }
+      const hasActionableReviewWindow =
+        version.status === 'In Review' &&
+        (
+          !version.reviewEndAt ||
+          version.reviewEndAt.getTime() > nowMs ||
+          ( openThreadsByVersionId[version.id] ?? [] ).some( ( thread ) =>
+            isReviewWindowActionable( version, thread, nowMs ),
+          )
+        )
+      const lifecycleState: 'active' | 'expired' = hasActionableReviewWindow ? 'active' : 'expired'
+      const reviewPeriodState =
+        hasActionableReviewWindow && version.reviewEndAt && version.reviewEndAt.getTime() <= nowMs
+          ? 'grace'
+          : hasActionableReviewWindow
+            ? 'active'
+            : undefined
+      if( lifecycleState === 'expired' && version.status !== 'In Review' && version.status !== 'Reviewed' ) {
+        return
+      }
       const projectId = version.projectId
       if( !projectId ) {
         return
@@ -559,8 +641,12 @@ export const buildDashboardTasks = async (
       nextTasks.push( {
         id: `reviewer-${version.id}`,
         type: 'reviewer',
+        lifecycleState,
         title: formatDocumentLabel( docId ),
-        detail: `${projectNameById[projectId] ?? 'Project'} - Review and add your first comment (Version ${versionNumberToString( version.number )})`,
+        detail:
+          lifecycleState === 'expired'
+            ? `${projectNameById[projectId] ?? 'Project'} - Review period closed before your first comment (Version ${versionNumberToString( version.number )})`
+            : `${projectNameById[projectId] ?? 'Project'} - Review and add your first comment${reviewPeriodState === 'grace' ? ' (grace period)' : ''} (Version ${versionNumberToString( version.number )})`,
         projectId,
         link: appendQueryParam(
           `/documents/${docId}/versions?projectId=${projectId}&versionId=${version.id}`,
@@ -569,6 +655,7 @@ export const buildDashboardTasks = async (
         ),
         createdAt: version.reviewStartAt ?? version.updatedAt ?? version.createdAt ?? null,
         reviewEndAt: version.reviewEndAt ?? null,
+        reviewPeriodState,
       } )
     } )
   }
@@ -591,8 +678,12 @@ export const buildDashboardTasks = async (
       nextTasks.push( {
         id: `reply-${threadTask.threadId}`,
         type: 'reply',
+        lifecycleState: threadTask.lifecycleState,
         title: formatDocumentLabel( docId ),
-        detail: `${projectNameById[projectId] ?? 'Project'} - Reply to the latest thread response`,
+        detail:
+          threadTask.lifecycleState === 'expired'
+            ? `${projectNameById[projectId] ?? 'Project'} - Reply window closed before your response`
+            : `${projectNameById[projectId] ?? 'Project'} - Reply to the latest thread response`,
         projectId,
         link: appendQueryParam(
           `/documents/${docId}/versions?projectId=${projectId}&versionId=${threadTask.versionId}&threadId=${threadTask.threadId}`,
