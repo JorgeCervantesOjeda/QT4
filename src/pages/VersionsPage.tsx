@@ -4276,16 +4276,6 @@ function VersionsPage() {
               <p className="muted">
                 Uploaded: {!selectedVersion.hasFile ? 'No' : selectedVersion.fileRefId ? 'Yes' : 'Missing metadata'}
               </p>
-              {documentData?.type === 'errorReport' ? (
-                <p className="muted">
-                  This version belongs to an error report for:{' '}
-                  {baseDocumentData
-                    ? `${baseDocumentData.shortId ?? 'Unassigned'} - ${baseDocumentData.title}`
-                    : documentData?.baseDocId
-                      ? `Document ${documentData.baseDocId}`
-                      : 'Unknown'}
-                </p>
-              ) : null}
             </div>
           ) : null}
           {selectedVersion ? (

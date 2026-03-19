@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { ColumnDef, SortingState } from '@tanstack/react-table'
 import {
   doc,
@@ -10,16 +10,21 @@ import AppBrand from '../components/AppBrand'
 import BackStack from '../components/BackStack'
 import DataTable from '../components/DataTable'
 import ErrorChecklistModal from '../components/ErrorChecklistModal'
+import ModalDialog from '../components/ModalDialog'
 import { GiphyInline } from '../giphy/GiphyProvider'
 import { useErrorChecklistModal } from '../hooks/useErrorChecklistModal'
 import { db } from '../lib/firebase'
 import {
   refreshDashboard,
+  type DashboardBuildProgress,
   type DashboardRefreshScope,
   type DashboardTask,
   type DashboardTaskType,
 } from '../lib/dashboard'
 import { formatTimeAgo } from '../lib/time'
+
+type DashboardSectionKey = DashboardTaskType | 'expired' | 'activeTable'
+const DASHBOARD_COLLAPSE_STORAGE_KEY = 'qt4_dashboard_collapsed_sections_v2'
 
 function DashboardPage() {
   const { user } = useAuth()
@@ -30,6 +35,7 @@ function DashboardPage() {
   const [activeRefreshScope, setActiveRefreshScope] = useState<DashboardRefreshScope | null>( null )
   const [dashboardUpdatedAt, setDashboardUpdatedAt] = useState<Date | null>( null )
   const [nowMs, setNowMs] = useState( () => Date.now() )
+  const [refreshProgress, setRefreshProgress] = useState<DashboardBuildProgress | null>( null )
   const [lastRefreshByScope, setLastRefreshByScope] = useState<Record<DashboardRefreshScope, Date | null>>( {
     all: null,
     authoring: null,
@@ -44,6 +50,29 @@ function DashboardPage() {
   const [viewMode, setViewMode] = useState<'card' | 'table'>( () => {
     const storedView = window.localStorage.getItem( 'qt4_dashboard_view' )
     return storedView === 'table' || storedView === 'card' ? storedView : 'card'
+  } )
+  const [collapsedSections, setCollapsedSections] = useState<Record<DashboardSectionKey, boolean>>( () => {
+    const defaultState: Record<DashboardSectionKey, boolean> = {
+      authoring: true,
+      reply: true,
+      reviewer: true,
+      acceptedReport: true,
+      expired: true,
+      activeTable: true,
+    }
+    const storedSections = window.localStorage.getItem( DASHBOARD_COLLAPSE_STORAGE_KEY )
+    if( !storedSections ) {
+      return defaultState
+    }
+    try {
+      const parsed = JSON.parse( storedSections ) as Partial<Record<DashboardSectionKey, boolean>>
+      return {
+        ...defaultState,
+        ...parsed,
+      }
+    } catch {
+      return defaultState
+    }
   } )
   const [sorting, setSorting] = useState<SortingState>( [ { id: 'createdAt', desc: false } ] )
   const isLoadingTasks = activeRefreshScope !== null
@@ -140,7 +169,10 @@ function DashboardPage() {
       setActiveRefreshScope( scope )
       try {
         const refreshOptions = scope === 'all' ? {} : { types: [ scope ] as DashboardTaskType[] }
-        await refreshDashboard( userId, refreshOptions )
+        await refreshDashboard( userId, {
+          ...refreshOptions,
+          onProgress: setRefreshProgress,
+        } )
         const refreshAt = new Date()
         setLastRefreshByScope( ( previous ) => {
           if( scope === 'all' ) {
@@ -165,6 +197,7 @@ function DashboardPage() {
         ] )
       } finally {
         setActiveRefreshScope( null )
+        setRefreshProgress( null )
       }
       loadInFlightRef.current = false
       if( loadQueuedScopeRef.current ) {
@@ -287,8 +320,19 @@ function DashboardPage() {
   }, [ viewMode ] )
 
   useEffect( () => {
+    window.localStorage.setItem( DASHBOARD_COLLAPSE_STORAGE_KEY, JSON.stringify( collapsedSections ) )
+  }, [ collapsedSections ] )
+
+  useEffect( () => {
     window.localStorage.setItem( 'qt4_dashboard_sorting', JSON.stringify( sorting ) )
   }, [ sorting ] )
+
+  const toggleSection = (sectionKey: DashboardSectionKey) => {
+    setCollapsedSections( ( previous ) => ( {
+      ...previous,
+      [sectionKey]: !previous[sectionKey],
+    } ) )
+  }
 
   const formatElapsed = (value: Date | null) => {
     if( !value ) {
@@ -317,10 +361,27 @@ function DashboardPage() {
     return 'status-card--in-review'
   }
 
+  const resolveTaskVisualClassName = (task: Pick<DashboardTask, 'visualState' | 'type' | 'reviewEndAt' | 'reviewPeriodState' | 'lifecycleState'>) => {
+    switch( task.visualState ) {
+      case 'inCreation':
+        return 'status-card--in-creation'
+      case 'accepted':
+        return 'status-card--accepted'
+      case 'reviewGrace':
+        return 'status-card--in-review-expired'
+      case 'reviewExpired':
+        return 'status-card--in-review-expired'
+      case 'reviewActive':
+        return 'status-card--in-review'
+      default:
+        return resolveTaskStatusClassName( task )
+    }
+  }
+
   const renderTaskCard = (task: DashboardTask) => (
     <article
       key={task.id}
-      className={`project-card ${resolveTaskStatusClassName( task )}`.trim()}
+      className={`project-card ${resolveTaskVisualClassName( task )}`.trim()}
       onClick={() => navigate( task.link )}
       role="button"
       tabIndex={0}
@@ -336,11 +397,13 @@ function DashboardPage() {
       <p className="muted">
         Created: {task.createdAt ? formatTimeAgo( task.createdAt ) : 'Unknown'}
       </p>
+      {task.visualState === 'reviewGrace' ? <p className="muted">Reply or review is in grace period.</p> : null}
     </article>
   )
 
   const renderSection = (
     title: string,
+    sectionKey: DashboardSectionKey,
     scope: DashboardTaskType | null,
     sectionTasks: DashboardTask[],
     emptyMessage: string = 'No pending tasks in this section.',
@@ -349,6 +412,15 @@ function DashboardPage() {
       <div className="panel-header">
         <h3>{title}</h3>
         <div className="actions">
+          <button
+            type="button"
+            className="ghost"
+            aria-expanded={!collapsedSections[sectionKey]}
+            onClick={() => toggleSection( sectionKey )}
+          >
+            <span aria-hidden="true">{collapsedSections[sectionKey] ? '+' : '-'}</span>{' '}
+            {collapsedSections[sectionKey] ? 'Expand section' : 'Collapse section'}
+          </button>
           {scope ? (
             <>
               <button
@@ -367,13 +439,40 @@ function DashboardPage() {
           )}
         </div>
       </div>
-      {sectionTasks.length > 0 ? (
+      {collapsedSections[sectionKey] ? null : sectionTasks.length > 0 ? (
         <div className="dashboard-card-grid">
           {sectionTasks.map( ( task ) => renderTaskCard( task ) )}
         </div>
       ) : (
         <p className="muted">{emptyMessage}</p>
       )}
+    </div>
+  )
+
+  const renderTableSection = (
+    title: string,
+    sectionKey: DashboardSectionKey,
+    content: ReactNode,
+    emptyMessage?: string,
+  ) => (
+    <div className="stack">
+      <div className="panel-header">
+        <h3>{title}</h3>
+        <div className="actions">
+          <button
+            type="button"
+            className="ghost"
+            aria-expanded={!collapsedSections[sectionKey]}
+            onClick={() => toggleSection( sectionKey )}
+          >
+            <span aria-hidden="true">{collapsedSections[sectionKey] ? '+' : '-'}</span>{' '}
+            {collapsedSections[sectionKey] ? 'Expand section' : 'Collapse section'}
+          </button>
+        </div>
+      </div>
+      {collapsedSections[sectionKey]
+        ? null
+        : content ?? ( emptyMessage ? <p className="muted">{emptyMessage}</p> : null )}
     </div>
   )
 
@@ -419,12 +518,29 @@ function DashboardPage() {
         {error ? (
           <ErrorChecklistModal error={error} checklist={errorChecklist} onClose={clearError} />
         ) : null}
-
         {isLoadingTasks ? (
-          <section className="panel">
-            <GiphyInline reason="teamwork" />
-          </section>
-        ) : (
+          <ModalDialog cardClassName="dashboard-progress-modal">
+            <h3>Refreshing dashboard</h3>
+            <GiphyInline reason="teamwork" mode="inline" />
+            {refreshProgress ? (
+              <div className="dashboard-progress">
+                <div className="dashboard-progress__track" aria-hidden="true">
+                  <div
+                    className="dashboard-progress__bar"
+                    style={{ width: `${Math.max( 8, Math.round( ( refreshProgress.currentStep / refreshProgress.totalSteps ) * 100 ) )}%` }}
+                  />
+                </div>
+                <p className="muted">
+                  {`Step ${refreshProgress.currentStep} of ${refreshProgress.totalSteps}: ${refreshProgress.label}`}
+                </p>
+              </div>
+            ) : (
+              <p className="muted">Preparing refresh...</p>
+            )}
+          </ModalDialog>
+        ) : null}
+
+        {!isLoadingTasks ? (
           <section className="panel stack">
             <div className="panel-header">
               <h2>Pending tasks</h2>
@@ -455,73 +571,79 @@ function DashboardPage() {
             ) : null}
             {viewMode === 'table' ? (
               <>
-                <div className="actions">
-                <button
-                  type="button"
-                  className="ghost"
-                  ref={bindRefreshButtonRef( 'authoring' )}
-                  onClick={() => triggerLoadTasks( 'authoring' )}
-                  disabled={isLoadingTasks}
-                >
-                  Refresh In Creation
-                </button>
-                <span className="muted">Since refresh: {formatElapsed( lastRefreshByScope.authoring )}</span>
-                <button
-                  type="button"
-                  className="ghost"
-                  ref={bindRefreshButtonRef( 'reply' )}
-                  onClick={() => triggerLoadTasks( 'reply' )}
-                  disabled={isLoadingTasks}
-                >
-                  Refresh Replies
-                </button>
-                <span className="muted">Since refresh: {formatElapsed( lastRefreshByScope.reply )}</span>
-                <button
-                  type="button"
-                  className="ghost"
-                  ref={bindRefreshButtonRef( 'reviewer' )}
-                  onClick={() => triggerLoadTasks( 'reviewer' )}
-                  disabled={isLoadingTasks}
-                >
-                  Refresh In Review
-                </button>
-                <span className="muted">Since refresh: {formatElapsed( lastRefreshByScope.reviewer )}</span>
-                <button
-                  type="button"
-                  className="ghost"
-                  ref={bindRefreshButtonRef( 'acceptedReport' )}
-                  onClick={() => triggerLoadTasks( 'acceptedReport' )}
-                  disabled={isLoadingTasks}
-                >
-                  Refresh Accepted Reports
-                </button>
-                <span className="muted">Since refresh: {formatElapsed( lastRefreshByScope.acceptedReport )}</span>
-              </div>
-              <DataTable
-                  columns={taskColumns}
-                  data={activeTaskTableRows}
-                  sorting={sorting}
-                  onSortingChange={setSorting}
-                  tableClassName="data-table--dashboard"
-                  getRowClassName={( row ) => resolveTaskStatusClassName( row )}
-                  storageKey="qt4_table_dashboard"
-                  onRowClick={( row ) => navigate( row.link )}
-                />
+                {renderTableSection(
+                  'Active pending tasks',
+                  'activeTable',
+                  <>
+                    <div className="actions">
+                      <button
+                        type="button"
+                        className="ghost"
+                        ref={bindRefreshButtonRef( 'authoring' )}
+                        onClick={() => triggerLoadTasks( 'authoring' )}
+                        disabled={isLoadingTasks}
+                      >
+                        Refresh In Creation
+                      </button>
+                      <span className="muted">Since refresh: {formatElapsed( lastRefreshByScope.authoring )}</span>
+                      <button
+                        type="button"
+                        className="ghost"
+                        ref={bindRefreshButtonRef( 'reply' )}
+                        onClick={() => triggerLoadTasks( 'reply' )}
+                        disabled={isLoadingTasks}
+                      >
+                        Refresh Replies
+                      </button>
+                      <span className="muted">Since refresh: {formatElapsed( lastRefreshByScope.reply )}</span>
+                      <button
+                        type="button"
+                        className="ghost"
+                        ref={bindRefreshButtonRef( 'reviewer' )}
+                        onClick={() => triggerLoadTasks( 'reviewer' )}
+                        disabled={isLoadingTasks}
+                      >
+                        Refresh In Review
+                      </button>
+                      <span className="muted">Since refresh: {formatElapsed( lastRefreshByScope.reviewer )}</span>
+                      <button
+                        type="button"
+                        className="ghost"
+                        ref={bindRefreshButtonRef( 'acceptedReport' )}
+                        onClick={() => triggerLoadTasks( 'acceptedReport' )}
+                        disabled={isLoadingTasks}
+                      >
+                        Refresh Accepted Reports
+                      </button>
+                      <span className="muted">Since refresh: {formatElapsed( lastRefreshByScope.acceptedReport )}</span>
+                    </div>
+                    <DataTable
+                      columns={taskColumns}
+                      data={activeTaskTableRows}
+                      sorting={sorting}
+                      onSortingChange={setSorting}
+                      tableClassName="data-table--dashboard"
+                      getRowClassName={( row ) => resolveTaskVisualClassName( row )}
+                      storageKey="qt4_table_dashboard"
+                      onRowClick={( row ) => navigate( row.link )}
+                    />
+                  </>,
+                )}
               </>
             ) : (
               <div className="stack">
-                {renderSection( 'In Creation (Author)', 'authoring', taskGroups.authoring )}
-                {renderSection( 'Replies Needed', 'reply', taskGroups.reply )}
-                {renderSection( 'In Review (Reviewer, no comments)', 'reviewer', taskGroups.reviewer )}
-                {renderSection( 'Accepted Versions With Accepted Error Reports', 'acceptedReport', taskGroups.acceptedReport )}
-                {renderSection( 'Expired Uncompleted Tasks', null, taskGroups.expired, 'No tasks expired without completion.' )}
+                {renderSection( 'In Creation (Author)', 'authoring', 'authoring', taskGroups.authoring )}
+                {renderSection( 'Replies Needed', 'reply', 'reply', taskGroups.reply )}
+                {renderSection( 'In Review (Reviewer, no comments)', 'reviewer', 'reviewer', taskGroups.reviewer )}
+                {renderSection( 'Accepted Versions With Accepted Error Reports', 'acceptedReport', 'acceptedReport', taskGroups.acceptedReport )}
+                {renderSection( 'Expired Uncompleted Tasks', 'expired', null, taskGroups.expired, 'No tasks expired without completion.' )}
               </div>
             )}
             {viewMode === 'table'
-              ? renderSection( 'Expired Uncompleted Tasks', null, taskGroups.expired, 'No tasks expired without completion.' )
+              ? renderSection( 'Expired Uncompleted Tasks', 'expired', null, taskGroups.expired, 'No tasks expired without completion.' )
               : null}
           </section>
-        )}
+        ) : null}
       </main>
     </div>
   )

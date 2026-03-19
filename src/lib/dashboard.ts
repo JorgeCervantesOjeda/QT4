@@ -20,6 +20,7 @@ export type DashboardTask = {
   id: string
   type: 'authoring' | 'reply' | 'reviewer' | 'acceptedReport'
   lifecycleState?: 'active' | 'expired'
+  visualState?: 'neutral' | 'inCreation' | 'reviewActive' | 'reviewGrace' | 'reviewExpired' | 'accepted'
   title: string
   detail: string
   projectId: string
@@ -34,10 +35,18 @@ export type DashboardRefreshScope = 'all' | DashboardTaskType
 
 type BuildDashboardTasksOptions = {
   types?: DashboardTaskType[]
+  onProgress?: (progress: DashboardBuildProgress) => void
 }
 
 type RefreshDashboardOptions = {
   types?: DashboardTaskType[]
+  onProgress?: (progress: DashboardBuildProgress) => void
+}
+
+export type DashboardBuildProgress = {
+  currentStep: number
+  totalSteps: number
+  label: string
 }
 
 type VersionRecord = {
@@ -103,6 +112,11 @@ const chunkArray = <T,>(items: T[], size: number): T[][] => {
   return chunks
 }
 
+const pruneUndefinedFields = <T extends Record<string, unknown>>(value: T): T =>
+  Object.fromEntries(
+    Object.entries( value ).filter( ( [ , entryValue ] ) => entryValue !== undefined ),
+  ) as T
+
 const toVersionRecord = (snapshot: { id: string; data: () => Record<string, unknown> }): VersionRecord => {
   const data = snapshot.data()
   return {
@@ -156,6 +170,10 @@ export const buildDashboardTasks = async (
   options: BuildDashboardTasksOptions = {},
 ): Promise<DashboardTask[]> => {
   const nowMs = Date.now()
+  const totalSteps = 6
+  const reportProgress = (currentStep: number, label: string) => {
+    options.onProgress?.( { currentStep, totalSteps, label } )
+  }
   const requestedTypes = options.types && options.types.length > 0
     ? new Set<DashboardTaskType>( options.types )
     : null
@@ -166,6 +184,7 @@ export const buildDashboardTasks = async (
   const needsReply = includesType( 'reply' )
   const needsAcceptedReport = includesType( 'acceptedReport' )
 
+  reportProgress( 1, 'Loading project memberships...' )
   const membershipSnapshot = await getDocs(
     query( collection( db, 'projectMembers' ), where( 'userId', '==', userId ) ),
   )
@@ -208,6 +227,7 @@ export const buildDashboardTasks = async (
     return snapshots.flatMap( ( snapshot ) => snapshot.docs ).map( toVersionRecord )
   }
 
+  reportProgress( 2, 'Loading versions and your participation...' )
   const [ authoringVersions, reviewerCandidateVersions ] = await Promise.all( [
     needsAuthoring
       ? fetchVersionsForProjects( [
@@ -320,6 +340,7 @@ export const buildDashboardTasks = async (
   )
   const reviewAccessVersionIdSet = new Set( reviewAccessVersionIds )
   const threadVersionChunks = chunkArray( reviewAccessVersionIds, 10 ).filter( ( chunk ) => chunk.length > 0 )
+  reportProgress( 3, 'Checking review threads and reply windows...' )
   const reviewThreadSnapshots = ( needsReviewer || needsReply ) && threadVersionChunks.length > 0
     ? await Promise.all(
       threadVersionChunks.map( ( chunk ) =>
@@ -431,6 +452,7 @@ export const buildDashboardTasks = async (
     createdAt?: Date | null
     acceptedAt?: Date | null
   }
+  reportProgress( 4, 'Checking accepted error reports...' )
   const errorReportSnapshots = needsAcceptedReport
     ? await Promise.all(
       projectIdChunks.map( ( chunk ) =>
@@ -557,6 +579,7 @@ export const buildDashboardTasks = async (
     replyThreadById.forEach( ( thread ) => pushDocId( thread.docId ) )
   }
 
+  reportProgress( 5, 'Loading document labels...' )
   const documentSnapshots = await Promise.all(
     Array.from( documentIds ).map( ( docId ) => getDoc( doc( db, 'documents', docId ) ) ),
   )
@@ -582,6 +605,7 @@ export const buildDashboardTasks = async (
   }
 
   const nextTasks: DashboardTask[] = []
+  reportProgress( 6, 'Building dashboard tasks...' )
 
   if( needsAuthoring ) {
     authoringVersions.forEach( ( version ) => {
@@ -596,6 +620,7 @@ export const buildDashboardTasks = async (
       nextTasks.push( {
         id: `authoring-${version.id}`,
         type: 'authoring',
+        visualState: 'inCreation',
         title: formatDocumentLabel( docId ),
         detail: `${projectNameById[projectId] ?? 'Project'} - ${fileNote} (Version ${versionNumberToString( version.number )})`,
         projectId,
@@ -642,6 +667,12 @@ export const buildDashboardTasks = async (
         id: `reviewer-${version.id}`,
         type: 'reviewer',
         lifecycleState,
+        visualState:
+          lifecycleState === 'expired'
+            ? 'reviewExpired'
+            : reviewPeriodState === 'grace'
+              ? 'reviewGrace'
+              : 'reviewActive',
         title: formatDocumentLabel( docId ),
         detail:
           lifecycleState === 'expired'
@@ -679,6 +710,12 @@ export const buildDashboardTasks = async (
         id: `reply-${threadTask.threadId}`,
         type: 'reply',
         lifecycleState: threadTask.lifecycleState,
+        visualState:
+          threadTask.lifecycleState === 'expired'
+            ? 'reviewExpired'
+            : version?.reviewEndAt && version.reviewEndAt.getTime() <= nowMs
+              ? 'reviewGrace'
+              : 'reviewActive',
         title: formatDocumentLabel( docId ),
         detail:
           threadTask.lifecycleState === 'expired'
@@ -717,6 +754,7 @@ export const buildDashboardTasks = async (
       nextTasks.push( {
         id: `accepted-report-${versionId}`,
         type: 'acceptedReport',
+        visualState: 'accepted',
         title: formatDocumentLabel( docId ),
         detail: `${projectNameById[projectId] ?? 'Project'} - Review accepted error reports (Version ${versionNumberToString( version.number )})`,
         projectId,
@@ -752,8 +790,11 @@ export const refreshDashboard = async (
   const refreshedTypeSet = refreshedTypes ? new Set( refreshedTypes ) : null
   const refreshedTasks = await buildDashboardTasks(
     userId,
-    refreshedTypes ? { types: refreshedTypes } : {},
-  ).then( ( tasks ) => tasks.map( ( task ) => ( { ...task } ) ) )
+    {
+      ...( refreshedTypes ? { types: refreshedTypes } : {} ),
+      onProgress: options.onProgress,
+    },
+  ).then( ( tasks ) => tasks.map( ( task ) => pruneUndefinedFields( { ...task } ) ) )
   const untouchedTasks = refreshedTypeSet
     ? previousTasks.filter( ( task ) => !refreshedTypeSet.has( task.type ) )
     : []
