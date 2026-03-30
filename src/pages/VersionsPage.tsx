@@ -4002,6 +4002,9 @@ function VersionsPage() {
         }
       } )
 
+      if( currentDocumentAuthorId ) {
+        participantIds.add( currentDocumentAuthorId )
+      }
       participantIds.delete( userId )
       const recipientEmails = Array.from( participantIds )
         .map( ( participantId ) => resolveUserEmail( participantId ) )
@@ -4035,7 +4038,7 @@ function VersionsPage() {
             to: toRecipients,
             cc: ccRecipients,
             subject: `New Comment: ${docShortIdLabel} - ${threadTitleLabel}`,
-            text: `A new comment was added.\nDocument: ${docLabel}\nVersion: ${versionLabel}\nIssue: ${selectedThread.title}\nAuthor: ${formatUserLabel( userId )}\n\nComment:\n${commentBodyForEmail}\n\nOpen this comment directly:\n${commentDirectUrl}\n`,
+            text: `A new comment was added.\nDocument: ${docLabel}\nVersion: ${versionLabel}\nIssue: ${selectedThread.title}\nDocument author: ${formatUserLabel( currentDocumentAuthorId )}\nComment author: ${formatUserLabel( userId )}\n\nComment:\n${commentBodyForEmail}\n\nOpen this comment directly:\n${commentDirectUrl}\n`,
           } )
           sentCommentEmailRecipients = { to: [ ...toRecipients ], cc: [ ...ccRecipients ] }
         } catch( err ) {
