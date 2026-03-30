@@ -24,6 +24,7 @@ import ModalDialog from '../components/ModalDialog'
 import { GiphyInline } from '../giphy/GiphyProvider'
 import { useErrorChecklistModal } from '../hooks/useErrorChecklistModal'
 import { logAudit } from '../lib/audit'
+import { reportAbnormalError } from '../lib/errorMonitor'
 import { db } from '../lib/firebase'
 
 type ProjectSummary = {
@@ -353,6 +354,11 @@ function ProjectsPage() {
       setUserDirectoryById( nextDirectoryById )
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
+      void reportAbnormalError( {
+        error: err,
+        source: 'firestore',
+        action: 'projects.loadProjects',
+      } )
       openError( message, [
         { label: '(user is signed in)', ok: Boolean( userId ) },
         { label: '(network connection is available)', ok: typeof navigator !== 'undefined' ? navigator.onLine : true },
@@ -475,6 +481,11 @@ function ProjectsPage() {
       }
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
+      void reportAbnormalError( {
+        error: err,
+        source: 'firestore',
+        action: 'projects.createProject',
+      } )
       openError( message, [
         { label: '(project name is provided)', ok: name.trim().length > 0 },
         { label: '(user is signed in)', ok: Boolean( userId ) },
@@ -523,6 +534,12 @@ function ProjectsPage() {
       }
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
+      void reportAbnormalError( {
+        error: err,
+        source: 'firestore',
+        action: 'projects.lookupMember',
+        projectId,
+      } )
       setMemberErrors( ( prev ) => ( {
         ...prev,
         [projectId]: `Member lookup failed: ${message}`,
@@ -618,6 +635,12 @@ function ProjectsPage() {
       } )()
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
+      void reportAbnormalError( {
+        error: err,
+        source: 'firestore',
+        action: 'projects.addMember',
+        projectId,
+      } )
       setMemberErrors( ( prev ) => ( {
         ...prev,
         [projectId]: `Member add failed: ${message}`,

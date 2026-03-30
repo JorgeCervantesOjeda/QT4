@@ -6,6 +6,7 @@ import AppBrand from '../components/AppBrand'
 import ErrorChecklistModal from '../components/ErrorChecklistModal'
 import { useErrorChecklistModal } from '../hooks/useErrorChecklistModal'
 import { logAudit } from '../lib/audit'
+import { reportAbnormalError } from '../lib/errorMonitor'
 import { auth, db } from '../lib/firebase'
 
 function RegisterPage() {
@@ -90,6 +91,11 @@ function RegisterPage() {
       navigate( '/app', { replace: true } )
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
+      void reportAbnormalError( {
+        error: err,
+        source: 'auth',
+        action: 'register.submit',
+      } )
       openError( message, [
         { label: '(email is provided)', ok: email.trim().length > 0 },
         { label: '(password length >= 6)', ok: password.length >= 6 },

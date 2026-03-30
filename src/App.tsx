@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthContext'
 import { RequireAuth } from './auth/RequireAuth'
+import ErrorMonitorBridge from './components/ErrorMonitorBridge'
 import { GiphyProvider } from './giphy/GiphyProvider'
 import './App.css'
 
@@ -17,6 +18,7 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <ErrorMonitorBridge />
         <GiphyProvider>
           <Suspense fallback={<div className="app-shell"><main className="app-main"><section className="panel"><p className="muted">Loading page...</p></section></main></div>}>
             <Routes>

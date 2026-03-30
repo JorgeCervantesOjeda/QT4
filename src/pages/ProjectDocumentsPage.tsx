@@ -23,6 +23,7 @@ import { GiphyInline } from '../giphy/GiphyProvider'
 import { useErrorChecklistModal } from '../hooks/useErrorChecklistModal'
 import { FIRST_VERSION_NUMBER, versionNumberToString } from '../domain/types'
 import { logAudit } from '../lib/audit'
+import { reportAbnormalError } from '../lib/errorMonitor'
 import { db } from '../lib/firebase'
 import { formatTimeAgoWithTimestamp } from '../lib/time'
 
@@ -523,6 +524,12 @@ function ProjectDocumentsPage() {
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
       console.error( `ProjectDocuments loadDocuments failed at ${step}:`, err )
+      void reportAbnormalError( {
+        error: err,
+        source: 'firestore',
+        action: `projectDocuments.load.${step}`,
+        projectId,
+      } )
       openError( `Project documents failed at ${step}: ${message}`, [
         { label: '(project is selected)', ok: Boolean( projectId ) },
         { label: '(network connection is available)', ok: typeof navigator !== 'undefined' ? navigator.onLine : true },
@@ -710,6 +717,12 @@ function ProjectDocumentsPage() {
       } )()
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
+      void reportAbnormalError( {
+        error: err,
+        source: 'firestore',
+        action: 'projectDocuments.createDocument',
+        projectId,
+      } )
       openError( message, [
         { label: '(project is selected)', ok: Boolean( projectId ) },
         { label: '(user is signed in)', ok: Boolean( userId ) },

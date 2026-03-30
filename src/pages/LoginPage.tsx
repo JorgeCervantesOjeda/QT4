@@ -5,6 +5,7 @@ import { useAuth } from '../auth/useAuth'
 import AppBrand from '../components/AppBrand'
 import ErrorChecklistModal from '../components/ErrorChecklistModal'
 import { useErrorChecklistModal } from '../hooks/useErrorChecklistModal'
+import { reportAbnormalError } from '../lib/errorMonitor'
 import { auth } from '../lib/firebase'
 
 type LocationState = {
@@ -68,6 +69,11 @@ function LoginPage() {
       navigate( nextPath, { replace: true } )
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
+      void reportAbnormalError( {
+        error: err,
+        source: 'auth',
+        action: 'login.signIn',
+      } )
       openError( message, [
         { label: '(email is provided)', ok: email.trim().length > 0 },
         { label: '(password is provided)', ok: password.trim().length > 0 },
@@ -103,6 +109,11 @@ function LoginPage() {
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
       console.error( 'Password reset request failed:', err )
+      void reportAbnormalError( {
+        error: err,
+        source: 'auth',
+        action: 'login.passwordReset',
+      } )
       openError( message, [
         { label: '(email is provided)', ok: email.trim().length > 0 },
         { label: '(email belongs to a registered account)', ok: false },

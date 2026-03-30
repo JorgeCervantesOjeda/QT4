@@ -13,6 +13,7 @@ import ErrorChecklistModal from '../components/ErrorChecklistModal'
 import ModalDialog from '../components/ModalDialog'
 import { GiphyInline } from '../giphy/GiphyProvider'
 import { useErrorChecklistModal } from '../hooks/useErrorChecklistModal'
+import { reportAbnormalError } from '../lib/errorMonitor'
 import { db } from '../lib/firebase'
 import {
   refreshDashboard,
@@ -209,6 +210,11 @@ function DashboardPage() {
         } )
       } catch( err ) {
         const message = err instanceof Error ? err.message : 'Unexpected error'
+        void reportAbnormalError( {
+          error: err,
+          source: 'firestore',
+          action: `dashboard.refresh.${scope}`,
+        } )
         openError( `Dashboard tasks failed: ${message}`, [
           { label: '(user is signed in)', ok: Boolean( userId ) },
           { label: '(network connection is available)', ok: typeof navigator !== 'undefined' ? navigator.onLine : true },

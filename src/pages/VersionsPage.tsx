@@ -33,6 +33,7 @@ import {
 } from '../domain/types'
 import { GiphyInline } from '../giphy/GiphyProvider'
 import { logAudit } from '../lib/audit'
+import { reportAbnormalError } from '../lib/errorMonitor'
 import { buildVersionsErrorChecklist } from '../lib/errorChecklistBuilders'
 import {
   buildFileKey,
@@ -301,6 +302,7 @@ const areCommentsByThreadEqual = (
   return true
 }
 
+
 const areUserDirectoryEqual = (
   left: Record<string, { email?: string | null; displayName?: string | null }>,
   right: Record<string, { email?: string | null; displayName?: string | null }>,
@@ -470,6 +472,37 @@ function VersionsPage() {
   const selectedThread = selectedThreadId
     ? threads.find( ( thread ) => thread.id === selectedThreadId ) ?? null
     : null
+  const reportVersionsError = useCallback( (
+    error: unknown,
+    action: string,
+    source: 'firestore' | 'storage' | 'auth' | 'ui' | 'network' | 'unknown' = 'firestore',
+    overrides?: {
+      versionId?: string | null
+      threadId?: string | null
+    },
+  ) => {
+    void reportAbnormalError( {
+      error,
+      source,
+      action,
+      projectId,
+      docId: docId ?? '',
+      versionId: overrides?.versionId ?? selectedVersion?.id ?? latestVersion?.id ?? versionIdFromQuery,
+      threadId: overrides?.threadId ?? selectedThread?.id ?? threadIdFromQuery,
+      userId,
+      userEmail: user?.email ?? '',
+    } )
+  }, [
+    projectId,
+    docId,
+    selectedVersion?.id,
+    latestVersion?.id,
+    versionIdFromQuery,
+    selectedThread?.id,
+    threadIdFromQuery,
+    userId,
+    user?.email,
+  ] )
   const selectedThreadOpen = Boolean( selectedThread && selectedThread.status === 'open' )
   const selectedThreadComments = useMemo(
     () => ( selectedThreadId ? commentsByThread[selectedThreadId] ?? [] : [] ),
@@ -841,6 +874,9 @@ function VersionsPage() {
       )
     } catch( err ) {
       const rawMessage = err instanceof Error ? err.message : 'Unexpected error'
+      reportVersionsError( err, 'versions.downloadFile', 'storage', {
+        versionId: selectedVersion.id,
+      } )
       setError( normalizeDownloadError( rawMessage ) )
     } finally {
       setDownloadStatus( 'idle' )
@@ -1463,6 +1499,7 @@ function VersionsPage() {
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
       console.error( `Versions loadDocumentAndVersions failed at ${step}:`, err )
+      reportVersionsError( err, `versions.loadDocumentAndVersions.${step}` )
       setError( `Versions failed at ${step}: ${message}` )
     } finally {
       setIsBusy( false )
@@ -1638,6 +1675,7 @@ function VersionsPage() {
       },
       ( err ) => {
         const message = err instanceof Error ? err.message : 'Unexpected error'
+        reportVersionsError( err, 'versions.subscribeThreads', 'firestore' )
         setError( `Issues failed to load: ${message}` )
         setIsLoadingThreads( false )
       },
@@ -1671,6 +1709,7 @@ function VersionsPage() {
       },
       ( err ) => {
         const message = err instanceof Error ? err.message : 'Unexpected error'
+        reportVersionsError( err, 'versions.subscribeComments', 'firestore' )
         setError( `Comments failed to load: ${message}` )
       },
     )
@@ -1863,12 +1902,14 @@ function VersionsPage() {
       } catch( err ) {
         if( isActive ) {
           if( isPermissionDeniedError( err ) ) {
+            reportVersionsError( err, 'versions.loadFileMetadata', 'firestore' )
             setSelectedFileRef( null )
             setFileMetadataNotice( 'You do not have permission to read linked file metadata for this version.' )
             return
           }
           setFileMetadataNotice( null )
           const message = err instanceof Error ? err.message : 'Unexpected error'
+          reportVersionsError( err, 'versions.loadFileMetadata', 'firestore' )
           setError( `File metadata failed to load: ${message}` )
         }
       }
@@ -1924,6 +1965,7 @@ function VersionsPage() {
       },
       ( err ) => {
         const message = err instanceof Error ? err.message : 'Unexpected error'
+        reportVersionsError( err, 'versions.subscribeVersions', 'firestore' )
         setError( `Versions failed to load: ${message}` )
         setIsLoadingVersions( false )
       },
@@ -2671,6 +2713,7 @@ function VersionsPage() {
       void loadDocumentAndVersions()
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
+      reportVersionsError( err, 'versions.createVersion', 'firestore' )
       const loweredMessage = message.toLowerCase()
       if( loweredMessage.includes( 'missing or insufficient permissions' ) || loweredMessage.includes( 'permission-denied' ) ) {
         setError( "To create a version: ((user is project leader) or (user is latest version author) or (user is admin)) and ((latest version status = 'In Review' or 'Reviewed') or ((latest version status = 'Accepted') and (exists related error report with latest version status = 'Accepted')))." )
@@ -2715,6 +2758,9 @@ function VersionsPage() {
     } catch( err ) {
       setSelectedReviewerIds( previousReviewerIds )
       const message = err instanceof Error ? err.message : 'Unexpected error'
+      reportVersionsError( err, 'versions.updateReviewers', 'firestore', {
+        versionId: selectedVersion.id,
+      } )
       setError( message )
       setIsBusy( false )
       return
@@ -2778,6 +2824,9 @@ function VersionsPage() {
     } catch( err ) {
       setSelectedReviewerIds( previousReviewerIds )
       const message = err instanceof Error ? err.message : 'Unexpected error'
+      reportVersionsError( err, 'versions.toggleAllReviewers', 'firestore', {
+        versionId: selectedVersion.id,
+      } )
       setError( message )
       setIsBusy( false )
       return
@@ -2864,6 +2913,9 @@ function VersionsPage() {
       setSelectedAuthorId( previousAuthorId )
       setSelectedReviewerIds( previousReviewerIds )
       const message = err instanceof Error ? err.message : 'Unexpected error'
+      reportVersionsError( err, 'versions.assignAuthor', 'firestore', {
+        versionId: selectedVersion.id,
+      } )
       setError( message )
       setIsBusy( false )
       return
@@ -3001,6 +3053,9 @@ function VersionsPage() {
         }
       }
       const message = err instanceof Error ? err.message : 'Unexpected error'
+      reportVersionsError( err, 'versions.uploadFile', 'storage', {
+        versionId: selectedVersion.id,
+      } )
       setError( message )
       setUploadStatus( 'error' )
       setUploadMessage( message )
@@ -3275,6 +3330,9 @@ function VersionsPage() {
       void loadDocumentAndVersions()
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
+      reportVersionsError( err, 'versions.startReview', 'firestore', {
+        versionId: latestVersion.id,
+      } )
       setError( message )
     } finally {
       setEmailNotifyStatus( 'idle' )
@@ -3385,6 +3443,9 @@ function VersionsPage() {
       void loadDocumentAndVersions()
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
+      reportVersionsError( err, 'versions.acceptLatestVersion', 'firestore', {
+        versionId: latestVersion.id,
+      } )
       setError( message )
     } finally {
       setIsBusy( false )
@@ -3448,6 +3509,9 @@ function VersionsPage() {
       void loadDocumentAndVersions()
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
+      reportVersionsError( err, 'versions.rejectLatestVersion', 'firestore', {
+        versionId: latestVersion.id,
+      } )
       setError( message )
     } finally {
       setIsBusy( false )
@@ -3760,6 +3824,9 @@ function VersionsPage() {
       await reloadAndRestoreSelection( lockedVersionId, threadRef.id )
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
+      reportVersionsError( err, 'versions.createThread', 'firestore', {
+        versionId: selectedVersion.id,
+      } )
       setError( normalizeDownloadError( message ) )
     } finally {
       setIsBusy( false )
@@ -3887,6 +3954,7 @@ function VersionsPage() {
           participantIds.add( comment.createdBy )
         }
       } )
+
       participantIds.delete( userId )
       const recipientEmails = Array.from( participantIds )
         .map( ( participantId ) => resolveUserEmail( participantId ) )
@@ -3939,6 +4007,10 @@ function VersionsPage() {
       await reloadAndRestoreSelection( lockedVersionId, selectedThread.id )
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
+      reportVersionsError( err, 'versions.addComment', 'firestore', {
+        versionId: selectedVersion.id,
+        threadId: selectedThread.id,
+      } )
       setError( message )
     } finally {
       setEmailNotifyStatus( 'idle' )
@@ -4100,6 +4172,10 @@ function VersionsPage() {
       await reloadAndRestoreSelection( lockedVersionId, thread.id )
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
+      reportVersionsError( err, 'versions.toggleThreadStatus', 'firestore', {
+        versionId: selectedVersion?.id ?? null,
+        threadId: thread.id,
+      } )
       setError( message )
     } finally {
       setIsBusy( false )
