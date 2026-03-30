@@ -302,6 +302,53 @@ const areCommentsByThreadEqual = (
   return true
 }
 
+const getThreadStatsFromLoadedData = (
+  threads: ThreadSummary[],
+  commentsByThread: Record<string, CommentSummary[]>,
+) => {
+  const numThreads = threads.length
+  const numOpenThreads = threads.filter( ( thread ) => thread.status === 'open' ).length
+  const numComments = Object.values( commentsByThread ).reduce(
+    ( total, threadComments ) => total + threadComments.length,
+    0,
+  )
+  const numThreadsWithTwoPlusComments = threads.reduce( ( total, thread ) => {
+    const loadedCommentsCount = commentsByThread[thread.id]?.length ?? 0
+    const commentCount = Math.max( Number( thread.commentCount ?? 0 ), loadedCommentsCount )
+    return total + ( commentCount >= 2 ? 1 : 0 )
+  }, 0 )
+  return {
+    numThreads,
+    numOpenThreads,
+    numComments,
+    numThreadsWithTwoPlusComments,
+  }
+}
+
+const buildThreadStatsMismatchMessage = (
+  version: Pick<VersionSummary, 'numThreads' | 'numOpenThreads' | 'numComments' | 'numThreadsWithTwoPlusComments'>,
+  actual: ReturnType<typeof getThreadStatsFromLoadedData>,
+) => {
+  const mismatches: string[] = []
+  if( version.numThreads !== actual.numThreads ) {
+    mismatches.push( `numThreads stored=${version.numThreads}, actual=${actual.numThreads}` )
+  }
+  if( version.numOpenThreads !== actual.numOpenThreads ) {
+    mismatches.push( `numOpenThreads stored=${version.numOpenThreads}, actual=${actual.numOpenThreads}` )
+  }
+  if( version.numComments !== actual.numComments ) {
+    mismatches.push( `numComments stored=${version.numComments}, actual=${actual.numComments}` )
+  }
+  if( version.numThreadsWithTwoPlusComments !== actual.numThreadsWithTwoPlusComments ) {
+    mismatches.push(
+      `numThreadsWithTwoPlusComments stored=${version.numThreadsWithTwoPlusComments}, actual=${actual.numThreadsWithTwoPlusComments}`,
+    )
+  }
+  if( mismatches.length === 0 ) {
+    return null
+  }
+  return `This version has inconsistent issue counters (${mismatches.join( '; ' )}). An admin must run Data model update before closing or reopening issues.`
+}
 
 const areUserDirectoryEqual = (
   left: Record<string, { email?: string | null; displayName?: string | null }>,
@@ -4034,8 +4081,23 @@ function VersionsPage() {
       setError( 'To close or reopen an issue, it must have at least two comments.' )
       return false
     }
+    const actualThreadStats = getThreadStatsFromLoadedData( threads, commentsByThread )
+    const statsMismatchMessage = buildThreadStatsMismatchMessage( selectedVersion, actualThreadStats )
+    if( statsMismatchMessage ) {
+      setError( statsMismatchMessage )
+      return false
+    }
     return true
-  }, [ selectedVersion, projectId, docId, userId, canParticipateReview, selectedVersionInActiveReview, commentsByThread ] )
+  }, [
+    selectedVersion,
+    projectId,
+    docId,
+    userId,
+    canParticipateReview,
+    selectedVersionInActiveReview,
+    commentsByThread,
+    threads,
+  ] )
 
   const requestThreadStatusChangeConfirmation = useCallback( (thread: ThreadSummary) => {
     if( !canChangeThreadStatus( thread ) ) {
@@ -4097,10 +4159,11 @@ function VersionsPage() {
       return
     }
     const lockedVersionId = selectedVersion?.id ?? null
+    const requestedThreadStatus = thread.status
+    const requestedIsClosing = requestedThreadStatus === 'open'
     setError( null )
     setIsBusy( true )
     try {
-      const isClosing = thread.status === 'open'
       const versionRef = doc( db, 'versions', selectedVersion!.id )
       const threadRef = doc( db, 'threads', thread.id )
       await runTransaction( db, async ( transaction ) => {
@@ -4112,6 +4175,11 @@ function VersionsPage() {
           throw new Error( 'Version or issue not found.' )
         }
         const versionData = versionSnap.data()
+        const currentThreadStatus = ( threadSnap.data().status as 'open' | 'closed' | undefined ) ?? 'open'
+        if( currentThreadStatus !== requestedThreadStatus ) {
+          throw new Error( 'Issue status changed on the server. Reload and try again.' )
+        }
+        const isClosing = currentThreadStatus === 'open'
         const currentStats = {
           numThreads: Number( versionData.stats?.numThreads ?? versionData.numThreads ?? 0 ),
           numOpenThreads: Number( versionData.stats?.numOpenThreads ?? versionData.numOpenThreads ?? 0 ),
@@ -4148,7 +4216,7 @@ function VersionsPage() {
           updatedBy: userId,
         } )
       } )
-      setSuccessMessage( isClosing ? 'Issue closed successfully.' : 'Issue reopened successfully.' )
+      setSuccessMessage( requestedIsClosing ? 'Issue closed successfully.' : 'Issue reopened successfully.' )
       void ( async () => {
         try {
           await logAudit( {
@@ -4162,7 +4230,7 @@ function VersionsPage() {
             versionId: selectedVersion!.id,
             threadId: thread.id,
             metadata: {
-              status: isClosing ? 'closed' : 'open',
+              status: requestedIsClosing ? 'closed' : 'open',
             },
           } )
         } catch( err ) {

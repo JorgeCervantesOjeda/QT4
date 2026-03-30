@@ -102,16 +102,48 @@ service cloud.firestore {
         && request.auth.uid in resourceData.reviewerIds;
     }
 
+    function versionNumThreads(versionData) {
+      return (
+        versionData.stats is map
+        && versionData.stats.numThreads is int
+      ) ? versionData.stats.numThreads : (
+        versionData.numThreads is int
+      ) ? versionData.numThreads : 0;
+    }
+
+    function versionNumOpenThreads(versionData) {
+      return (
+        versionData.stats is map
+        && versionData.stats.numOpenThreads is int
+      ) ? versionData.stats.numOpenThreads : (
+        versionData.numOpenThreads is int
+      ) ? versionData.numOpenThreads : 0;
+    }
+
+    function versionNumComments(versionData) {
+      return (
+        versionData.stats is map
+        && versionData.stats.numComments is int
+      ) ? versionData.stats.numComments : (
+        versionData.numComments is int
+      ) ? versionData.numComments : 0;
+    }
+
+    function versionNumThreadsWithTwoPlusComments(versionData) {
+      return (
+        versionData.stats is map
+        && versionData.stats.numThreadsWithTwoPlusComments is int
+      ) ? versionData.stats.numThreadsWithTwoPlusComments : (
+        versionData.numThreadsWithTwoPlusComments is int
+      ) ? versionData.numThreadsWithTwoPlusComments : 0;
+    }
+
     function hasReviewEvidence(versionData) {
       return versionData.hasFile == true
-        && versionData.stats is map
-        && versionData.stats.numThreads is int
-        && versionData.stats.numComments is int
-        && versionData.stats.numOpenThreads is int
-        && versionData.stats.numThreadsWithTwoPlusComments is int
-        && versionData.stats.numThreads > 0
-        && versionData.stats.numThreadsWithTwoPlusComments > 0
-        && versionData.stats.numOpenThreads == 0;
+        && versionNumThreads(versionData) > 0
+        && versionNumComments(versionData) >= 0
+        && versionNumThreadsWithTwoPlusComments(versionData) > 0
+        && versionNumOpenThreads(versionData) == 0;
     }
 
     function isStartReviewTransition() {
@@ -190,14 +222,16 @@ service cloud.firestore {
     }
 
     function isThreadCreateWithVersionStatIncrement(versionId) {
-      return versionAfter(versionId).data.stats.numThreads == versionDoc(versionId).data.stats.numThreads + 1
-        && versionAfter(versionId).data.stats.numOpenThreads == versionDoc(versionId).data.stats.numOpenThreads + 1
-        && versionAfter(versionId).data.stats.numComments == versionDoc(versionId).data.stats.numComments
-        && versionAfter(versionId).data.stats.numThreadsWithTwoPlusComments == versionDoc(versionId).data.stats.numThreadsWithTwoPlusComments
-        && versionAfter(versionId).data.numThreads == versionDoc(versionId).data.numThreads + 1
-        && versionAfter(versionId).data.numOpenThreads == versionDoc(versionId).data.numOpenThreads + 1
-        && versionAfter(versionId).data.numComments == versionDoc(versionId).data.numComments
-        && versionAfter(versionId).data.numThreadsWithTwoPlusComments == versionDoc(versionId).data.numThreadsWithTwoPlusComments;
+      return versionNumThreads(versionAfter(versionId).data) == versionNumThreads(versionDoc(versionId).data) + 1
+        && versionNumOpenThreads(versionAfter(versionId).data) == versionNumOpenThreads(versionDoc(versionId).data) + 1
+        && versionNumComments(versionAfter(versionId).data) == versionNumComments(versionDoc(versionId).data)
+        && versionNumThreadsWithTwoPlusComments(versionAfter(versionId).data)
+          == versionNumThreadsWithTwoPlusComments(versionDoc(versionId).data)
+        && versionAfter(versionId).data.numThreads == versionNumThreads(versionDoc(versionId).data) + 1
+        && versionAfter(versionId).data.numOpenThreads == versionNumOpenThreads(versionDoc(versionId).data) + 1
+        && versionAfter(versionId).data.numComments == versionNumComments(versionDoc(versionId).data)
+        && versionAfter(versionId).data.numThreadsWithTwoPlusComments
+          == versionNumThreadsWithTwoPlusComments(versionDoc(versionId).data);
     }
 
     function isCommentCreateWithVersionStatIncrement(versionId, threadId) {
@@ -205,16 +239,16 @@ service cloud.firestore {
         threadDoc(threadId).data.commentCount < 2
         && threadAfter(threadId).data.commentCount >= 2
       ) ? 1 : 0;
-      return versionAfter(versionId).data.stats.numThreads == versionDoc(versionId).data.stats.numThreads
-        && versionAfter(versionId).data.stats.numOpenThreads == versionDoc(versionId).data.stats.numOpenThreads
-        && versionAfter(versionId).data.stats.numComments == versionDoc(versionId).data.stats.numComments + 1
-        && versionAfter(versionId).data.stats.numThreadsWithTwoPlusComments
-          == versionDoc(versionId).data.stats.numThreadsWithTwoPlusComments + incrementTwoPlus
-        && versionAfter(versionId).data.numThreads == versionDoc(versionId).data.numThreads
-        && versionAfter(versionId).data.numOpenThreads == versionDoc(versionId).data.numOpenThreads
-        && versionAfter(versionId).data.numComments == versionDoc(versionId).data.numComments + 1
+      return versionNumThreads(versionAfter(versionId).data) == versionNumThreads(versionDoc(versionId).data)
+        && versionNumOpenThreads(versionAfter(versionId).data) == versionNumOpenThreads(versionDoc(versionId).data)
+        && versionNumComments(versionAfter(versionId).data) == versionNumComments(versionDoc(versionId).data) + 1
+        && versionNumThreadsWithTwoPlusComments(versionAfter(versionId).data)
+          == versionNumThreadsWithTwoPlusComments(versionDoc(versionId).data) + incrementTwoPlus
+        && versionAfter(versionId).data.numThreads == versionNumThreads(versionDoc(versionId).data)
+        && versionAfter(versionId).data.numOpenThreads == versionNumOpenThreads(versionDoc(versionId).data)
+        && versionAfter(versionId).data.numComments == versionNumComments(versionDoc(versionId).data) + 1
         && versionAfter(versionId).data.numThreadsWithTwoPlusComments
-          == versionDoc(versionId).data.numThreadsWithTwoPlusComments + incrementTwoPlus;
+          == versionNumThreadsWithTwoPlusComments(versionDoc(versionId).data) + incrementTwoPlus;
     }
 
     function isAdminProjectIdBackfill() {
@@ -230,20 +264,22 @@ service cloud.firestore {
     }
 
     function isThreadStatusWithVersionOpenCounter(versionId, isClosing) {
-      return versionAfter(versionId).data.stats.numThreads == versionDoc(versionId).data.stats.numThreads
-        && versionAfter(versionId).data.stats.numComments == versionDoc(versionId).data.stats.numComments
-        && versionAfter(versionId).data.stats.numThreadsWithTwoPlusComments == versionDoc(versionId).data.stats.numThreadsWithTwoPlusComments
-        && versionAfter(versionId).data.numThreads == versionDoc(versionId).data.numThreads
-        && versionAfter(versionId).data.numComments == versionDoc(versionId).data.numComments
-        && versionAfter(versionId).data.numThreadsWithTwoPlusComments == versionDoc(versionId).data.numThreadsWithTwoPlusComments
+      return versionNumThreads(versionAfter(versionId).data) == versionNumThreads(versionDoc(versionId).data)
+        && versionNumComments(versionAfter(versionId).data) == versionNumComments(versionDoc(versionId).data)
+        && versionNumThreadsWithTwoPlusComments(versionAfter(versionId).data)
+          == versionNumThreadsWithTwoPlusComments(versionDoc(versionId).data)
+        && versionAfter(versionId).data.numThreads == versionNumThreads(versionDoc(versionId).data)
+        && versionAfter(versionId).data.numComments == versionNumComments(versionDoc(versionId).data)
+        && versionAfter(versionId).data.numThreadsWithTwoPlusComments
+          == versionNumThreadsWithTwoPlusComments(versionDoc(versionId).data)
         && (
           (isClosing
-            && versionAfter(versionId).data.stats.numOpenThreads == versionDoc(versionId).data.stats.numOpenThreads - 1
-            && versionAfter(versionId).data.numOpenThreads == versionDoc(versionId).data.numOpenThreads - 1)
+            && versionNumOpenThreads(versionAfter(versionId).data) == versionNumOpenThreads(versionDoc(versionId).data) - 1
+            && versionAfter(versionId).data.numOpenThreads == versionNumOpenThreads(versionDoc(versionId).data) - 1)
           ||
           (!isClosing
-            && versionAfter(versionId).data.stats.numOpenThreads == versionDoc(versionId).data.stats.numOpenThreads + 1
-            && versionAfter(versionId).data.numOpenThreads == versionDoc(versionId).data.numOpenThreads + 1)
+            && versionNumOpenThreads(versionAfter(versionId).data) == versionNumOpenThreads(versionDoc(versionId).data) + 1
+            && versionAfter(versionId).data.numOpenThreads == versionNumOpenThreads(versionDoc(versionId).data) + 1)
         );
     }
 
