@@ -1044,6 +1044,54 @@ function VersionsPage() {
       ),
     [ latestVersion, latestVersionInReviewDecisionWindow, canApproveVersion ],
   )
+  const logBlockedVersionDecision = useCallback( (
+    decision: 'accept' | 'reject',
+    message: string,
+  ) => {
+    if( !userId || !docId ) {
+      return
+    }
+    void logAudit( {
+      actorId: userId,
+      actorEmail: user?.email ?? null,
+      action: 'actionBlocked',
+      entityType: 'version',
+      entityId: latestVersion?.id ?? docId,
+      projectId,
+      docId,
+      versionId: latestVersion?.id ?? undefined,
+      metadata: {
+        blockedAction: decision === 'accept' ? 'acceptVersion' : 'rejectVersion',
+        message,
+        latestVersionStatus: latestVersion?.status ?? null,
+        latestVersionNumber: latestVersion?.number ?? null,
+        latestVersionHasFile: latestVersion?.hasFile ?? null,
+        latestVersionNumThreads: latestVersion?.numThreads ?? null,
+        latestVersionNumOpenThreads: latestVersion?.numOpenThreads ?? null,
+        latestVersionNumComments: latestVersion?.numComments ?? null,
+        latestVersionNumThreadsWithTwoPlusComments: latestVersion?.numThreadsWithTwoPlusComments ?? null,
+        latestVersionReviewEndAt: latestVersion?.reviewEndAt?.toISOString() ?? null,
+        latestVersionInReviewDecisionWindow,
+        canApproveVersion,
+      },
+    } )
+  }, [
+    userId,
+    user?.email,
+    docId,
+    latestVersion?.id,
+    latestVersion?.status,
+    latestVersion?.number,
+    latestVersion?.hasFile,
+    latestVersion?.numThreads,
+    latestVersion?.numOpenThreads,
+    latestVersion?.numComments,
+    latestVersion?.numThreadsWithTwoPlusComments,
+    latestVersion?.reviewEndAt,
+    projectId,
+    latestVersionInReviewDecisionWindow,
+    canApproveVersion,
+  ] )
 
   const errorChecklist = useMemo( () => buildVersionsErrorChecklist( error, {
     docSelected: Boolean( docId && documentData ),
@@ -2081,7 +2129,15 @@ function VersionsPage() {
     return () => {
       isActive = false
     }
-  }, [ documentData?.projectId, projectIdFromQuery, latestVersion?.id, latestVersion?.status, latestVersion, loadAcceptedErrorReportsForBaseVersion ] )
+  }, [
+    documentData?.projectId,
+    projectIdFromQuery,
+    latestVersion?.id,
+    latestVersion?.status,
+    latestVersion,
+    loadAcceptedErrorReportsForBaseVersion,
+    clockNowMs,
+  ] )
 
   useEffect( () => {
     const activeProjectId = documentData?.projectId ?? projectIdFromQuery
@@ -2114,7 +2170,14 @@ function VersionsPage() {
     return () => {
       isActive = false
     }
-  }, [ documentData?.projectId, projectIdFromQuery, selectedVersion?.id, loadAcceptedErrorReportsForBaseVersion, selectedVersion ] )
+  }, [
+    documentData?.projectId,
+    projectIdFromQuery,
+    selectedVersion?.id,
+    loadAcceptedErrorReportsForBaseVersion,
+    selectedVersion,
+    clockNowMs,
+  ] )
 
   useEffect( () => {
     const candidateIds = new Set<string>()
@@ -2657,7 +2720,9 @@ function VersionsPage() {
         const counterSnap = await transaction.get( counterRef )
         const txFallbackNext = ( versions.length > 0 ? versions[0].number + 1 : FIRST_VERSION_NUMBER )
         const txNextNumberRaw = counterSnap.data()?.nextNumber
-        const txNextNumber = typeof txNextNumberRaw === 'number' ? txNextNumberRaw : txFallbackNext
+        const txNextNumber = typeof txNextNumberRaw === 'number' && txNextNumberRaw >= txFallbackNext
+          ? txNextNumberRaw
+          : txFallbackNext
         const counterPayload = {
           nextNumber: txNextNumber + 1,
           docId,
@@ -3390,11 +3455,15 @@ function VersionsPage() {
 
   const handleAcceptLatestVersion = async () => {
     if( !docId || !userId || !latestVersion ) {
-      setError( 'Select the latest version before accepting.' )
+      const message = 'Select the latest version before accepting.'
+      setError( message )
+      logBlockedVersionDecision( 'accept', message )
       return
     }
     if( !canAcceptOrReject ) {
-      setError( 'To accept, the latest version must be in review time or grace, have a file, all issues closed, and at least one issue with two or more comments; you must be author, leader, or admin.' )
+      const message = 'To accept, the latest version must be in review time or grace, have a file, all issues closed, and at least one issue with two or more comments; you must be author, leader, or admin.'
+      setError( message )
+      logBlockedVersionDecision( 'accept', message )
       return
     }
 
@@ -3411,6 +3480,7 @@ function VersionsPage() {
       )
 
       const batch = writeBatch( db )
+      const counterRef = doc( db, 'counters', `versions_${docId}` )
       batch.update( doc( db, 'versions', latestVersion.id ), {
         number: promotedNumber,
         status: 'Accepted',
@@ -3418,6 +3488,16 @@ function VersionsPage() {
         updatedAt: serverTimestamp(),
         updatedBy: userId,
       } )
+      batch.set(
+        counterRef,
+        {
+          nextNumber: promotedNumber + 1,
+          docId,
+          projectId,
+          previousVersionId: latestVersion.id,
+        },
+        { merge: true },
+      )
       if( previousAccepted && ( isLeader || isAdmin || previousAccepted.createdBy === userId ) ) {
         batch.update( doc( db, 'versions', previousAccepted.id ), {
           status: 'Replaced',
@@ -3501,11 +3581,15 @@ function VersionsPage() {
 
   const handleRejectLatestVersion = async () => {
     if( !docId || !userId || !latestVersion ) {
-      setError( 'Select the latest version before rejecting.' )
+      const message = 'Select the latest version before rejecting.'
+      setError( message )
+      logBlockedVersionDecision( 'reject', message )
       return
     }
     if( !canAcceptOrReject ) {
-      setError( 'To reject, the latest version must be in review time or grace, have a file, all issues closed, and at least one issue with two or more comments; you must be author, leader, or admin.' )
+      const message = 'To reject, the latest version must be in review time or grace, have a file, all issues closed, and at least one issue with two or more comments; you must be author, leader, or admin.'
+      setError( message )
+      logBlockedVersionDecision( 'reject', message )
       return
     }
 
@@ -3694,15 +3778,19 @@ function VersionsPage() {
 
   const requestVersionDecisionConfirmation = ( decision: 'accept' | 'reject' ) => {
     if( !docId || !userId || !latestVersion ) {
-      setError( decision === 'accept' ? 'Select the latest version before accepting.' : 'Select the latest version before rejecting.' )
+      const message = decision === 'accept'
+        ? 'Select the latest version before accepting.'
+        : 'Select the latest version before rejecting.'
+      setError( message )
+      logBlockedVersionDecision( decision, message )
       return
     }
     if( !canAcceptOrReject ) {
-      setError(
-        decision === 'accept'
-          ? 'To accept, the latest version must be in review time or grace, have a file, all issues closed, and at least one issue with two or more comments; you must be author, leader, or admin.'
-          : 'To reject, the latest version must be in review time or grace, have a file, all issues closed, and at least one issue with two or more comments; you must be author, leader, or admin.',
-      )
+      const message = decision === 'accept'
+        ? 'To accept, the latest version must be in review time or grace, have a file, all issues closed, and at least one issue with two or more comments; you must be author, leader, or admin.'
+        : 'To reject, the latest version must be in review time or grace, have a file, all issues closed, and at least one issue with two or more comments; you must be author, leader, or admin.'
+      setError( message )
+      logBlockedVersionDecision( decision, message )
       return
     }
     setError( null )

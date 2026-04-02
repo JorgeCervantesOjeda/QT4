@@ -354,6 +354,31 @@ service cloud.firestore {
         && versionDoc(previousVersionId).data.number == nextNumber - 2;
     }
 
+    function isAcceptedVersionCounterJump(projectId, docId, nextNumber, previousVersionId) {
+      return previousVersionId is string
+        && previousVersionId.size() > 0
+        && nextNumber is int
+        && nextNumber > 1
+        && (
+          (
+            versionDoc(previousVersionId).data.projectId == projectId
+            && versionDoc(previousVersionId).data.docId == docId
+            && versionDoc(previousVersionId).data.status == 'Accepted'
+            && versionDoc(previousVersionId).data.number is int
+            && versionDoc(previousVersionId).data.number % 100 == 0
+            && versionDoc(previousVersionId).data.number == nextNumber - 1
+          )
+          || (
+            versionAfter(previousVersionId).data.projectId == projectId
+            && versionAfter(previousVersionId).data.docId == docId
+            && versionAfter(previousVersionId).data.status == 'Accepted'
+            && versionAfter(previousVersionId).data.number is int
+            && versionAfter(previousVersionId).data.number % 100 == 0
+            && versionAfter(previousVersionId).data.number == nextNumber - 1
+          )
+        );
+    }
+
     function hasPreviousVersionChainForCreate(projectId, docId, versionNumber, previousVersionId) {
       return previousVersionId is string
         && previousVersionId.size() > 0
@@ -577,6 +602,15 @@ service cloud.firestore {
           || (
             resource != null
             && request.resource.data.nextNumber == resource.data.nextNumber + 1
+          )
+          || (
+            resource != null
+            && isAcceptedVersionCounterJump(
+              request.resource.data.projectId,
+              request.resource.data.docId,
+              request.resource.data.nextNumber,
+              request.resource.data.previousVersionId
+            )
           )
           || isAdmin()
         );
