@@ -50,6 +50,12 @@ const ERROR_REPORT_UNLOCK_FILE_REF_ID = 'file-ref-e2e-error-report-unlock'
 const ERROR_REPORT_UNLOCK_REPORT_DOCUMENT_ID = 'document-e2e-error-report-linked'
 const ERROR_REPORT_UNLOCK_REPORT_VERSION_ID = 'version-e2e-error-report-linked'
 const ERROR_REPORT_UNLOCK_REPORT_FILE_REF_ID = 'file-ref-e2e-error-report-linked'
+const MODEL_UPDATE_PROJECT_ID = 'project-e2e-model-update'
+const MODEL_UPDATE_DOCUMENT_ID = 'document-e2e-model-update'
+const MODEL_UPDATE_VERSION_ID = 'version-e2e-model-update'
+const REPAIR_PROJECT_ID = 'project-e2e-repair'
+const REPAIR_DOCUMENT_ID = 'document-e2e-repair'
+const REPAIR_VERSION_ID = 'version-e2e-repair'
 
 class FakeTimestamp {
   private readonly value: Date
@@ -810,6 +816,96 @@ const createSeedState = (): FakeState => {
     versionId: ERROR_REPORT_UNLOCK_REPORT_VERSION_ID,
     createdBy: memberUser.uid,
     timestamp: createdAt,
+  } )
+
+  withDoc( firestore, `projects/${MODEL_UPDATE_PROJECT_ID}`, {
+    name: 'Seeded Model Update Project',
+    leaderId: adminUser.uid,
+    isActive: true,
+    createdAt,
+    updatedAt: createdAt,
+  } )
+  withDoc( firestore, `documents/${MODEL_UPDATE_DOCUMENT_ID}`, {
+    projectId: MODEL_UPDATE_PROJECT_ID,
+    title: 'Seeded Model Update Document',
+    type: 'document',
+    createdBy: adminUser.uid,
+    authorId: adminUser.uid,
+    updatedBy: adminUser.uid,
+    createdAt,
+    updatedAt: createdAt,
+  } )
+  withDoc( firestore, `versions/${MODEL_UPDATE_VERSION_ID}`, {
+    projectId: MODEL_UPDATE_PROJECT_ID,
+    docId: MODEL_UPDATE_DOCUMENT_ID,
+    number: 1,
+    status: 'In Creation',
+    createdBy: adminUser.uid,
+    reviewerIds: [],
+    reviewStartAt: null,
+    reviewEndAt: null,
+    hasFile: false,
+    fileRefId: null,
+    stats: {
+      numThreads: 0,
+      numOpenThreads: 0,
+      numComments: 0,
+      numThreadsWithTwoPlusComments: 0,
+    },
+    numThreads: 0,
+    numOpenThreads: 0,
+    numComments: 0,
+    numThreadsWithTwoPlusComments: 0,
+    acceptedErrorReportId: null,
+    previousVersionId: null,
+    createdAt,
+    activityAt: createdAt,
+    updatedAt: createdAt,
+    updatedBy: adminUser.uid,
+  } )
+
+  withDoc( firestore, `projects/${REPAIR_PROJECT_ID}`, {
+    name: 'Seeded Repair Project',
+    leaderId: adminUser.uid,
+    isActive: true,
+    shortId: 901,
+    createdAt,
+    updatedAt: createdAt,
+  } )
+  withDoc( firestore, `documents/${REPAIR_DOCUMENT_ID}`, {
+    projectId: REPAIR_PROJECT_ID,
+    title: 'Seeded Repair Document',
+    type: 'document',
+    createdBy: adminUser.uid,
+    authorId: adminUser.uid,
+    updatedBy: adminUser.uid,
+    shortId: 902,
+    updatedAt: createdAt,
+  } )
+  withDoc( firestore, `versions/${REPAIR_VERSION_ID}`, {
+    projectId: REPAIR_PROJECT_ID,
+    docId: REPAIR_DOCUMENT_ID,
+    number: 1,
+    status: 'In Review',
+    createdBy: adminUser.uid,
+    reviewerIds: [],
+    reviewStartAt,
+    hasFile: false,
+    fileRefId: null,
+    stats: {
+      numThreads: 0,
+      numOpenThreads: 0,
+      numComments: 0,
+      numThreadsWithTwoPlusComments: 0,
+    },
+    numThreads: 0,
+    numOpenThreads: 0,
+    numComments: 0,
+    numThreadsWithTwoPlusComments: 0,
+    acceptedErrorReportId: null,
+    previousVersionId: null,
+    updatedAt: createdAt,
+    updatedBy: adminUser.uid,
   } )
 
   return {

@@ -112,6 +112,12 @@ const ERROR_REPORT_UNLOCK_FILE_REF_ID = 'file-ref-e2e-error-report-unlock'
 const ERROR_REPORT_UNLOCK_REPORT_DOCUMENT_ID = 'document-e2e-error-report-linked'
 const ERROR_REPORT_UNLOCK_REPORT_VERSION_ID = 'version-e2e-error-report-linked'
 const ERROR_REPORT_UNLOCK_REPORT_FILE_REF_ID = 'file-ref-e2e-error-report-linked'
+const MODEL_UPDATE_PROJECT_ID = 'project-e2e-model-update'
+const MODEL_UPDATE_DOCUMENT_ID = 'document-e2e-model-update'
+const MODEL_UPDATE_VERSION_ID = 'version-e2e-model-update'
+const REPAIR_PROJECT_ID = 'project-e2e-repair'
+const REPAIR_DOCUMENT_ID = 'document-e2e-repair'
+const REPAIR_VERSION_ID = 'version-e2e-repair'
 
 const setProjectMember = (batch, projectId, userId, role, email, timestamp) => {
   batch.set( db.doc( `projectMembers/${projectId}_${userId}` ), {
@@ -772,6 +778,96 @@ const seedFirestore = async () => {
     versionId: ERROR_REPORT_UNLOCK_REPORT_VERSION_ID,
     createdBy: 'user-member-1',
     timestamp: createdAt,
+  } )
+
+  batch.set( db.doc( `projects/${MODEL_UPDATE_PROJECT_ID}` ), {
+    name: 'Seeded Model Update Project',
+    leaderId: 'user-admin-1',
+    isActive: true,
+    createdAt,
+    updatedAt: createdAt,
+  } )
+  batch.set( db.doc( `documents/${MODEL_UPDATE_DOCUMENT_ID}` ), {
+    projectId: MODEL_UPDATE_PROJECT_ID,
+    title: 'Seeded Model Update Document',
+    type: 'document',
+    createdBy: 'user-admin-1',
+    authorId: 'user-admin-1',
+    updatedBy: 'user-admin-1',
+    createdAt,
+    updatedAt: createdAt,
+  } )
+  batch.set( db.doc( `versions/${MODEL_UPDATE_VERSION_ID}` ), {
+    projectId: MODEL_UPDATE_PROJECT_ID,
+    docId: MODEL_UPDATE_DOCUMENT_ID,
+    number: 1,
+    status: 'In Creation',
+    createdBy: 'user-admin-1',
+    reviewerIds: [],
+    reviewStartAt: null,
+    reviewEndAt: null,
+    hasFile: false,
+    fileRefId: null,
+    stats: {
+      numThreads: 0,
+      numOpenThreads: 0,
+      numComments: 0,
+      numThreadsWithTwoPlusComments: 0,
+    },
+    numThreads: 0,
+    numOpenThreads: 0,
+    numComments: 0,
+    numThreadsWithTwoPlusComments: 0,
+    acceptedErrorReportId: null,
+    previousVersionId: null,
+    createdAt,
+    activityAt: createdAt,
+    updatedAt: createdAt,
+    updatedBy: 'user-admin-1',
+  } )
+
+  batch.set( db.doc( `projects/${REPAIR_PROJECT_ID}` ), {
+    name: 'Seeded Repair Project',
+    leaderId: 'user-admin-1',
+    isActive: true,
+    shortId: 901,
+    createdAt,
+    updatedAt: createdAt,
+  } )
+  batch.set( db.doc( `documents/${REPAIR_DOCUMENT_ID}` ), {
+    projectId: REPAIR_PROJECT_ID,
+    title: 'Seeded Repair Document',
+    type: 'document',
+    createdBy: 'user-admin-1',
+    authorId: 'user-admin-1',
+    updatedBy: 'user-admin-1',
+    shortId: 902,
+    updatedAt: createdAt,
+  } )
+  batch.set( db.doc( `versions/${REPAIR_VERSION_ID}` ), {
+    projectId: REPAIR_PROJECT_ID,
+    docId: REPAIR_DOCUMENT_ID,
+    number: 1,
+    status: 'In Review',
+    createdBy: 'user-admin-1',
+    reviewerIds: [],
+    reviewStartAt,
+    hasFile: false,
+    fileRefId: null,
+    stats: {
+      numThreads: 0,
+      numOpenThreads: 0,
+      numComments: 0,
+      numThreadsWithTwoPlusComments: 0,
+    },
+    numThreads: 0,
+    numOpenThreads: 0,
+    numComments: 0,
+    numThreadsWithTwoPlusComments: 0,
+    acceptedErrorReportId: null,
+    previousVersionId: null,
+    updatedAt: createdAt,
+    updatedBy: 'user-admin-1',
   } )
 
   await batch.commit()

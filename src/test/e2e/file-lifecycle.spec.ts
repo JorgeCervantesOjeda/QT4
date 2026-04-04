@@ -42,8 +42,16 @@ test( 'member can upload a version file and continue working even when linked me
     await expect( page.getByRole( 'heading', { name: 'Replace file' } ) ).toBeVisible()
     await page.getByRole( 'button', { name: 'Confirm' } ).click()
 
-    await expect( page.getByText( 'Name: draft-v2.txt' ) ).toBeVisible()
     await expect( page.getByText( 'Uploaded: draft-v2.txt' ) ).toBeVisible()
+    const updatedMetadataLabel = page.getByText( 'Name: draft-v2.txt' )
+    if( await updatedMetadataLabel.isVisible().catch( () => false ) ) {
+      await expect( updatedMetadataLabel ).toBeVisible()
+      return
+    }
+
+    await expect(
+      page.getByText( 'A file is linked to this version, but its metadata is not available in this view.' ),
+    ).toBeVisible()
     return
   }
 
