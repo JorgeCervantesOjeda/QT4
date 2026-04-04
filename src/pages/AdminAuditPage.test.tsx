@@ -367,4 +367,105 @@ describe( 'pages/AdminAuditPage', () => {
       )
     } )
   }, 15000 )
+
+  it( 'shows a visible runtime-config load error for an admin user', async () => {
+    currentUserState.user = {
+      uid: 'user-admin-1',
+      email: 'admin@example.com',
+      displayName: 'Admin User',
+      getIdToken: vi.fn().mockResolvedValue( 'admin-token' ),
+    }
+    getDocMock.mockImplementation( async ( docRef: { collection: string; id: string } ) => {
+      if( docRef.collection === 'userProfiles' && docRef.id === 'user-admin-1' ) {
+        return createDocSnapshot( {
+          id: 'user-admin-1',
+          data: {
+            isAdmin: true,
+          },
+        } )
+      }
+      return createMissingSnapshot( docRef.id )
+    } )
+    getDocsMock.mockImplementation( async ( queryArg: unknown ) => {
+      const collectionName = getCollectionName( queryArg )
+      if( collectionName === 'userDirectory' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'user-admin-1',
+            data: {
+              userId: 'user-admin-1',
+              email: 'admin@example.com',
+              displayName: 'Admin User',
+            },
+          },
+        ] )
+      }
+      if( collectionName === 'auditLogs' ) {
+        return createQuerySnapshot( [] )
+      }
+      return createQuerySnapshot( [] )
+    } )
+    loadAppRuntimeConfigMock.mockRejectedValue( new Error( 'Runtime config fetch failed for testing.' ) )
+
+    render( <AdminAuditPage /> )
+
+    expect( await screen.findByRole( 'heading', { name: 'Admin Audit' }, { timeout: 10000 } ) ).toBeTruthy()
+    expect(
+      await screen.findByText( 'Runtime configuration failed to load: Runtime config fetch failed for testing.' ),
+    ).toBeTruthy()
+  }, 15000 )
+
+  it( 'shows a visible date-range validation error when start date is after end date', async () => {
+    currentUserState.user = {
+      uid: 'user-admin-1',
+      email: 'admin@example.com',
+      displayName: 'Admin User',
+      getIdToken: vi.fn().mockResolvedValue( 'admin-token' ),
+    }
+    getDocMock.mockImplementation( async ( docRef: { collection: string; id: string } ) => {
+      if( docRef.collection === 'userProfiles' && docRef.id === 'user-admin-1' ) {
+        return createDocSnapshot( {
+          id: 'user-admin-1',
+          data: {
+            isAdmin: true,
+          },
+        } )
+      }
+      return createMissingSnapshot( docRef.id )
+    } )
+    getDocsMock.mockImplementation( async ( queryArg: unknown ) => {
+      const collectionName = getCollectionName( queryArg )
+      if( collectionName === 'userDirectory' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'user-admin-1',
+            data: {
+              userId: 'user-admin-1',
+              email: 'admin@example.com',
+              displayName: 'Admin User',
+            },
+          },
+        ] )
+      }
+      if( collectionName === 'auditLogs' ) {
+        return createQuerySnapshot( [] )
+      }
+      return createQuerySnapshot( [] )
+    } )
+
+    render( <AdminAuditPage /> )
+
+    expect( await screen.findByRole( 'heading', { name: 'Admin Audit' }, { timeout: 10000 } ) ).toBeTruthy()
+    fireEvent.change( screen.getByLabelText( 'Start date' ), {
+      target: { value: '2026-04-11' },
+    } )
+    fireEvent.change( screen.getByLabelText( 'End date' ), {
+      target: { value: '2026-04-10' },
+    } )
+    fireEvent.click( screen.getByRole( 'button', { name: 'Run report' } ) )
+
+    expect(
+      await screen.findByText( 'Start date must be on or before end date.' ),
+    ).toBeTruthy()
+  }, 15000 )
 } )
