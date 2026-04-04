@@ -261,4 +261,110 @@ describe( 'pages/AdminAuditPage', () => {
     expect( screen.getByText( '0 entries' ) ).toBeTruthy()
     expect( screen.getByText( 'No task lifecycle data for the selected range.' ) ).toBeTruthy()
   }, 15000 )
+
+  it( 'shows the Files API connection summary for an admin user', async () => {
+    currentUserState.user = {
+      uid: 'user-admin-1',
+      email: 'admin@example.com',
+      displayName: 'Admin User',
+      getIdToken: vi.fn().mockResolvedValue( 'admin-token' ),
+    }
+    getDocMock.mockImplementation( async ( docRef: { collection: string; id: string } ) => {
+      if( docRef.collection === 'userProfiles' && docRef.id === 'user-admin-1' ) {
+        return createDocSnapshot( {
+          id: 'user-admin-1',
+          data: {
+            isAdmin: true,
+          },
+        } )
+      }
+      return createMissingSnapshot( docRef.id )
+    } )
+    getDocsMock.mockImplementation( async ( queryArg: unknown ) => {
+      const collectionName = getCollectionName( queryArg )
+      if( collectionName === 'userDirectory' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'user-admin-1',
+            data: {
+              userId: 'user-admin-1',
+              email: 'admin@example.com',
+              displayName: 'Admin User',
+            },
+          },
+        ] )
+      }
+      if( collectionName === 'auditLogs' ) {
+        return createQuerySnapshot( [] )
+      }
+      return createQuerySnapshot( [] )
+    } )
+
+    render( <AdminAuditPage /> )
+
+    expect( await screen.findByRole( 'heading', { name: 'Admin Audit' }, { timeout: 10000 } ) ).toBeTruthy()
+    expect(
+      await screen.findByText( /Connected: project demo-project, uid user-admin-1, email: admin@example.com/ ),
+    ).toBeTruthy()
+  }, 15000 )
+
+  it( 'saves runtime providers with the selected values for an admin user', async () => {
+    currentUserState.user = {
+      uid: 'user-admin-1',
+      email: 'admin@example.com',
+      displayName: 'Admin User',
+      getIdToken: vi.fn().mockResolvedValue( 'admin-token' ),
+    }
+    getDocMock.mockImplementation( async ( docRef: { collection: string; id: string } ) => {
+      if( docRef.collection === 'userProfiles' && docRef.id === 'user-admin-1' ) {
+        return createDocSnapshot( {
+          id: 'user-admin-1',
+          data: {
+            isAdmin: true,
+          },
+        } )
+      }
+      return createMissingSnapshot( docRef.id )
+    } )
+    getDocsMock.mockImplementation( async ( queryArg: unknown ) => {
+      const collectionName = getCollectionName( queryArg )
+      if( collectionName === 'userDirectory' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'user-admin-1',
+            data: {
+              userId: 'user-admin-1',
+              email: 'admin@example.com',
+              displayName: 'Admin User',
+            },
+          },
+        ] )
+      }
+      if( collectionName === 'auditLogs' ) {
+        return createQuerySnapshot( [] )
+      }
+      return createQuerySnapshot( [] )
+    } )
+
+    render( <AdminAuditPage /> )
+
+    expect( await screen.findByRole( 'heading', { name: 'Admin Audit' }, { timeout: 10000 } ) ).toBeTruthy()
+    fireEvent.change( screen.getByLabelText( 'File storage provider' ), {
+      target: { value: 'firebase-storage' },
+    } )
+    fireEvent.change( screen.getByLabelText( 'Email provider' ), {
+      target: { value: 'firebase-functions' },
+    } )
+    fireEvent.click( screen.getByRole( 'button', { name: 'Save providers' } ) )
+
+    await waitFor( () => {
+      expect( saveAppRuntimeConfigMock ).toHaveBeenCalledWith(
+        {
+          fileStorageProvider: 'firebase-storage',
+          emailProvider: 'firebase-functions',
+        },
+        'user-admin-1',
+      )
+    } )
+  }, 15000 )
 } )
