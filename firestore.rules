@@ -627,11 +627,19 @@ service cloud.firestore {
             && request.resource.data.docId is string
             && request.resource.data.projectId is string
             && counterId == 'versions_' + request.resource.data.docId
-            && canCreateVersionByPolicy(
-              request.resource.data.projectId,
-              request.resource.data.docId,
-              request.resource.data.nextNumber - 1,
-              request.resource.data.previousVersionId
+            && (
+              canCreateVersionByPolicy(
+                request.resource.data.projectId,
+                request.resource.data.docId,
+                request.resource.data.nextNumber - 1,
+                request.resource.data.previousVersionId
+              )
+              || isAcceptedVersionCounterJump(
+                request.resource.data.projectId,
+                request.resource.data.docId,
+                request.resource.data.nextNumber,
+                request.resource.data.previousVersionId
+              )
             )
           )
         )
@@ -811,6 +819,10 @@ service cloud.firestore {
 
     match /dashboard/{userId} {
       allow read, write: if isSelf(userId);
+
+      match /tasks/{taskId} {
+        allow read, write: if isSelf(userId);
+      }
     }
 
     match /auditLogs/{logId} {

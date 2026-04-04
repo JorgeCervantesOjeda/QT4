@@ -164,6 +164,11 @@ const normalizeMonitorPayload = (body, decoded, req) => {
     docId: normalizeMonitorField( body.docId, 128 ),
     versionId: normalizeMonitorField( body.versionId, 128 ),
     threadId: normalizeMonitorField( body.threadId, 128 ),
+    pageLabel: trimMultiline( body.pageLabel, 200 ),
+    projectLabel: trimMultiline( body.projectLabel, 200 ),
+    docLabel: trimMultiline( body.docLabel, 200 ),
+    versionLabel: trimMultiline( body.versionLabel, 200 ),
+    threadLabel: trimMultiline( body.threadLabel, 200 ),
     userAgent: trimSingleLine( body.userAgent || req.headers[ "user-agent" ] || "", 400 ),
     appBuild: normalizeMonitorField( body.appBuild, 120 ),
     clientTimestamp: normalizeMonitorField( body.clientTimestamp, 64 ),
@@ -265,7 +270,7 @@ const sendTextEmail = async ({ to, cc = [], subject, text }) => {
   } )
 }
 
-exports.notifyEmail = onRequest( { cors: false, maxInstances: 5 }, async (req, res) => {
+exports.notifyEmail = onRequest( { cors: false, maxInstances: 5, invoker: "public" }, async (req, res) => {
   setCorsHeaders( req, res )
   if( req.method === "OPTIONS" ) {
     res.status( 204 ).send( "" )
@@ -336,7 +341,7 @@ exports.notifyEmail = onRequest( { cors: false, maxInstances: 5 }, async (req, r
   }
 } )
 
-exports.reportClientMonitorEvent = onRequest( { cors: false, maxInstances: 10 }, async (req, res) => {
+exports.reportClientMonitorEvent = onRequest( { cors: false, maxInstances: 10, invoker: "public" }, async (req, res) => {
   setCorsHeaders( req, res, [ "MONITOR_ALLOWED_ORIGINS", "NOTIFY_ALLOWED_ORIGINS" ] )
   if( req.method === "OPTIONS" ) {
     res.status( 204 ).send( "" )
@@ -437,6 +442,10 @@ exports.reportClientMonitorEvent = onRequest( { cors: false, maxInstances: 10 },
 
     if( shouldAttemptEmail ) {
       const consoleUrl = buildMonitorConsoleUrl( docId )
+      const projectLine = payload.projectLabel || payload.projectId || "-"
+      const documentLine = payload.docLabel || payload.docId || "-"
+      const versionLine = payload.versionLabel || payload.versionId || "-"
+      const threadLine = payload.threadLabel || payload.threadId || "-"
       const emailText = [
         `QT4 abnormal client error detected.`,
         ``,
@@ -444,18 +453,24 @@ exports.reportClientMonitorEvent = onRequest( { cors: false, maxInstances: 10 },
         `Category: ${payload.category}`,
         `Source: ${payload.source}`,
         `Action: ${payload.action}`,
-        `Route: ${payload.route || "(unknown)"}`,
+        `Page: ${payload.pageLabel || payload.route || "(unknown)"}`,
         `Code: ${payload.code || "(none)"}`,
         `Actor: ${payload.actorId || "(unknown)"}`,
         `Actor email: ${payload.actorEmail || "(unknown)"}`,
-        `Project: ${payload.projectId || "-"}`,
-        `Document: ${payload.docId || "-"}`,
-        `Version: ${payload.versionId || "-"}`,
-        `Thread: ${payload.threadId || "-"}`,
+        `Project: ${projectLine}`,
+        `Document: ${documentLine}`,
+        `Version: ${versionLine}`,
+        `Issue: ${threadLine}`,
         `Fingerprint: ${payload.fingerprint}`,
         `Client timestamp: ${payload.clientTimestamp || "-"}`,
         `Build: ${payload.appBuild || "-"}`,
         ``,
+        payload.route ? `Route: ${payload.route}` : "",
+        payload.projectId ? `Project ID: ${payload.projectId}` : "",
+        payload.docId ? `Document ID: ${payload.docId}` : "",
+        payload.versionId ? `Version ID: ${payload.versionId}` : "",
+        payload.threadId ? `Issue ID: ${payload.threadId}` : "",
+        payload.route || payload.projectId || payload.docId || payload.versionId || payload.threadId ? `` : "",
         `Message:`,
         payload.messageRaw,
         payload.stack ? `\nStack:\n${payload.stack}` : "",

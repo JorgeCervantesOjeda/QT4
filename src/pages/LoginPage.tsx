@@ -159,7 +159,14 @@ function LoginPage() {
           </label>
 
           {error ? (
-            <ErrorChecklistModal error={error} checklist={errorChecklist} onClose={clearError} />
+            <ErrorChecklistModal
+              error={error}
+              checklist={errorChecklist}
+              onClose={clearError}
+              reportContext={{
+                pageLabel: 'Log in',
+              }}
+            />
           ) : null}
           {inactivityNotice ? <p className="notice-success">{inactivityNotice}</p> : null}
           {resetNotice ? <p className="notice-success">{resetNotice}</p> : null}

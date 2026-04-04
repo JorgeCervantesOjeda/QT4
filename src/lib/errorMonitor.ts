@@ -1,6 +1,6 @@
 import { auth } from './firebase'
 
-type MonitorSource = 'firestore' | 'storage' | 'auth' | 'ui' | 'network' | 'unknown'
+export type MonitorSource = 'firestore' | 'storage' | 'auth' | 'ui' | 'network' | 'unknown'
 type MonitorSeverity = 'low' | 'medium' | 'high'
 type MonitorCategory = 'permission' | 'runtime' | 'network' | 'auth' | 'firebase' | 'unknown'
 
@@ -19,6 +19,30 @@ type ReportAbnormalErrorInput = {
   docId?: string
   versionId?: string
   threadId?: string
+  pageLabel?: string
+  projectLabel?: string
+  docLabel?: string
+  versionLabel?: string
+  threadLabel?: string
+  route?: string
+  pageUrl?: string
+  userId?: string
+  userEmail?: string | null
+}
+
+type ReportUserVisibleErrorInput = {
+  message: string
+  action?: string
+  source?: MonitorSource
+  projectId?: string
+  docId?: string
+  versionId?: string
+  threadId?: string
+  pageLabel?: string
+  projectLabel?: string
+  docLabel?: string
+  versionLabel?: string
+  threadLabel?: string
   route?: string
   pageUrl?: string
   userId?: string
@@ -349,6 +373,51 @@ const buildPageUrl = (pageUrl?: string): string => {
   return window.location.href
 }
 
+const sendMonitorPayload = async (
+  payload: Record<string, string>,
+): Promise<boolean> => {
+  const user = auth.currentUser
+  if( !user ) {
+    return false
+  }
+  try {
+    const idToken = await user.getIdToken()
+    const response = await fetch( FIREBASE_MONITOR_FUNCTION_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${idToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify( payload ),
+    } )
+    if( !response.ok ) {
+      const responseText = await response.text().catch( () => response.statusText )
+      console.warn( 'Abnormal error monitor failed:', response.status, responseText )
+      return false
+    }
+    return true
+  } catch( err ) {
+    console.warn( 'Abnormal error monitor request failed:', err )
+    return false
+  }
+}
+
+const resolveMonitorCategory = (source: MonitorSource): MonitorCategory => {
+  switch( source ) {
+    case 'auth':
+      return 'auth'
+    case 'network':
+      return 'network'
+    case 'firestore':
+    case 'storage':
+      return 'firebase'
+    case 'ui':
+      return 'runtime'
+    default:
+      return 'unknown'
+  }
+}
+
 const warnMissingEndpoint = () => {
   if( warnedMissingMonitorEndpoint ) {
     return
@@ -387,53 +456,73 @@ export const reportAbnormalError = async (input: ReportAbnormalErrorInput): Prom
   }
 
   const user = auth.currentUser
-  if( !user ) {
-    return false
-  }
+  return sendMonitorPayload( {
+    fingerprint,
+    category: classified.category,
+    severity: classified.severity,
+    source: classified.source,
+    code: classified.code,
+    name: classified.name,
+    messageRaw: classified.messageRaw,
+    messageNormalized: classified.messageNormalized,
+    stack: classified.stack,
+    route,
+    pageUrl: buildPageUrl( input.pageUrl || monitorContext.pageUrl ),
+    action,
+    actorId: input.userId ?? monitorContext.userId ?? user?.uid ?? '',
+    actorEmail: input.userEmail ?? monitorContext.userEmail ?? user?.email ?? '',
+    projectId: input.projectId ?? '',
+    docId: input.docId ?? '',
+    versionId: input.versionId ?? '',
+    threadId: input.threadId ?? '',
+    pageLabel: trimMultiline( input.pageLabel ?? '', 200 ),
+    projectLabel: trimMultiline( input.projectLabel ?? '', 200 ),
+    docLabel: trimMultiline( input.docLabel ?? '', 200 ),
+    versionLabel: trimMultiline( input.versionLabel ?? '', 200 ),
+    threadLabel: trimMultiline( input.threadLabel ?? '', 200 ),
+    userAgent: trimAndCollapseWhitespace( window.navigator.userAgent ?? '', 400 ),
+    appBuild: APP_BUILD,
+    clientTimestamp: new Date().toISOString(),
+  } )
+}
 
-  try {
-    const idToken = await user.getIdToken()
-    const payload = {
-      fingerprint,
-      category: classified.category,
-      severity: classified.severity,
-      source: classified.source,
-      code: classified.code,
-      name: classified.name,
-      messageRaw: classified.messageRaw,
-      messageNormalized: classified.messageNormalized,
-      stack: classified.stack,
-      route,
-      pageUrl: buildPageUrl( input.pageUrl || monitorContext.pageUrl ),
-      action,
-      actorId: input.userId ?? monitorContext.userId ?? user.uid,
-      actorEmail: input.userEmail ?? monitorContext.userEmail ?? user.email ?? '',
-      projectId: input.projectId ?? '',
-      docId: input.docId ?? '',
-      versionId: input.versionId ?? '',
-      threadId: input.threadId ?? '',
-      userAgent: trimAndCollapseWhitespace( window.navigator.userAgent ?? '', 400 ),
-      appBuild: APP_BUILD,
-      clientTimestamp: new Date().toISOString(),
-    }
-    const response = await fetch( FIREBASE_MONITOR_FUNCTION_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${idToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify( payload ),
-    } )
-    if( !response.ok ) {
-      const responseText = await response.text().catch( () => response.statusText )
-      console.warn( 'Abnormal error monitor failed:', response.status, responseText )
-      return false
-    }
-    return true
-  } catch( err ) {
-    console.warn( 'Abnormal error monitor request failed:', err )
+export const reportUserVisibleError = async (input: ReportUserVisibleErrorInput): Promise<boolean> => {
+  if( typeof window === 'undefined' ) {
     return false
   }
+  if( !FIREBASE_MONITOR_FUNCTION_URL ) {
+    warnMissingEndpoint()
+    return false
+  }
+  const source = input.source ?? 'ui'
+  const route = buildRoute( input.route || monitorContext.route )
+  const user = auth.currentUser
+  const messageRaw = trimMultiline( input.message || 'User-visible error reported', MAX_MESSAGE_LENGTH )
+  const messageNormalized = normalizeMessageForFingerprint( messageRaw )
+  const uniqueFingerprint = `user-report-${Date.now().toString( 36 )}-${Math.random().toString( 36 ).slice( 2, 10 )}`
+  return sendMonitorPayload( {
+    fingerprint: uniqueFingerprint,
+    category: resolveMonitorCategory( source ),
+    severity: 'high',
+    source,
+    code: 'user-visible-error',
+    name: 'UserVisibleError',
+    messageRaw,
+    messageNormalized,
+    stack: '',
+    route,
+    pageUrl: buildPageUrl( input.pageUrl || monitorContext.pageUrl ),
+    action: trimAndCollapseWhitespace( input.action ?? 'ui.reportVisibleError', 120 ),
+    actorId: input.userId ?? monitorContext.userId ?? user?.uid ?? '',
+    actorEmail: input.userEmail ?? monitorContext.userEmail ?? user?.email ?? '',
+    projectId: input.projectId ?? '',
+    docId: input.docId ?? '',
+    versionId: input.versionId ?? '',
+    threadId: input.threadId ?? '',
+    userAgent: trimAndCollapseWhitespace( window.navigator.userAgent ?? '', 400 ),
+    appBuild: APP_BUILD,
+    clientTimestamp: new Date().toISOString(),
+  } )
 }
 
 export const installGlobalErrorMonitoring = (): void => {
@@ -458,4 +547,3 @@ export const installGlobalErrorMonitoring = (): void => {
     } )
   } )
 }
-

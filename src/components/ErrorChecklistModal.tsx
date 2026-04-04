@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { reportUserVisibleError, type MonitorSource } from '../lib/errorMonitor'
 import { GiphyInline } from '../giphy/GiphyProvider'
 import ModalDialog from './ModalDialog'
 
@@ -21,6 +23,28 @@ type ErrorChecklistModalProps = {
   error: string
   checklist: ChecklistItem[]
   onClose: () => void
+  reportContext?: {
+    action?: string
+    source?: MonitorSource
+    projectId?: string
+    docId?: string
+    versionId?: string
+    threadId?: string
+    pageLabel?: string
+    projectLabel?: string
+    docLabel?: string
+    versionLabel?: string
+    threadLabel?: string
+  } | null
+}
+
+type ResolvedReportContext = {
+  action: string
+  projectId: string
+  docId: string
+  versionId: string
+  threadId: string
+  pageLabel: string
 }
 
 const stripOuterParens = (value: string) => value.replace( /^\(|\)$/g, '' )
@@ -83,8 +107,108 @@ const resolveRequestedAction = (error: string): string | null => {
   return null
 }
 
-function ErrorChecklistModal( { title = 'Action blocked', error, checklist, onClose }: ErrorChecklistModalProps ) {
+const buildChecklistSummary = (checklist: ChecklistItem[]): string[] => checklist.flatMap( ( item ) => {
+  if( item.parts && item.parts.length > 0 ) {
+    return item.parts.map( ( part ) => formatClause( part.label, part.ok ) )
+  }
+  if( item.groups && item.groups.length > 0 ) {
+    return item.groups.flatMap( ( group ) => group.map( ( part ) => formatClause( part.label, part.ok ) ) )
+  }
+  if( item.label ) {
+    return [ formatClause( item.label, Boolean( item.ok ) ) ]
+  }
+  return []
+} )
+
+const resolveFallbackReportContext = (requestedAction: string | null): ResolvedReportContext => {
+  if( typeof window === 'undefined' ) {
+    return {
+      action: requestedAction ? `ui.${requestedAction}` : 'ui.reportVisibleError',
+      projectId: '',
+      docId: '',
+      versionId: '',
+      threadId: '',
+      pageLabel: '',
+    }
+  }
+
+  const currentUrl = new URL( window.location.href )
+  const pathParts = currentUrl.pathname.split( '/' ).filter( Boolean )
+  const searchParams = currentUrl.searchParams
+  let projectId = searchParams.get( 'projectId' ) ?? ''
+  let docId = ''
+  const versionId = searchParams.get( 'versionId' ) ?? ''
+  const threadId = searchParams.get( 'threadId' ) ?? ''
+
+  if( pathParts[0] === 'projects' ) {
+    projectId = projectId || pathParts[1] || ''
+    if( pathParts[2] === 'documents' ) {
+      docId = pathParts[3] || ''
+    }
+  } else if( pathParts[0] === 'documents' ) {
+    docId = pathParts[1] || ''
+  }
+
+  return {
+    action: requestedAction ? `ui.${requestedAction}` : 'ui.reportVisibleError',
+    projectId,
+    docId,
+    versionId,
+    threadId,
+    pageLabel: document.title.trim(),
+  }
+}
+
+function ErrorChecklistModal( { title = 'Action blocked', error, checklist, onClose, reportContext = null }: ErrorChecklistModalProps ) {
   const requestedAction = resolveRequestedAction( error )
+  const [isReporting, setIsReporting] = useState( false )
+  const [reportFeedback, setReportFeedback] = useState<string | null>( null )
+  const [reportSent, setReportSent] = useState( false )
+  const handleReport = async () => {
+    if( isReporting || reportSent ) {
+      return
+    }
+    setIsReporting( true )
+    setReportFeedback( null )
+    const fallbackContext = resolveFallbackReportContext( requestedAction )
+    const readableContextLines = [
+      reportContext?.pageLabel ?? fallbackContext.pageLabel ? 'Context:' : null,
+      reportContext?.pageLabel ?? fallbackContext.pageLabel ? `Page: ${reportContext?.pageLabel ?? fallbackContext.pageLabel}` : null,
+      reportContext?.projectLabel ? `Project: ${reportContext.projectLabel}` : null,
+      reportContext?.docLabel ? `Document: ${reportContext.docLabel}` : null,
+      reportContext?.versionLabel ? `Version: ${reportContext.versionLabel}` : null,
+      reportContext?.threadLabel ? `Issue: ${reportContext.threadLabel}` : null,
+    ].filter( Boolean )
+    const reportMessage = [
+      `User-visible error: ${error}`,
+      readableContextLines.length > 0 ? '' : null,
+      ...readableContextLines,
+      checklist.length > 0 ? '' : null,
+      checklist.length > 0 ? 'Checklist:' : null,
+      ...buildChecklistSummary( checklist ),
+    ].filter( Boolean ).join( '\n' )
+    const ok = await reportUserVisibleError( {
+      message: reportMessage,
+      action: reportContext?.action ?? fallbackContext.action,
+      source: reportContext?.source ?? 'ui',
+      projectId: reportContext?.projectId ?? fallbackContext.projectId,
+      docId: reportContext?.docId ?? fallbackContext.docId,
+      versionId: reportContext?.versionId ?? fallbackContext.versionId,
+      threadId: reportContext?.threadId ?? fallbackContext.threadId,
+      pageLabel: reportContext?.pageLabel ?? fallbackContext.pageLabel,
+      projectLabel: reportContext?.projectLabel,
+      docLabel: reportContext?.docLabel,
+      versionLabel: reportContext?.versionLabel,
+      threadLabel: reportContext?.threadLabel,
+    } )
+    setIsReporting( false )
+    if( ok ) {
+      setReportSent( true )
+      setReportFeedback( 'This error was sent to the admin user.' )
+      return
+    }
+    setReportFeedback( 'The error could not be reported. Please try again.' )
+  }
   return (
     <ModalDialog onClose={onClose} cardClassName="modal-card--checklist">
         {checklist.length > 0 ? (
@@ -93,6 +217,9 @@ function ErrorChecklistModal( { title = 'Action blocked', error, checklist, onCl
             <GiphyInline reason="dislike_rejected_nope" mode="inline" showLabel={false} />
             {requestedAction ? <p className="muted">Requested action: {requestedAction}</p> : null}
             <p className="error">{error}</p>
+            <div className="stack">
+              <p className="muted">Do you want to report this message to admin?</p>
+            </div>
             <ul className="checklist-list">
               {checklist.map( ( item, index ) => {
                 const showAnd = index < checklist.length - 1
@@ -148,13 +275,20 @@ function ErrorChecklistModal( { title = 'Action blocked', error, checklist, onCl
             <h4>{title}</h4>
             <GiphyInline reason="dislike_rejected_nope" mode="inline" showLabel={false} />
             <p className="error">{error}</p>
+            <div className="stack">
+              <p className="muted">Do you want to report this message to admin?</p>
+            </div>
           </section>
         )}
         <div className="actions">
+          <button type="button" className="ghost" onClick={() => void handleReport()} disabled={isReporting || reportSent}>
+            {isReporting ? 'Reporting...' : reportSent ? 'Reported' : 'Report to admin'}
+          </button>
           <button type="button" onClick={onClose}>
             Close
           </button>
         </div>
+        {reportFeedback ? <p className={reportSent ? 'muted' : 'error'}>{reportFeedback}</p> : null}
     </ModalDialog>
   )
 }

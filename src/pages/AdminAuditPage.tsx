@@ -1957,7 +1957,14 @@ function AdminAuditPage() {
           </div>
         </section>
         {error ? (
-          <ErrorChecklistModal error={error} checklist={errorChecklist} onClose={() => setError( null )} />
+          <ErrorChecklistModal
+            error={error}
+            checklist={errorChecklist}
+            onClose={() => setError( null )}
+            reportContext={{
+              pageLabel: 'Admin Audit',
+            }}
+          />
         ) : null}
 
         {isBusy && logs.length === 0 ? (

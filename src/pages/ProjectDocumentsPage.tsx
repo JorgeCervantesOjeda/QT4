@@ -803,7 +803,16 @@ function ProjectDocumentsPage() {
               </div>
             </div>
             {error ? (
-              <ErrorChecklistModal error={error} checklist={errorChecklist} onClose={clearError} />
+              <ErrorChecklistModal
+                error={error}
+                checklist={errorChecklist}
+                onClose={clearError}
+                reportContext={{
+                  pageLabel: 'Project Documents',
+                  projectId: projectId ?? '',
+                  projectLabel: project ? `${project.shortId ?? 'Unassigned'} - ${project.name}` : '',
+                }}
+              />
             ) : null}
             {successMessage ? (
               <ModalDialog onClose={handleCloseSuccessMessage} initialFocusRef={successOkButtonRef}>

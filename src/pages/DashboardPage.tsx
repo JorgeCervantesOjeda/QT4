@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { ColumnDef, SortingState } from '@tanstack/react-table'
 import {
+  collection,
   doc,
   onSnapshot,
 } from 'firebase/firestore'
@@ -16,6 +17,7 @@ import { useErrorChecklistModal } from '../hooks/useErrorChecklistModal'
 import { reportAbnormalError } from '../lib/errorMonitor'
 import { db } from '../lib/firebase'
 import {
+  deserializeDashboardTask,
   refreshDashboard,
   type DashboardBuildProgress,
   type DashboardRefreshScope,
@@ -32,7 +34,10 @@ function DashboardPage() {
   const userId = user?.uid ?? ''
   const navigate = useNavigate()
   const { error, errorChecklist, openError, clearError } = useErrorChecklistModal()
-  const [tasks, setTasks] = useState<DashboardTask[]>([] )
+  const [legacyTasks, setLegacyTasks] = useState<DashboardTask[]>([] )
+  const [storedTasks, setStoredTasks] = useState<DashboardTask[]>([] )
+  const [dashboardStorageVersion, setDashboardStorageVersion] = useState( 1 )
+  const [taskCollectionLoaded, setTaskCollectionLoaded] = useState( false )
   const [activeRefreshScope, setActiveRefreshScope] = useState<DashboardRefreshScope | null>( null )
   const [dashboardUpdatedAt, setDashboardUpdatedAt] = useState<Date | null>( null )
   const [nowMs, setNowMs] = useState( () => Date.now() )
@@ -91,6 +96,10 @@ function DashboardPage() {
     return [ { id: 'createdAtMs', desc: true } ]
   } )
   const isLoadingTasks = activeRefreshScope !== null
+  const tasks = useMemo(
+    () => ( dashboardStorageVersion >= 2 && taskCollectionLoaded ? storedTasks : legacyTasks ),
+    [ dashboardStorageVersion, legacyTasks, storedTasks, taskCollectionLoaded ],
+  )
   const refreshScopeLabel: Record<DashboardRefreshScope, string> = {
     all: 'all sections',
     authoring: 'In Creation (Author)',
@@ -271,18 +280,18 @@ function DashboardPage() {
       dashboardRef,
       ( snapshot ) => {
         if( !snapshot.exists() ) {
-          setTasks( [] )
+          setLegacyTasks( [] )
+          setDashboardStorageVersion( 1 )
           setDashboardUpdatedAt( null )
           return
         }
         const data = snapshot.data()
         const rawTasks = ( data.tasks as DashboardTask[] | undefined ) ?? []
-        const nextTasks = rawTasks.map( ( task ) => ( {
-          ...task,
-          createdAt: toTimestampDate( task.createdAt ),
-          reviewEndAt: toTimestampDate( task.reviewEndAt ),
-        } ) )
-        setTasks( nextTasks )
+        const nextTasks = rawTasks.map( ( task ) =>
+          deserializeDashboardTask( task.id, task as unknown as Record<string, unknown> ),
+        )
+        setLegacyTasks( nextTasks )
+        setDashboardStorageVersion( Number( data.storageVersion ?? 1 ) )
         const updatedAt = toTimestampDate( data.updatedAt )
         setDashboardUpdatedAt( updatedAt )
         if( updatedAt ) {
@@ -309,8 +318,39 @@ function DashboardPage() {
   }, [ userId, openError ] )
 
   useEffect( () => {
+    if( !userId ) {
+      return
+    }
+    setTaskCollectionLoaded( false )
+    const tasksRef = collection( db, 'dashboard', userId, 'tasks' )
+    const unsubscribe = onSnapshot(
+      tasksRef,
+      ( snapshot ) => {
+        const nextTasks = snapshot.docs.map( ( taskSnapshot ) =>
+          deserializeDashboardTask( taskSnapshot.id, taskSnapshot.data() as Record<string, unknown> ),
+        )
+        setStoredTasks( nextTasks )
+        setTaskCollectionLoaded( true )
+      },
+      ( err ) => {
+        const message = err instanceof Error ? err.message : 'Unexpected error'
+        openError( `Dashboard tasks failed to load: ${message}`, [
+          { label: '(user is signed in)', ok: Boolean( userId ) },
+          { label: '(network connection is available)', ok: typeof navigator !== 'undefined' ? navigator.onLine : true },
+        ] )
+      },
+    )
+    return () => {
+      unsubscribe()
+    }
+  }, [ userId, openError ] )
+
+  useEffect( () => {
     setDashboardUpdatedAt( null )
-    setTasks( [] )
+    setLegacyTasks( [] )
+    setStoredTasks( [] )
+    setDashboardStorageVersion( 1 )
+    setTaskCollectionLoaded( false )
     setActiveRefreshScope( null )
     setLastRefreshByScope( {
       all: null,
@@ -568,7 +608,14 @@ function DashboardPage() {
           </div>
         </section>
         {error ? (
-          <ErrorChecklistModal error={error} checklist={errorChecklist} onClose={clearError} />
+          <ErrorChecklistModal
+            error={error}
+            checklist={errorChecklist}
+            onClose={clearError}
+            reportContext={{
+              pageLabel: 'Dashboard',
+            }}
+          />
         ) : null}
         {isLoadingTasks ? (
           <ModalDialog cardClassName="dashboard-progress-modal">

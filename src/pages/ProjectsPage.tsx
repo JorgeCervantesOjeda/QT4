@@ -700,7 +700,14 @@ function ProjectsPage() {
             <div className="actions">
             </div>
             {error ? (
-              <ErrorChecklistModal error={error} checklist={errorChecklist} onClose={clearError} />
+              <ErrorChecklistModal
+                error={error}
+                checklist={errorChecklist}
+                onClose={clearError}
+                reportContext={{
+                  pageLabel: 'Projects',
+                }}
+              />
             ) : null}
             {successMessage ? (
               <ModalDialog onClose={handleCloseSuccessMessage} initialFocusRef={successOkButtonRef}>

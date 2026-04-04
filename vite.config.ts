@@ -1,3 +1,5 @@
+/// <reference types="vitest/config" />
+import path from 'node:path'
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -30,6 +32,8 @@ const resolveManualChunk = (id: string): string | undefined => {
 // https://vite.dev/config/
 export default defineConfig( ( { mode } ) => {
   const env = loadEnv( mode, process.cwd(), '' )
+  const isE2E = mode === 'e2e'
+  const e2eFakesDir = path.resolve( __dirname, 'src/test/e2e/fakes' )
   const filesApiProxyPathRaw = env.VITE_FILES_API_PROXY_PATH ?? '/files-api'
   const filesApiProxyPath = filesApiProxyPathRaw.startsWith( '/' )
     ? filesApiProxyPathRaw
@@ -38,6 +42,32 @@ export default defineConfig( ( { mode } ) => {
 
   return {
     plugins: [react()],
+    resolve: {
+      alias: isE2E
+        ? [
+          {
+            find: 'firebase/app',
+            replacement: path.resolve( e2eFakesDir, 'app.ts' ),
+          },
+          {
+            find: 'firebase/analytics',
+            replacement: path.resolve( e2eFakesDir, 'analytics.ts' ),
+          },
+          {
+            find: 'firebase/auth',
+            replacement: path.resolve( e2eFakesDir, 'auth.ts' ),
+          },
+          {
+            find: 'firebase/firestore',
+            replacement: path.resolve( e2eFakesDir, 'firestore.ts' ),
+          },
+          {
+            find: 'firebase/storage',
+            replacement: path.resolve( e2eFakesDir, 'storage.ts' ),
+          },
+        ]
+        : [],
+    },
     server: {
       proxy: {
         [filesApiProxyPath]: {
@@ -56,6 +86,13 @@ export default defineConfig( ( { mode } ) => {
           manualChunks: resolveManualChunk,
         },
       },
+    },
+    test: {
+      environment: 'jsdom',
+      setupFiles: './src/test/setup.ts',
+      restoreMocks: true,
+      clearMocks: true,
+      include: [ 'src/**/*.test.ts', 'src/**/*.test.tsx' ],
     },
   }
 } )

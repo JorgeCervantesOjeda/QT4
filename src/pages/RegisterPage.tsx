@@ -153,7 +153,14 @@ function RegisterPage() {
           </label>
 
           {error ? (
-            <ErrorChecklistModal error={error} checklist={errorChecklist} onClose={clearError} />
+            <ErrorChecklistModal
+              error={error}
+              checklist={errorChecklist}
+              onClose={clearError}
+              reportContext={{
+                pageLabel: 'Register',
+              }}
+            />
           ) : null}
 
           <div className="actions">
