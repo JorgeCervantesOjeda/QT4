@@ -411,6 +411,55 @@ service cloud.firestore {
         || isVersionReviewerById(versionId);
     }
 
+    function resolvedFileProjectId(fileData) {
+      return (
+        fileData.projectId is string
+        && fileData.projectId.size() > 0
+      ) ? fileData.projectId : (
+        fileData.versionId is string
+        && fileData.versionId.size() > 0
+        && versionDoc(fileData.versionId).data.projectId is string
+        && versionDoc(fileData.versionId).data.projectId.size() > 0
+      ) ? versionDoc(fileData.versionId).data.projectId : (
+        fileData.docId is string
+        && fileData.docId.size() > 0
+        && documentDoc(fileData.docId).data.projectId is string
+        && documentDoc(fileData.docId).data.projectId.size() > 0
+      ) ? documentDoc(fileData.docId).data.projectId : '';
+    }
+
+    function canReadFileMetadata(fileData) {
+      let projectId = resolvedFileProjectId(fileData);
+      return isAdmin()
+        || (
+          projectId is string
+          && projectId.size() > 0
+          && isProjectMember(projectId)
+        )
+        || (
+          fileData.versionId is string
+          && fileData.versionId.size() > 0
+          && canReviewAccessByVersionId(fileData.versionId)
+        );
+    }
+
+    function isAdminFileMetadataBackfill() {
+      return isAdmin()
+        && request.resource.data.fileKey == resource.data.fileKey
+        && request.resource.data.fileName == resource.data.fileName
+        && request.resource.data.contentType == resource.data.contentType
+        && request.resource.data.sizeBytes == resource.data.sizeBytes
+        && request.resource.data.storageProvider == resource.data.storageProvider
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'projectId',
+          'docId',
+          'versionId',
+          'updatedAt',
+          'updatedBy'
+        ]);
+    }
+
 
     function isValidVersionState(state) {
       return state in [
@@ -528,11 +577,7 @@ service cloud.firestore {
     }
 
     match /files/{fileId} {
-      allow read: if isAdmin()
-        || isProjectMember(resource.data.projectId)
-        || (resource.data.versionId is string
-          && resource.data.versionId.size() > 0
-          && canReviewAccessByVersionId(resource.data.versionId));
+      allow read: if canReadFileMetadata(resource.data);
       allow create: if (
           isProjectMember(request.resource.data.projectId)
           || isAdmin()
@@ -551,7 +596,8 @@ service cloud.firestore {
         && request.resource.data.sizeBytes is int
         && request.resource.data.storageProvider is string
         && isValidStorageProvider(request.resource.data.storageProvider);
-      allow update, delete: if false;
+      allow update: if isAdminFileMetadataBackfill();
+      allow delete: if false;
     }
 
     match /counters/{counterId} {

@@ -145,6 +145,8 @@ const calendarLocalizer = dateFnsLocalizer( {
   },
 } )
 
+const DATA_MODEL_UPDATE_VERSION = 2
+
 function AdminAuditPage() {
   const { user } = useAuth()
   const userId = user?.uid ?? ''
@@ -654,12 +656,13 @@ function AdminAuditPage() {
     setModelUpdateMessage( 'Loading data...' )
     setModelUpdateSummary( '' )
     try {
-      const [ projectsSnap, documentsSnap, versionsSnap, threadsSnap, commentsSnap ] = await Promise.all( [
+      const [ projectsSnap, documentsSnap, versionsSnap, threadsSnap, commentsSnap, filesSnap ] = await Promise.all( [
         getDocs( collection( db, 'projects' ) ),
         getDocs( collection( db, 'documents' ) ),
         getDocs( collection( db, 'versions' ) ),
         getDocs( collection( db, 'threads' ) ),
         getDocs( collection( db, 'comments' ) ),
+        getDocs( collection( db, 'files' ) ),
       ] )
 
       const projects = projectsSnap.docs.map( ( snapshot ) => {
@@ -683,6 +686,9 @@ function AdminAuditPage() {
         const data = snapshot.data()
         return {
           id: snapshot.id,
+          projectId: ( data.projectId as string | undefined ) ?? '',
+          docId: ( data.docId as string | undefined ) ?? '',
+          fileRefId: ( data.fileRefId as string | null | undefined ) ?? null,
           numThreads: Number.isFinite( data.numThreads ) ? Number( data.numThreads ) : null,
           numOpenThreads: Number.isFinite( data.numOpenThreads ) ? Number( data.numOpenThreads ) : null,
           numComments: Number.isFinite( data.numComments ) ? Number( data.numComments ) : null,
@@ -714,6 +720,15 @@ function AdminAuditPage() {
           versionId: ( data.versionId as string | undefined ) ?? '',
           createdBy: ( data.createdBy as string | undefined ) ?? '',
           createdAt: toTimestampDate( data.createdAt ) ?? toTimestampDate( data.updatedAt ),
+        }
+      } )
+      const files = filesSnap.docs.map( ( snapshot ) => {
+        const data = snapshot.data()
+        return {
+          id: snapshot.id,
+          projectId: ( data.projectId as string | undefined ) ?? '',
+          docId: ( data.docId as string | undefined ) ?? '',
+          versionId: ( data.versionId as string | undefined ) ?? '',
         }
       } )
 
@@ -1004,10 +1019,86 @@ function AdminAuditPage() {
         await batch.commit()
       }
 
+      setModelUpdateMessage( 'Backfilling file metadata links...' )
+      const documentProjectIdById = new Map( documents.map( ( document ) => [ document.id, document.projectId ] ) )
+      const versionById = new Map(
+        versions.map( ( version ) => [
+          version.id,
+          {
+            projectId: version.projectId,
+            docId: version.docId,
+          },
+        ] ),
+      )
+      const versionByFileRefId = new Map<string, { versionId: string; projectId: string; docId: string }>()
+      versions.forEach( ( version ) => {
+        if( !version.fileRefId ) {
+          return
+        }
+        versionByFileRefId.set( version.fileRefId, {
+          versionId: version.id,
+          projectId: version.projectId,
+          docId: version.docId,
+        } )
+      } )
+
+      const fileUpdates = files.flatMap( ( file ) => {
+        const linkedVersion =
+          ( file.versionId ? versionById.get( file.versionId ) : undefined ) ??
+          versionByFileRefId.get( file.id )
+        const nextVersionId =
+          file.versionId ||
+          versionByFileRefId.get( file.id )?.versionId ||
+          ''
+        const nextDocId =
+          file.docId ||
+          linkedVersion?.docId ||
+          ''
+        const nextProjectId =
+          file.projectId ||
+          linkedVersion?.projectId ||
+          ( nextDocId ? ( documentProjectIdById.get( nextDocId ) ?? '' ) : '' )
+
+        const patch: Record<string, unknown> = {}
+        if( nextProjectId && nextProjectId !== file.projectId ) {
+          patch.projectId = nextProjectId
+        }
+        if( nextDocId && nextDocId !== file.docId ) {
+          patch.docId = nextDocId
+        }
+        if( nextVersionId && nextVersionId !== file.versionId ) {
+          patch.versionId = nextVersionId
+        }
+        if( Object.keys( patch ).length === 0 ) {
+          return []
+        }
+        return [
+          {
+            ref: doc( db, 'files', file.id ),
+            data: {
+              ...patch,
+              updatedAt: serverTimestamp(),
+              updatedBy: userId,
+            },
+          },
+        ]
+      } )
+      const fileChunks = chunkArray( fileUpdates, 400 )
+      for( const chunk of fileChunks ) {
+        if( chunk.length === 0 ) {
+          continue
+        }
+        const batch = writeBatch( db )
+        chunk.forEach( ( update ) => {
+          batch.update( update.ref, update.data )
+        } )
+        await batch.commit()
+      }
+
       setModelUpdateStatus( 'done' )
-      setModelUpdateMessage( 'Data model update completed.' )
+      setModelUpdateMessage( `Data model update v${DATA_MODEL_UPDATE_VERSION} completed.` )
       setModelUpdateSummary(
-        `Projects updated: ${assignedProjects}. Documents updated: ${assignedDocuments}. Threads updated: ${threadUpdates.length}. Versions updated: ${versionUpdates.length}.`,
+        `Projects updated: ${assignedProjects}. Documents updated: ${assignedDocuments}. Threads updated: ${threadUpdates.length}. Versions updated: ${versionUpdates.length}. Files updated: ${fileUpdates.length}.`,
       )
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
@@ -1739,7 +1830,9 @@ function AdminAuditPage() {
                 onClick={requestModelUpdateConfirmation}
                 disabled={modelUpdateStatus === 'running'}
               >
-                {modelUpdateStatus === 'running' ? 'Updating...' : 'Update existing data'}
+                {modelUpdateStatus === 'running'
+                  ? `Updating v${DATA_MODEL_UPDATE_VERSION}...`
+                  : `Update existing data (v${DATA_MODEL_UPDATE_VERSION})`}
               </button>
             </div>
             {modelUpdateStatus === 'running' ? <p className="muted">{modelUpdateMessage}</p> : null}
@@ -1747,7 +1840,7 @@ function AdminAuditPage() {
             {modelUpdateSummary ? <p className="muted">{modelUpdateSummary}</p> : null}
             {modelUpdateStatus === 'error' ? <p className="error">{modelUpdateMessage}</p> : null}
             {modelUpdateStatus === 'idle' ? (
-              <p className="muted">Backfills missing short IDs and recalculates thread/version stats.</p>
+              <p className="muted">{`Updater version: v${DATA_MODEL_UPDATE_VERSION}. Backfills missing short IDs, repairs linked file metadata, and recalculates thread/version stats.`}</p>
             ) : null}
           </section>
         ) : null}
@@ -1776,9 +1869,9 @@ function AdminAuditPage() {
         ) : null}
         {confirmModelUpdate ? (
           <ModalDialog onClose={() => setConfirmModelUpdate( false )}>
-              <h3>Update data model</h3>
+              <h3>{`Update data model v${DATA_MODEL_UPDATE_VERSION}`}</h3>
               <GiphyInline reason="thinking" mode="inline" />
-              <p className="muted">Confirm updating existing data and recalculating stats.</p>
+              <p className="muted">Confirm updating existing data, repairing linked file metadata, and recalculating stats.</p>
               <div className="actions">
                 <button type="button" onClick={() => setConfirmModelUpdate( false )} disabled={modelUpdateStatus === 'running'}>
                   Cancel

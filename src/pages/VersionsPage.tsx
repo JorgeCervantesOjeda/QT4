@@ -4682,6 +4682,8 @@ function VersionsPage() {
                   <p className="muted">Name: {selectedFileRef.fileName || 'Unnamed file'}</p>
                   <p className="muted">Size: {formatFileSize( selectedFileRef.sizeBytes )}</p>
                 </div>
+              ) : selectedVersion.hasFile ? (
+                <p className="muted">A file is linked to this version, but its metadata is not available in this view.</p>
               ) : (
                 <p className="muted">No file linked yet.</p>
               )}
