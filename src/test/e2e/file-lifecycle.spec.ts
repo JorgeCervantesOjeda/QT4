@@ -12,7 +12,7 @@ test( 'member can upload a version file and continue working even when linked me
   await login( page, 'member@example.com' )
 
   await page.getByRole( 'link', { name: 'Go to Projects' } ).click()
-  await expect( page.getByText( 'Projects' ) ).toBeVisible()
+  await expect( page.getByRole( 'heading', { name: 'My projects' } ) ).toBeVisible()
 
   await page.getByLabel( 'Name' ).fill( 'File Lifecycle Project' )
   await page.getByRole( 'button', { name: 'Create project' } ).click()

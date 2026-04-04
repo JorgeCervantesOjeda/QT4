@@ -9,6 +9,14 @@ const login = async (page: Page, email: string, password: string = 'password123'
   await page.getByRole( 'button', { name: 'Log in' } ).click()
 }
 
+const openPasswordReset = async ( page: Page, email?: string ) => {
+  await page.goto( '/login' )
+  if( email !== undefined ) {
+    await page.getByLabel( 'Email' ).fill( email )
+  }
+  await page.getByRole( 'button', { name: 'Reset password' } ).click()
+}
+
 test( 'guest is redirected to login and returns to the requested protected route after sign in', async ( { page } ) => {
   await page.goto( `/projects/${REVIEW_FLOW_PROJECT_ID}/documents` )
   await expect( page ).toHaveURL( /\/login/ )
@@ -66,4 +74,39 @@ test( 'login page shows the inactivity expiration notice from the query string',
   await page.goto( '/login?reason=inactive' )
 
   await expect( page.getByText( 'Session expired due to inactivity. Please log in again.' ) ).toBeVisible()
+} )
+
+test( 'login page validates password reset when email is missing', async ( { page } ) => {
+  await openPasswordReset( page )
+
+  await expect( page.getByText( 'Enter your email to request a password reset.' ) ).toBeVisible()
+  await expect( page.getByRole( 'button', { name: 'Report to admin' } ) ).toBeVisible()
+} )
+
+test( 'login page validates password reset when email format is invalid', async ( { page } ) => {
+  await openPasswordReset( page, 'invalid-email' )
+
+  await expect( page.getByText( 'Enter a valid email address before requesting a password reset.' ) ).toBeVisible()
+  await expect( page.getByRole( 'button', { name: 'Report to admin' } ) ).toBeVisible()
+} )
+
+test( 'login page shows a success notice after requesting a password reset', async ( { page } ) => {
+  await openPasswordReset( page, 'member@example.com' )
+
+  await expect(
+    page.getByText( 'Password reset email sent to member@example.com. Check your inbox.' ),
+  ).toBeVisible()
+} )
+
+test( 'login page shows a visible error when the password reset email is unknown', async ( { page } ) => {
+  await openPasswordReset( page, 'missing-user@example.com' )
+
+  await expect(
+    page
+      .getByRole( 'dialog' )
+      .locator( 'p' )
+      .filter( { hasText: /No user found for that email address\.|Firebase: Error \(auth\/user-not-found\)\./ } )
+      .first(),
+  ).toBeVisible()
+  await expect( page.getByRole( 'button', { name: 'Report to admin' } ) ).toBeVisible()
 } )
