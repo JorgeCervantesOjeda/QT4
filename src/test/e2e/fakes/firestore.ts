@@ -249,6 +249,10 @@ const setDoc = async (
   data: Record<string, unknown>,
   options?: { merge?: boolean },
 ) => {
+  const fault = consumeInjectedFault( 'firestore.setDoc', ref.path )
+  if( fault ) {
+    throw fault
+  }
   setDocData( ref.path, data, Boolean( options?.merge ) )
   emitSnapshots()
 }
@@ -266,6 +270,10 @@ const updateDoc = async (
   ref: DocumentReference,
   data: Record<string, unknown>,
 ) => {
+  const fault = consumeInjectedFault( 'firestore.updateDoc', ref.path )
+  if( fault ) {
+    throw fault
+  }
   updateDocData( ref.path, data )
   emitSnapshots()
 }
@@ -283,6 +291,11 @@ const writeBatch = () => {
       operations.push( { type: 'delete', ref } )
     },
     commit: async () => {
+      const operationPaths = operations.map( ( operation ) => operation.ref.path ).join( '\n' )
+      const fault = consumeInjectedFault( 'firestore.writeBatch.commit', operationPaths )
+      if( fault ) {
+        throw fault
+      }
       applyOperations( operations )
       emitSnapshots()
     },
@@ -300,6 +313,10 @@ const runTransaction = async (
 ) => {
   void database
   const operations: BatchOperation[] = []
+  const transactionFault = consumeInjectedFault( 'firestore.runTransaction', '' )
+  if( transactionFault ) {
+    throw transactionFault
+  }
   await callback( {
     get: async (ref) => getDoc( ref ),
     set: (ref, data, options) => {
@@ -312,6 +329,11 @@ const runTransaction = async (
       operations.push( { type: 'delete', ref } )
     },
   } )
+  const operationPaths = operations.map( ( operation ) => operation.ref.path ).join( '\n' )
+  const commitFault = consumeInjectedFault( 'firestore.runTransaction.commit', operationPaths )
+  if( commitFault ) {
+    throw commitFault
+  }
   applyOperations( operations )
   emitSnapshots()
 }
