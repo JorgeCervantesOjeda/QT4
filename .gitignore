@@ -28,3 +28,5 @@ dist-ssr
 tools/__pycache__/
 migration_work/
 .migration_start_time.txt
+test-results/
+tools/jdk-21.0.10+7/

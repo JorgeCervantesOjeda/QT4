@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -8,9 +9,10 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  writeBatch,
   where,
 } from 'firebase/firestore'
-import type { QueryConstraint } from 'firebase/firestore'
+import type { DocumentData, DocumentSnapshot, QueryConstraint, QuerySnapshot } from 'firebase/firestore'
 import { versionNumberToString } from '../domain/types'
 import { logAudit } from './audit'
 import { db } from './firebase'
@@ -48,6 +50,9 @@ export type DashboardBuildProgress = {
   totalSteps: number
   label: string
 }
+
+const DASHBOARD_STORAGE_VERSION = 2
+const DASHBOARD_BATCH_SIZE = 400
 
 type VersionRecord = {
   id: string
@@ -117,6 +122,92 @@ const pruneUndefinedFields = <T extends Record<string, unknown>>(value: T): T =>
     Object.entries( value ).filter( ( [ , entryValue ] ) => entryValue !== undefined ),
   ) as T
 
+const safeGetDoc = async (
+  path: string,
+): Promise<DocumentSnapshot<DocumentData> | null> => {
+  try {
+    const [ collectionId, documentId, ...rest ] = path.split( '/' ).filter( Boolean )
+    if( !collectionId || !documentId ) {
+      return null
+    }
+    return await getDoc( doc( db, collectionId, documentId, ...rest ) )
+  } catch {
+    return null
+  }
+}
+
+const safeGetDocs = async (
+  loader: () => Promise<QuerySnapshot<DocumentData>>,
+): Promise<QuerySnapshot<DocumentData> | null> => {
+  try {
+    return await loader()
+  } catch {
+    return null
+  }
+}
+
+export const deserializeDashboardTask = (
+  taskId: string,
+  data: Record<string, unknown>,
+): DashboardTask =>
+  pruneUndefinedFields( {
+    id: ( data.id as string | undefined ) ?? taskId,
+    type: ( data.type as DashboardTaskType | undefined ) ?? 'authoring',
+    lifecycleState: data.lifecycleState as DashboardTask['lifecycleState'] | undefined,
+    visualState: data.visualState as DashboardTask['visualState'] | undefined,
+    title: ( data.title as string | undefined ) ?? 'Untitled task',
+    detail: ( data.detail as string | undefined ) ?? '',
+    projectId: ( data.projectId as string | undefined ) ?? '',
+    link: ( data.link as string | undefined ) ?? '',
+    createdAt: toTimestampDate( data.createdAt ),
+    reviewEndAt: toTimestampDate( data.reviewEndAt ),
+    reviewPeriodState: data.reviewPeriodState as DashboardTask['reviewPeriodState'] | undefined,
+  } )
+
+const countTasksByType = (tasks: DashboardTask[]): Record<DashboardTaskType, number> => tasks.reduce(
+  ( acc, task ) => {
+    acc[task.type] += 1
+    return acc
+  },
+  {
+    authoring: 0,
+    reply: 0,
+    reviewer: 0,
+    acceptedReport: 0,
+  } satisfies Record<DashboardTaskType, number>,
+)
+
+const writeDashboardTaskDocuments = async (
+  userId: string,
+  tasksToUpsert: DashboardTask[],
+  taskIdsToDelete: string[],
+): Promise<void> => {
+  const operations = [
+    ...tasksToUpsert.map( ( task ) => ( { kind: 'set' as const, task } ) ),
+    ...taskIdsToDelete.map( ( taskId ) => ( { kind: 'delete' as const, taskId } ) ),
+  ]
+  if( operations.length === 0 ) {
+    return
+  }
+  const operationChunks = chunkArray( operations, DASHBOARD_BATCH_SIZE )
+  for( const operationChunk of operationChunks ) {
+    const batch = writeBatch( db )
+    operationChunk.forEach( ( operation ) => {
+      const taskRef = doc( db, 'dashboard', userId, 'tasks', operation.kind === 'set' ? operation.task.id : operation.taskId )
+      if( operation.kind === 'set' ) {
+        batch.set( taskRef, pruneUndefinedFields( { ...operation.task } ) )
+        return
+      }
+      batch.delete( taskRef )
+    } )
+    await batch.commit()
+  }
+}
+
+const dedupeVersionsById = (versions: VersionRecord[]): VersionRecord[] => Array.from(
+  new Map( versions.map( ( version ) => [ version.id, version ] ) ).values(),
+)
+
 const toVersionRecord = (snapshot: { id: string; data: () => Record<string, unknown> }): VersionRecord => {
   const data = snapshot.data()
   return {
@@ -125,7 +216,7 @@ const toVersionRecord = (snapshot: { id: string; data: () => Record<string, unkn
     docId: ( data.docId as string | undefined ) ?? '',
     number: Number( data.number ?? 0 ),
     status: ( data.status as string | undefined ) ?? '',
-    createdBy: ( data.createdBy as string | undefined ) ?? '',
+    createdBy: ( data.createdBy as string | undefined ) ?? ( data.authorId as string | undefined ) ?? '',
     reviewerIds: ( data.reviewerIds as string[] | undefined ) ?? [],
     hasFile: Boolean( data.hasFile ),
     createdAt: toTimestampDate( data.createdAt ),
@@ -199,10 +290,10 @@ export const buildDashboardTasks = async (
   const projectIds = Object.keys( projectRoleById )
   const uniqueProjectIds = Array.from( new Set( projectIds ) )
   const projectDocs = await Promise.all(
-    uniqueProjectIds.map( ( projectId ) => getDoc( doc( db, 'projects', projectId ) ) ),
+    uniqueProjectIds.map( ( projectId ) => safeGetDoc( `projects/${projectId}` ) ),
   )
   const projectNameById = projectDocs.reduce<Record<string, string>>( ( acc, snapshot ) => {
-    if( snapshot.exists() ) {
+    if( snapshot?.exists() ) {
       acc[snapshot.id] = ( snapshot.data().name as string | undefined ) ?? 'Untitled project'
     }
     return acc
@@ -226,14 +317,24 @@ export const buildDashboardTasks = async (
     )
     return snapshots.flatMap( ( snapshot ) => snapshot.docs ).map( toVersionRecord )
   }
+  const fetchVersionsForAuthorAcrossProjects = async (statuses: string[]): Promise<VersionRecord[]> => {
+    const authorResults = await Promise.all( statuses.flatMap( ( status ) => ( [
+      fetchVersionsForProjects( [
+        where( 'createdBy', '==', userId ),
+        where( 'status', '==', status ),
+      ] ),
+      fetchVersionsForProjects( [
+        where( 'authorId', '==', userId ),
+        where( 'status', '==', status ),
+      ] ),
+    ] ) ) )
+    return dedupeVersionsById( authorResults.flat() )
+  }
 
   reportProgress( 2, 'Loading versions and your participation...' )
   const [ authoringVersions, reviewerCandidateVersions ] = await Promise.all( [
     needsAuthoring
-      ? fetchVersionsForProjects( [
-        where( 'createdBy', '==', userId ),
-        where( 'status', '==', 'In Creation' ),
-      ] )
+      ? fetchVersionsForAuthorAcrossProjects( [ 'In Creation' ] )
       : Promise.resolve( [] ),
     needsReviewer || needsReply
       ? fetchVersionsForProjects( [
@@ -246,27 +347,18 @@ export const buildDashboardTasks = async (
   )
 
   const userCommentsSnapshot = needsReviewer || needsReply
-    ? await getDocs(
-      query(
-        collection( db, 'comments' ),
-        where( 'createdBy', '==', userId ),
+    ? await safeGetDocs( () =>
+      getDocs(
+        query(
+          collection( db, 'comments' ),
+          where( 'createdBy', '==', userId ),
+        ),
       ),
     )
     : null
 
   const authorReviewVersions = needsReply
-    ? (
-      await Promise.all( [
-        fetchVersionsForProjects( [
-          where( 'createdBy', '==', userId ),
-          where( 'status', '==', 'In Review' ),
-        ] ),
-        fetchVersionsForProjects( [
-          where( 'createdBy', '==', userId ),
-          where( 'status', '==', 'Reviewed' ),
-        ] ),
-      ] )
-    ).flat()
+    ? await fetchVersionsForAuthorAcrossProjects( [ 'In Review', 'Reviewed' ] )
     : []
 
   const leaderProjectIds = needsReply
@@ -342,17 +434,21 @@ export const buildDashboardTasks = async (
   const threadVersionChunks = chunkArray( reviewAccessVersionIds, 10 ).filter( ( chunk ) => chunk.length > 0 )
   reportProgress( 3, 'Checking review threads and reply windows...' )
   const reviewThreadSnapshots = ( needsReviewer || needsReply ) && threadVersionChunks.length > 0
-    ? await Promise.all(
-      threadVersionChunks.map( ( chunk ) =>
-        getDocs(
-          query(
-            collection( db, 'threads' ),
-            where( 'versionId', 'in', chunk ),
-            where( 'status', '==', 'open' ),
+    ? (
+      await Promise.all(
+        threadVersionChunks.map( ( chunk ) =>
+          safeGetDocs( () =>
+            getDocs(
+              query(
+                collection( db, 'threads' ),
+                where( 'versionId', 'in', chunk ),
+                where( 'status', '==', 'open' ),
+              ),
+            ),
           ),
         ),
-      ),
-    )
+      )
+    ).filter( ( snapshot ): snapshot is QuerySnapshot<DocumentData> => snapshot !== null )
     : []
   const openReviewThreads = reviewThreadSnapshots
     .flatMap( ( snapshot ) => snapshot.docs )
@@ -442,7 +538,6 @@ export const buildDashboardTasks = async (
       // Ignore reply-needed tasks if permission errors occur.
     }
   }
-
   const versionById: Record<string, VersionRecord> = {}
 
   type ErrorReportDoc = {
@@ -581,11 +676,11 @@ export const buildDashboardTasks = async (
 
   reportProgress( 5, 'Loading document labels...' )
   const documentSnapshots = await Promise.all(
-    Array.from( documentIds ).map( ( docId ) => getDoc( doc( db, 'documents', docId ) ) ),
+    Array.from( documentIds ).map( ( docId ) => safeGetDoc( `documents/${docId}` ) ),
   )
   const documentById = documentSnapshots.reduce<Record<string, { title: string; shortId: number | null }>>(
     ( acc, snapshot ) => {
-      if( snapshot.exists() ) {
+      if( snapshot?.exists() ) {
         const data = snapshot.data()
         acc[snapshot.id] = {
           title: ( data.title as string | undefined ) ?? 'Untitled document',
@@ -780,8 +875,17 @@ export const refreshDashboard = async (
   const dashboardRef = doc( db, 'dashboard', userId )
   const existingSnapshot = await getDoc( dashboardRef )
   const existingData = existingSnapshot.exists() ? existingSnapshot.data() : {}
-  const previousTasks = ( ( existingData.tasks as DashboardTask[] | undefined ) ?? [] )
-    .map( ( task ) => ( { ...task } ) )
+  const storageVersion = Number( existingData.storageVersion ?? 1 )
+  const storedTaskSnapshots = await getDocs( collection( dashboardRef, 'tasks' ) )
+  const storedTasks = storedTaskSnapshots.docs.map( ( snapshot ) =>
+    deserializeDashboardTask( snapshot.id, snapshot.data() as Record<string, unknown> ),
+  )
+  const previousTasksSource = storageVersion >= DASHBOARD_STORAGE_VERSION
+    ? storedTasks
+    : ( ( existingData.tasks as DashboardTask[] | undefined ) ?? [] ).map( ( task ) =>
+      deserializeDashboardTask( task.id, task as unknown as Record<string, unknown> ),
+    )
+  const previousTasks = previousTasksSource.map( ( task ) => ( { ...task } ) )
   const previousTaskIds = new Set( previousTasks.map( ( task ) => task.id ) )
 
   const refreshedTypes = options.types && options.types.length > 0
@@ -802,39 +906,37 @@ export const refreshDashboard = async (
     ? [ ...untouchedTasks, ...refreshedTasks ]
     : refreshedTasks
   const nextTaskIds = new Set( nextTasks.map( ( task ) => task.id ) )
+  const taskIdsToDelete = Array.from( previousTaskIds ).filter( ( taskId ) => !nextTaskIds.has( taskId ) )
+  const tasksToUpsert = refreshedTypeSet
+    ? nextTasks.filter( ( task ) => refreshedTypeSet.has( task.type ) )
+    : nextTasks
 
-  const completedTaskNotes = ( existingData.completedTaskNotes as Record<string, unknown> | undefined ) ?? {}
-  const newCompletionNotes: Record<string, unknown> = {}
-  previousTaskIds.forEach( ( taskId ) => {
-    if( nextTaskIds.has( taskId ) ) {
-      return
-    }
-    if( completedTaskNotes[taskId] ) {
-      return
-    }
-    newCompletionNotes[taskId] = serverTimestamp()
-  } )
-  const finalCompletionNotes =
-    Object.keys( newCompletionNotes ).length > 0
-      ? { ...completedTaskNotes, ...newCompletionNotes }
-      : completedTaskNotes
+  await writeDashboardTaskDocuments( userId, tasksToUpsert, taskIdsToDelete )
 
   await setDoc(
     dashboardRef,
     {
       userId,
-      tasks: nextTasks,
+      storageVersion: DASHBOARD_STORAGE_VERSION,
+      taskCount: nextTasks.length,
+      taskCountsByType: countTasksByType( nextTasks ),
+      expiredTaskCount: nextTasks.filter( ( task ) => task.lifecycleState === 'expired' ).length,
       updatedAt: serverTimestamp(),
       updatedBy: userId,
-      completedTaskNotes: finalCompletionNotes,
+      tasks: deleteField(),
+      completedTaskNotes: deleteField(),
     },
     { merge: true },
   )
-  await logAudit( {
-    actorId: userId,
-    action: 'refreshDashboard',
-    entityType: 'dashboard',
-    entityId: userId,
-  } )
+  try {
+    await logAudit( {
+      actorId: userId,
+      action: 'refreshDashboard',
+      entityType: 'dashboard',
+      entityId: userId,
+    } )
+  } catch( err ) {
+    console.warn( 'Dashboard audit log failed:', err )
+  }
   return nextTasks
 }

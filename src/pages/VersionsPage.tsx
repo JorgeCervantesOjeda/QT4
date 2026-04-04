@@ -519,6 +519,14 @@ function VersionsPage() {
   const selectedThread = selectedThreadId
     ? threads.find( ( thread ) => thread.id === selectedThreadId ) ?? null
     : null
+  const projectReportLabel = projectName
+    ? `${projectShortId ?? 'Unassigned'} - ${projectName}`
+    : ''
+  const documentReportLabel = `${documentData?.shortId ?? 'Unassigned'} - ${documentData?.title ?? docId ?? 'Unknown'}`
+  const versionReportLabel = selectedVersion
+    ? `${versionNumberToString( selectedVersion.number )} - ${selectedVersion.status}`
+    : ''
+  const threadReportLabel = selectedThread?.title.trim() ?? ''
   const reportVersionsError = useCallback( (
     error: unknown,
     action: string,
@@ -922,14 +930,14 @@ function VersionsPage() {
     } catch( err ) {
       const rawMessage = err instanceof Error ? err.message : 'Unexpected error'
       reportVersionsError( err, 'versions.downloadFile', 'storage', {
-        versionId: selectedVersion.id,
+        versionId: version.id,
       } )
       setError( normalizeDownloadError( rawMessage ) )
     } finally {
       setDownloadStatus( 'idle' )
       setDownloadMessage( '' )
     }
-  }, [] )
+  }, [ reportVersionsError ] )
 
   const requestDownloadVersionFile = useCallback( (version: VersionSummary) => {
     if( downloadStatus === 'downloading' ) {
@@ -1607,6 +1615,7 @@ function VersionsPage() {
     userId,
     user?.email,
     user?.displayName,
+    reportVersionsError,
   ] )
 
   useEffect( () => {
@@ -1812,7 +1821,7 @@ function VersionsPage() {
       threadsUnsub()
       commentsUnsub()
     }
-  }, [ selectedVersion?.id ] )
+  }, [ selectedVersion?.id, threadIdFromQuery, reportVersionsError ] )
 
   useEffect( () => {
     if( !threadIdFromQuery ) {
@@ -2013,7 +2022,7 @@ function VersionsPage() {
     return () => {
       isActive = false
     }
-  }, [ selectedVersion?.fileRefId ] )
+  }, [ selectedVersion?.fileRefId, reportVersionsError ] )
 
   useEffect( () => {
     const activeProjectId = documentData?.projectId ?? projectIdFromQuery
@@ -2093,7 +2102,7 @@ function VersionsPage() {
       membersUnsub()
       projectUnsub()
     }
-  }, [ docId, documentData?.projectId, projectIdFromQuery ] )
+  }, [ docId, documentData?.projectId, projectIdFromQuery, reportVersionsError ] )
 
   useEffect( () => {
     const activeProjectId = documentData?.projectId ?? projectIdFromQuery
@@ -2905,6 +2914,7 @@ function VersionsPage() {
     user?.email,
     projectId,
     docId,
+    reportVersionsError,
   ] )
 
 
@@ -2972,6 +2982,7 @@ function VersionsPage() {
     user?.email,
     projectId,
     docId,
+    reportVersionsError,
   ] )
 
   const handleAssignAuthor = useCallback( async (authorId: string) => {
@@ -3059,6 +3070,7 @@ function VersionsPage() {
     user?.email,
     projectId,
     docId,
+    reportVersionsError,
   ] )
 
   const handleUploadFile = async (file: File) => {
@@ -4940,7 +4952,22 @@ function VersionsPage() {
             </ModalDialog>
           ) : null}
           {error ? (
-            <ErrorChecklistModal error={error} checklist={errorChecklist} onClose={() => setError( null )} />
+            <ErrorChecklistModal
+              error={error}
+              checklist={errorChecklist}
+              onClose={() => setError( null )}
+              reportContext={{
+                projectId,
+                docId: docId ?? '',
+                versionId: selectedVersion?.id ?? latestVersion?.id ?? versionIdFromQuery,
+                threadId: selectedThread?.id ?? threadIdFromQuery,
+                pageLabel: 'Document Versions',
+                projectLabel: projectReportLabel,
+                docLabel: documentReportLabel,
+                versionLabel: versionReportLabel,
+                threadLabel: threadReportLabel,
+              }}
+            />
           ) : null}
 
           {selectedVersion && selectedVersion.status === 'In Creation' ? (
