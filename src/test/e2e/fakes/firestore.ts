@@ -10,6 +10,7 @@ import {
   setDocData,
   updateDocData,
 } from './state'
+import { consumeInjectedFault } from './faults'
 
 type Direction = 'asc' | 'desc'
 
@@ -215,7 +216,13 @@ const applyQuery = (queryRef: QueryReference) => {
   return docs
 }
 
-const getDoc = async (ref: DocumentReference): Promise<FakeDocumentSnapshot> => makeDocSnapshot( ref )
+const getDoc = async (ref: DocumentReference): Promise<FakeDocumentSnapshot> => {
+  const fault = consumeInjectedFault( 'firestore.getDoc', ref.path )
+  if( fault ) {
+    throw fault
+  }
+  return makeDocSnapshot( ref )
+}
 
 const getDocFromServer = async (ref: DocumentReference): Promise<FakeDocumentSnapshot> => getDoc( ref )
 
@@ -225,7 +232,13 @@ const connectFirestoreEmulator = () => undefined
 
 const getDocs = async (
   target: CollectionReference | QueryReference,
-): Promise<FakeQuerySnapshot> => makeQuerySnapshot( target )
+): Promise<FakeQuerySnapshot> => {
+  const fault = consumeInjectedFault( 'firestore.getDocs', target.path )
+  if( fault ) {
+    throw fault
+  }
+  return makeQuerySnapshot( target )
+}
 
 const serverTimestamp = () => SERVER_TIMESTAMP_SENTINEL
 
@@ -320,8 +333,17 @@ const applyOperations = (operations: BatchOperation[]) => {
 const onSnapshot = (
   target: DocumentReference | QueryReference | CollectionReference,
   callback: (snapshot: FakeDocumentSnapshot | FakeQuerySnapshot) => void,
+  onError?: (error: Error) => void,
 ) => {
   const normalizedTarget = target.kind === 'collection' ? query( target ) : target
+  const fault = consumeInjectedFault( 'firestore.onSnapshot', normalizedTarget.path )
+  if( fault ) {
+    if( onError ) {
+      onError( fault )
+      return () => undefined
+    }
+    throw fault
+  }
   const key = nextListenerKey
   nextListenerKey += 1
   listeners.set( key, {

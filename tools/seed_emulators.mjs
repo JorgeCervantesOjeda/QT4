@@ -95,6 +95,11 @@ const REVIEW_GRACE_THREAD_ID = 'thread-e2e-review-grace'
 const REVIEW_GRACE_COMMENT_1_ID = 'comment-e2e-review-grace-1'
 const REVIEW_GRACE_COMMENT_2_ID = 'comment-e2e-review-grace-2'
 
+const UI_NOTIFY_PROJECT_ID = 'project-e2e-ui-notify'
+const UI_NOTIFY_DOCUMENT_ID = 'document-e2e-ui-notify'
+const UI_NOTIFY_VERSION_ID = 'version-e2e-ui-notify'
+const UI_NOTIFY_FILE_REF_ID = 'file-ref-e2e-ui-notify'
+
 const ERROR_REPORT_BASE_PROJECT_ID = 'project-e2e-error-report-base'
 const ERROR_REPORT_BASE_DOCUMENT_ID = 'document-e2e-error-report-base'
 const ERROR_REPORT_BASE_VERSION_ID = 'version-e2e-error-report-base'
@@ -500,6 +505,76 @@ const seedFirestore = async () => {
     createdBy: 'user-member-1',
     createdAt: graceResolvedAt,
     updatedAt: graceResolvedAt,
+  } )
+
+  batch.set( db.doc( `projects/${UI_NOTIFY_PROJECT_ID}` ), {
+    name: 'Seeded UI Notify Project',
+    leaderId: 'user-member-1',
+    isActive: true,
+    shortId: 206,
+    createdAt,
+    updatedAt: createdAt,
+  } )
+  setProjectMember( batch, UI_NOTIFY_PROJECT_ID, 'user-member-1', 'leader', 'member@example.com', createdAt )
+  setProjectMember( batch, UI_NOTIFY_PROJECT_ID, 'user-reviewer-1', 'member', 'reviewer@example.com', createdAt )
+  batch.set( db.doc( `counters/documents_${UI_NOTIFY_PROJECT_ID}` ), {
+    nextNumber: 802,
+    projectId: UI_NOTIFY_PROJECT_ID,
+  } )
+  batch.set( db.doc( `documents/${UI_NOTIFY_DOCUMENT_ID}` ), {
+    projectId: UI_NOTIFY_PROJECT_ID,
+    title: 'Seeded UI Notify Document',
+    type: 'document',
+    createdBy: 'user-member-1',
+    authorId: 'user-member-1',
+    updatedBy: 'user-member-1',
+    shortId: 801,
+    createdAt,
+    updatedAt: createdAt,
+  } )
+  batch.set( db.doc( `versions/${UI_NOTIFY_VERSION_ID}` ), {
+    projectId: UI_NOTIFY_PROJECT_ID,
+    docId: UI_NOTIFY_DOCUMENT_ID,
+    number: 1,
+    status: 'In Review',
+    createdBy: 'user-member-1',
+    reviewerIds: [ 'user-reviewer-1' ],
+    reviewStartAt,
+    reviewEndAt,
+    hasFile: true,
+    fileRefId: UI_NOTIFY_FILE_REF_ID,
+    stats: {
+      numThreads: 0,
+      numOpenThreads: 0,
+      numComments: 0,
+      numThreadsWithTwoPlusComments: 0,
+    },
+    numThreads: 0,
+    numOpenThreads: 0,
+    numComments: 0,
+    numThreadsWithTwoPlusComments: 0,
+    acceptedErrorReportId: null,
+    previousVersionId: null,
+    createdAt,
+    activityAt: reviewStartAt,
+    updatedAt: reviewStartAt,
+    updatedBy: 'user-member-1',
+  } )
+  batch.set( db.doc( `counters/versions_${UI_NOTIFY_DOCUMENT_ID}` ), {
+    nextNumber: 2,
+    docId: UI_NOTIFY_DOCUMENT_ID,
+    projectId: UI_NOTIFY_PROJECT_ID,
+    previousVersionId: UI_NOTIFY_VERSION_ID,
+  } )
+  setVersionFileRef( batch, {
+    fileRefId: UI_NOTIFY_FILE_REF_ID,
+    fileKey: 'seeded/ui-notify.pdf',
+    fileName: 'ui-notify.pdf',
+    projectId: UI_NOTIFY_PROJECT_ID,
+    docId: UI_NOTIFY_DOCUMENT_ID,
+    versionId: UI_NOTIFY_VERSION_ID,
+    createdBy: 'user-member-1',
+    timestamp: createdAt,
   } )
 
   batch.set( db.doc( `projects/${ERROR_REPORT_BASE_PROJECT_ID}` ), {

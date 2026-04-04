@@ -24,6 +24,7 @@ import {
   type DashboardTask,
   type DashboardTaskType,
 } from '../lib/dashboard'
+import { consumeInjectedTestFault } from '../lib/testFaults'
 import { formatTimeAgoWithTimestamp } from '../lib/time'
 
 type DashboardSectionKey = DashboardTaskType | 'expired' | 'activeTable'
@@ -319,6 +320,17 @@ function DashboardPage() {
 
   useEffect( () => {
     if( !userId ) {
+      return
+    }
+    const injectedFault = consumeInjectedTestFault( 'dashboard.tasks.onSnapshot', `dashboard/${userId}/tasks` )
+    if( injectedFault ) {
+      const message = injectedFault.message || 'Unexpected error'
+      setTaskCollectionLoaded( false )
+      setStoredTasks( [] )
+      openError( `Dashboard tasks failed to load: ${message}`, [
+        { label: '(user is signed in)', ok: Boolean( userId ) },
+        { label: '(network connection is available)', ok: typeof navigator !== 'undefined' ? navigator.onLine : true },
+      ] )
       return
     }
     setTaskCollectionLoaded( false )

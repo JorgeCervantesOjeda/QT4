@@ -8,6 +8,7 @@ import {
 } from './filesApi'
 import { storage } from './firebase'
 import { loadAppRuntimeConfig, normalizeFileStorageProvider } from './runtimeConfig'
+import { consumeInjectedTestFault } from './testFaults'
 
 type UploadOptions = {
   overwrite?: boolean
@@ -82,6 +83,10 @@ const uploadFileWithFirebaseStorage = async (
   file: File,
 ): Promise<UploadFileResult> => {
   ensureValidFile( file )
+  const injectedFault = consumeInjectedTestFault( 'storage.uploadBytes', fileKey )
+  if( injectedFault ) {
+    throw injectedFault
+  }
   const storageRef = ref( storage, fileKey )
   await uploadBytes( storageRef, file, {
     contentType: file.type || 'application/octet-stream',
@@ -103,6 +108,10 @@ const downloadFileWithFirebaseStorage = async (
     fileKey,
     suggestedName: suggestedName ?? null,
   } )
+  const injectedFault = consumeInjectedTestFault( 'storage.getDownloadURL', fileKey )
+  if( injectedFault ) {
+    throw injectedFault
+  }
   const storageRef = ref( storage, fileKey )
   try {
     const downloadUrl = await getDownloadURL( storageRef )

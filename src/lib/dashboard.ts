@@ -17,6 +17,7 @@ import { versionNumberToString } from '../domain/types'
 import { logAudit } from './audit'
 import { db } from './firebase'
 import { canAddCommentInWindow } from './reviewWindow'
+import { consumeInjectedTestFault } from './testFaults'
 
 export type DashboardTask = {
   id: string
@@ -872,6 +873,10 @@ export const refreshDashboard = async (
   userId: string,
   options: RefreshDashboardOptions = {},
 ): Promise<DashboardTask[]> => {
+  const injectedFault = consumeInjectedTestFault( 'dashboard.refresh', userId )
+  if( injectedFault ) {
+    throw injectedFault
+  }
   const dashboardRef = doc( db, 'dashboard', userId )
   const existingSnapshot = await getDoc( dashboardRef )
   const existingData = existingSnapshot.exists() ? existingSnapshot.data() : {}

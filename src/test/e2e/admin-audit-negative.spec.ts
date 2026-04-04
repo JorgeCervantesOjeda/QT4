@@ -13,7 +13,7 @@ test( 'non-admin user can open the audit route without seeing admin-only control
   await page.goto( '/admin/audit' )
 
   await expect( page.getByText( 'My Activity' ) ).toBeVisible()
-  await expect( page.getByText( 'Audit report' ) ).toBeVisible()
+  await expect( page.getByText( 'Activity log' ) ).toBeVisible()
   await expect( page.getByText( 'Files API status' ) ).toBeHidden()
   await expect( page.getByText( 'Runtime providers' ) ).toBeHidden()
   await expect( page.getByText( 'Data model update' ) ).toBeHidden()

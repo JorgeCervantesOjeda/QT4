@@ -2,6 +2,7 @@ import type { NotificationProviderKind } from '../domain/types'
 import { notifyEmail as notifyEmailWithFilesApi } from './filesApi'
 import { auth } from './firebase'
 import { loadAppRuntimeConfig } from './runtimeConfig'
+import { consumeInjectedTestFault } from './testFaults'
 
 type NotifyEmailParams = {
   to: string[]
@@ -67,6 +68,10 @@ export const notifyEmailUsingActiveProvider = async (
   params: NotifyEmailParams,
   provider?: NotificationProviderKind,
 ): Promise<void> => {
+  const injectedFault = consumeInjectedTestFault( 'notifications.notifyEmail', params.subject )
+  if( injectedFault ) {
+    throw injectedFault
+  }
   const resolvedProvider = await resolveProvider( provider )
   if( resolvedProvider === 'firebase-functions' ) {
     await notifyEmailWithFirebaseFunctions( params )
@@ -74,4 +79,3 @@ export const notifyEmailUsingActiveProvider = async (
   }
   await notifyEmailWithFilesApi( params )
 }
-

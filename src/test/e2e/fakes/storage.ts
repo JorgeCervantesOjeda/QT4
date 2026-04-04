@@ -1,4 +1,5 @@
 import { getState, persistState } from './state'
+import { consumeInjectedFault } from './faults'
 
 type FakeStorageRef = {
   path: string
@@ -23,6 +24,10 @@ const uploadBytes = async (
   file: File,
   metadata?: { contentType?: string },
 ) => {
+  const fault = consumeInjectedFault( 'storage.uploadBytes', storageRef.path )
+  if( fault ) {
+    throw fault
+  }
   getState().storage.set( storageRef.path, {
     fileName: file.name,
     contentType: metadata?.contentType ?? file.type ?? 'application/octet-stream',
@@ -35,6 +40,10 @@ const uploadBytes = async (
 }
 
 const getDownloadURL = async (storageRef: FakeStorageRef) => {
+  const fault = consumeInjectedFault( 'storage.getDownloadURL', storageRef.path )
+  if( fault ) {
+    throw fault
+  }
   const record = getState().storage.get( storageRef.path )
   if( !record ) {
     const error = new Error( 'Object not found.' ) as Error & { code: string }
