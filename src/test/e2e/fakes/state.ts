@@ -27,8 +27,10 @@ const REVIEW_GUARD_DOCUMENT_ID = 'document-e2e-review-guard'
 const REVIEW_GUARD_VERSION_ID = 'version-e2e-review-guard'
 const REVIEW_GUARD_FILE_REF_ID = 'file-ref-e2e-review-guard'
 const REVIEW_GUARD_THREAD_ID = 'thread-e2e-review-guard'
+const REVIEW_GUARD_THREAD_2_ID = 'thread-e2e-review-guard-2'
 const REVIEW_GUARD_COMMENT_1_ID = 'comment-e2e-review-guard-1'
 const REVIEW_GUARD_COMMENT_2_ID = 'comment-e2e-review-guard-2'
+const REVIEW_GUARD_COMMENT_3_ID = 'comment-e2e-review-guard-3'
 
 const REVIEW_GRACE_PROJECT_ID = 'project-e2e-review-grace'
 const REVIEW_GRACE_DOCUMENT_ID = 'document-e2e-review-grace'
@@ -236,6 +238,7 @@ const createSeedState = (): FakeState => {
   const reviewEndAt = FakeTimestamp.fromDate( new Date( '2026-04-10T09:00:00.000Z' ) )
   const guardCommentAt = FakeTimestamp.fromDate( new Date( '2026-04-03T10:00:00.000Z' ) )
   const guardResolvedAt = FakeTimestamp.fromDate( new Date( '2026-04-03T10:30:00.000Z' ) )
+  const guardFollowUpAt = FakeTimestamp.fromDate( new Date( '2026-04-03T11:00:00.000Z' ) )
   const now = Date.now()
   const graceReviewEndAt = FakeTimestamp.fromDate( new Date( now - ( 15 * 60 * 1000 ) ) )
   const graceCommentAt = FakeTimestamp.fromDate( new Date( now - ( 12 * 60 * 1000 ) ) )
@@ -417,20 +420,20 @@ const createSeedState = (): FakeState => {
     hasFile: true,
     fileRefId: REVIEW_GUARD_FILE_REF_ID,
     stats: {
-      numThreads: 1,
-      numOpenThreads: 0,
-      numComments: 2,
+      numThreads: 2,
+      numOpenThreads: 1,
+      numComments: 3,
       numThreadsWithTwoPlusComments: 1,
     },
-    numThreads: 1,
-    numOpenThreads: 0,
-    numComments: 2,
+    numThreads: 2,
+    numOpenThreads: 1,
+    numComments: 3,
     numThreadsWithTwoPlusComments: 1,
     acceptedErrorReportId: null,
     previousVersionId: null,
     createdAt,
-    activityAt: guardResolvedAt,
-    updatedAt: guardResolvedAt,
+    activityAt: guardFollowUpAt,
+    updatedAt: guardFollowUpAt,
     updatedBy: memberUser.uid,
   } )
   withDoc( firestore, `counters/versions_${REVIEW_GUARD_DOCUMENT_ID}`, {
@@ -484,6 +487,30 @@ const createSeedState = (): FakeState => {
     createdBy: memberUser.uid,
     createdAt: guardResolvedAt,
     updatedAt: guardResolvedAt,
+  } )
+  withDoc( firestore, `threads/${REVIEW_GUARD_THREAD_2_ID}`, {
+    projectId: REVIEW_GUARD_PROJECT_ID,
+    docId: REVIEW_GUARD_DOCUMENT_ID,
+    versionId: REVIEW_GUARD_VERSION_ID,
+    status: 'open',
+    title: 'Seeded follow-up issue',
+    createdBy: memberUser.uid,
+    commentCount: 1,
+    lastCommentAt: guardFollowUpAt,
+    lastCommentBy: memberUser.uid,
+    createdAt: guardFollowUpAt,
+    updatedAt: guardFollowUpAt,
+    updatedBy: memberUser.uid,
+  } )
+  withDoc( firestore, `comments/${REVIEW_GUARD_COMMENT_3_ID}`, {
+    projectId: REVIEW_GUARD_PROJECT_ID,
+    docId: REVIEW_GUARD_DOCUMENT_ID,
+    versionId: REVIEW_GUARD_VERSION_ID,
+    threadId: REVIEW_GUARD_THREAD_2_ID,
+    body: 'Author seeded follow-up comment',
+    createdBy: memberUser.uid,
+    createdAt: guardFollowUpAt,
+    updatedAt: guardFollowUpAt,
   } )
 
   withDoc( firestore, `projects/${REVIEW_GRACE_PROJECT_ID}`, {

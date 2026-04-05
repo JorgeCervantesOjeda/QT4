@@ -1,5 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
 
+const REVIEW_GUARD_DOCUMENT_ID = 'document-e2e-review-guard'
+const REVIEW_GUARD_THREAD_ID = 'thread-e2e-review-guard'
+const REVIEW_GUARD_THREAD_2_ID = 'thread-e2e-review-guard-2'
+const REVIEW_GUARD_COMMENT_2_ID = 'comment-e2e-review-guard-2'
 const REVIEW_GRACE_DOCUMENT_ID = 'document-e2e-review-grace'
 
 const login = async ( page: Page, email: string ) => {
@@ -43,4 +47,60 @@ test( 'author is blocked from reopening a closed issue after review expiry but c
   await closeSuccessModal( page, 'Latest version rejected successfully.' )
 
   await expect( page.getByLabel( 'Selected version' ).locator( 'option:checked' ) ).toContainText( 'Rejected' )
+} )
+
+test( 'deep link query selects the seeded issue comment and restores card highlight even after table view was selected', async ( { page } ) => {
+  const commentCard = page.locator( `#qt4-comment-${REVIEW_GUARD_COMMENT_2_ID}` )
+
+  await login( page, 'member@example.com' )
+  await openVersionsPage( page, REVIEW_GUARD_DOCUMENT_ID )
+
+  await expect( page.locator( '.selected-thread-title' ) ).toContainText( 'Seeded resolved issue' )
+  await page.getByRole( 'button', { name: 'Table' } ).last().click()
+
+  await page.goto(
+    `/documents/${REVIEW_GUARD_DOCUMENT_ID}/versions?threadId=${REVIEW_GUARD_THREAD_ID}&commentId=${REVIEW_GUARD_COMMENT_2_ID}&focus=comments`,
+  )
+
+  await expect( page.getByText( 'Document Versions' ) ).toBeVisible()
+  await expect( page.locator( '.selected-thread-title' ) ).toContainText( 'Seeded resolved issue' )
+  await expect( commentCard ).toBeVisible()
+  await expect( commentCard ).toContainText( 'Author seeded resolution comment' )
+  await expect( commentCard ).toHaveClass( /comment-card--highlight/ )
+
+  await page.reload()
+  await expect( page.getByText( 'Document Versions' ) ).toBeVisible()
+  await expect( page.locator( '.selected-thread-title' ) ).toContainText( 'Seeded resolved issue' )
+  await expect( commentCard ).toBeVisible()
+  await expect( commentCard ).toContainText( 'Author seeded resolution comment' )
+  await expect( commentCard ).toHaveClass( /comment-card--highlight/ )
+} )
+
+test( 'changing seeded issues after a deep link clears the old comment target and keeps the new issue selected', async ( { page } ) => {
+  const highlightedCommentCard = page.locator( `#qt4-comment-${REVIEW_GUARD_COMMENT_2_ID}` )
+
+  await login( page, 'member@example.com' )
+  await page.goto(
+    `/documents/${REVIEW_GUARD_DOCUMENT_ID}/versions?threadId=${REVIEW_GUARD_THREAD_ID}&commentId=${REVIEW_GUARD_COMMENT_2_ID}&focus=comments`,
+  )
+
+  await expect( page.getByText( 'Document Versions' ) ).toBeVisible()
+  await expect( page.locator( '.selected-thread-title' ) ).toContainText( 'Seeded resolved issue' )
+  await expect( highlightedCommentCard ).toHaveClass( /comment-card--highlight/ )
+
+  await page.locator( 'article.project-card' ).filter( { hasText: 'Seeded follow-up issue' } ).click( {
+    position: { x: 16, y: 16 },
+  } )
+  await expect( page.locator( '.selected-thread-title' ) ).toContainText( 'Seeded follow-up issue' )
+  await expect( page.getByText( 'Author seeded follow-up comment' ) ).toBeVisible()
+  await expect( page ).toHaveURL( new RegExp( `threadId=${REVIEW_GUARD_THREAD_2_ID}` ) )
+  await expect( page ).not.toHaveURL( /commentId=/ )
+  await expect( highlightedCommentCard ).toHaveCount( 0 )
+
+  await page.reload()
+  await expect( page.getByText( 'Document Versions' ) ).toBeVisible()
+  await expect( page.locator( '.selected-thread-title' ) ).toContainText( 'Seeded follow-up issue' )
+  await expect( page.getByText( 'Author seeded follow-up comment' ) ).toBeVisible()
+  await expect( page ).toHaveURL( new RegExp( `threadId=${REVIEW_GUARD_THREAD_2_ID}` ) )
+  await expect( page ).not.toHaveURL( /commentId=/ )
 } )

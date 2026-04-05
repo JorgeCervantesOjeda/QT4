@@ -467,6 +467,7 @@ function VersionsPage() {
   const lastAppliedVersionQueryRef = useRef<string | null>( null )
   const lastAppliedThreadQueryRef = useRef<string | null>( null )
   const lastAppliedCommentQueryRef = useRef<string | null>( null )
+  const pendingManualThreadSelectionRef = useRef<string | null>( null )
   const [newThreadTitle, setNewThreadTitle] = useState( '' )
   const [newCommentBody, setNewCommentBody] = useState( '' )
   const [isLoadingThreads, setIsLoadingThreads] = useState( false )
@@ -490,6 +491,7 @@ function VersionsPage() {
   const selectedDownloadProvider = getEffectiveFileStorageProviderHint(
     selectedFileRef?.storageProvider ?? null,
   )
+  const effectiveSelectedThreadId = threadIdFromQuery || selectedThreadId
   const getVersionDownloadProvider = useCallback( (version: VersionSummary): FileStorageProviderKind | null => {
     if( selectedVersion?.id === version.id && selectedFileRef?.storageProvider ) {
       return getEffectiveFileStorageProviderHint( selectedFileRef.storageProvider )
@@ -516,8 +518,8 @@ function VersionsPage() {
   const latestVersionInReviewed = Boolean( latestVersion && latestVersion.status === 'Reviewed' )
   const latestVersionInAccepted = Boolean( latestVersion && latestVersion.status === 'Accepted' )
   const selectedVersionInReview = Boolean( selectedVersion && selectedVersion.status === 'In Review' )
-  const selectedThread = selectedThreadId
-    ? threads.find( ( thread ) => thread.id === selectedThreadId ) ?? null
+  const selectedThread = effectiveSelectedThreadId
+    ? threads.find( ( thread ) => thread.id === effectiveSelectedThreadId ) ?? null
     : null
   const projectReportLabel = projectName
     ? `${projectShortId ?? 'Unassigned'} - ${projectName}`
@@ -560,8 +562,8 @@ function VersionsPage() {
   ] )
   const selectedThreadOpen = Boolean( selectedThread && selectedThread.status === 'open' )
   const selectedThreadComments = useMemo(
-    () => ( selectedThreadId ? commentsByThread[selectedThreadId] ?? [] : [] ),
-    [ selectedThreadId, commentsByThread ],
+    () => ( effectiveSelectedThreadId ? commentsByThread[effectiveSelectedThreadId] ?? [] : [] ),
+    [ effectiveSelectedThreadId, commentsByThread ],
   )
   const getLatestCommentAtFromList = useCallback( (comments: CommentSummary[]) =>
     comments.reduce<Date | null>(
@@ -759,8 +761,8 @@ function VersionsPage() {
     [ threadsViewMode, visibleThreadRows, threads ],
   )
   const selectedThreadIndex = useMemo(
-    () => orderedThreads.findIndex( ( thread ) => thread.id === selectedThreadId ),
-    [ orderedThreads, selectedThreadId ],
+    () => orderedThreads.findIndex( ( thread ) => thread.id === effectiveSelectedThreadId ),
+    [ orderedThreads, effectiveSelectedThreadId ],
   )
   const hasPreviousThread = selectedThreadIndex > 0
   const hasNextThread = selectedThreadIndex >= 0 && selectedThreadIndex < orderedThreads.length - 1
@@ -1840,7 +1842,7 @@ function VersionsPage() {
 
   useEffect( () => {
     setNewCommentBody( '' )
-  }, [ selectedThreadId ] )
+  }, [ effectiveSelectedThreadId ] )
 
   useEffect( () => {
     if( preservedThreadNavigationScrollYRef.current === null ) {
@@ -1875,7 +1877,7 @@ function VersionsPage() {
     }
 
     const focusKey = dashboardFocusTarget === 'comments'
-      ? `${dashboardFocusTarget}|${selectedVersion.id}|${selectedThreadId ?? ''}`
+      ? `${dashboardFocusTarget}|${selectedVersion.id}|${effectiveSelectedThreadId ?? ''}`
       : `${dashboardFocusTarget}|${selectedVersion.id}`
     if( lastAppliedDashboardFocusRef.current === focusKey ) {
       return
@@ -1914,7 +1916,7 @@ function VersionsPage() {
     dashboardFocusTarget,
     selectedVersion,
     selectedThread,
-    selectedThreadId,
+      effectiveSelectedThreadId,
     isLoadingVersions,
     isLoadingThreads,
   ] )
@@ -1922,14 +1924,18 @@ function VersionsPage() {
   useEffect( () => {
     if( !commentIdFromQuery ) {
       lastAppliedCommentQueryRef.current = null
+      pendingManualThreadSelectionRef.current = null
       setHighlightedCommentId( null )
+      return
+    }
+    if( pendingManualThreadSelectionRef.current ) {
       return
     }
     if( lastAppliedCommentQueryRef.current === commentIdFromQuery ) {
       return
     }
     const targetThreadId =
-      selectedThreadId ??
+      effectiveSelectedThreadId ??
       Object.entries( commentsByThread ).find( ( [ , threadComments ] ) =>
         threadComments.some( ( comment ) => comment.id === commentIdFromQuery ),
       )?.[0] ??
@@ -1937,7 +1943,7 @@ function VersionsPage() {
     if( !targetThreadId ) {
       return
     }
-    if( selectedThreadId !== targetThreadId ) {
+    if( effectiveSelectedThreadId !== targetThreadId ) {
       setSelectedThreadId( targetThreadId )
       return
     }
@@ -1962,7 +1968,7 @@ function VersionsPage() {
       window.clearTimeout( scrollTimer )
       window.clearTimeout( clearHighlightTimer )
     }
-  }, [ commentIdFromQuery, selectedThreadId, commentsByThread, commentsViewMode ] )
+  }, [ commentIdFromQuery, effectiveSelectedThreadId, commentsByThread, commentsViewMode ] )
 
   useEffect( () => {
     let isActive = true
@@ -2484,6 +2490,7 @@ function VersionsPage() {
       return
     }
     preservedThreadNavigationScrollYRef.current = window.scrollY
+    pendingManualThreadSelectionRef.current = threadId
     if( dashboardFocusTarget === 'comments' && selectedVersion?.id ) {
       lastAppliedDashboardFocusRef.current = `${dashboardFocusTarget}|${selectedVersion.id}|${threadId}`
     }
@@ -5078,7 +5085,7 @@ function VersionsPage() {
                             ? 'thread-row--open-expired'
                             : 'thread-row--open'
                         return `${statusClassName} ${
-                          selectedThreadId === row.id ? 'data-table-row--selected' : ''
+                          effectiveSelectedThreadId === row.id ? 'data-table-row--selected' : ''
                         }`.trim()
                       }}
                       onRowClick={( row ) => selectThreadKeepingViewport( row.id )}
@@ -5096,7 +5103,7 @@ function VersionsPage() {
                                 ? 'project-card--thread-open-expired'
                                 : 'project-card--thread-open'
                               : 'project-card--thread-closed'
-                          } ${selectedThreadId === thread.id ? 'project-card--thread-selected' : ''}`}
+                          } ${effectiveSelectedThreadId === thread.id ? 'project-card--thread-selected' : ''}`}
                           onClick={() => selectThreadKeepingViewport( thread.id )}
                           role="button"
                           tabIndex={0}

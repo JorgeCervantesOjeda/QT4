@@ -74,7 +74,7 @@ test( 'reviewer cannot accept the latest version without author or leader privil
   await login( page, 'reviewer@example.com' )
   await openVersionsPage( page, REVIEW_GUARD_DOCUMENT_ID )
 
-  await expect( page.getByText( 'Issues: 1 - Open: 0 - Comments: 2' ).last() ).toBeVisible()
+  await expect( page.getByText( 'Issues: 2 - Open: 1 - Comments: 3' ).last() ).toBeVisible()
   await page.getByRole( 'button', { name: 'Accept latest' } ).click()
 
   await expect(

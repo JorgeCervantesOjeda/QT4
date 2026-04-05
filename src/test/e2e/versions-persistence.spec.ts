@@ -214,3 +214,42 @@ test( 'accepted version can create the next version, upload, assign reviewers, a
   await expect( page.getByText( 'Name: draft-v2.txt' ) ).toBeVisible()
   await expect( page.getByText( /Reviewers: (Reviewer User|reviewer@example\.com)/ ) ).toBeVisible()
 } )
+
+test( 'selected version can switch between states, and reload returns to the latest version', async ( { page } ) => {
+  await login( page, 'member@example.com' )
+  await createInCreationDocumentWithReviewer( page, 'Version Selection' )
+
+  await page.locator( 'input[type="file"]' ).setInputFiles( 'src/test/e2e/fixtures/draft-v1.txt' )
+  await expect( page.getByText( 'Uploaded: draft-v1.txt' ) ).toBeVisible()
+
+  const reviewerCheckbox = reviewerRow( page ).locator( 'input[type="checkbox"]' )
+  await reviewerCheckbox.click()
+  await expect( reviewerCheckbox ).toBeChecked()
+
+  await page.getByRole( 'button', { name: 'Start review' } ).click()
+  await expect( page.getByRole( 'heading', { name: 'Start review' } ) ).toBeVisible()
+  await page.getByRole( 'button', { name: 'Confirm' } ).click()
+  await closeSuccessModal( page, 'Review started successfully.' )
+
+  await page.getByRole( 'button', { name: 'Create next version' } ).click()
+  await expect( page.getByRole( 'heading', { name: 'Create new version' } ) ).toBeVisible()
+  await page.getByRole( 'button', { name: 'Confirm' } ).click()
+  await closeSuccessModal( page, 'Version created successfully.' )
+
+  const selectedVersionInput = page.getByLabel( 'Selected version' )
+  await expect( selectedVersionInput ).toContainText( '0.01 - Reviewed' )
+  await expect( selectedVersionInput ).toContainText( '0.02 - In Creation' )
+
+  await selectedVersionInput.selectOption( { label: '0.02 - In Creation' } )
+  await expect( selectedVersionInput.locator( 'option:checked' ) ).toContainText( '0.02 - In Creation' )
+  await expect( page.getByText( 'Uploaded: No' ).last() ).toBeVisible()
+
+  await selectedVersionInput.selectOption( { label: '0.01 - Reviewed' } )
+  await expect( selectedVersionInput.locator( 'option:checked' ) ).toContainText( '0.01 - Reviewed' )
+  await expect( page.getByText( 'Name: draft-v1.txt' ) ).toBeVisible()
+
+  await page.reload()
+  await expect( page.getByText( 'Document Versions' ) ).toBeVisible()
+  await expect( selectedVersionInput.locator( 'option:checked' ) ).toContainText( '0.02 - In Creation' )
+  await expect( page.getByText( 'Uploaded: No' ).last() ).toBeVisible()
+} )
