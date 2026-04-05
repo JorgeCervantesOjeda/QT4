@@ -2485,6 +2485,20 @@ function VersionsPage() {
     [],
   )
 
+  const selectVersionAndClearThreadQuery = useCallback( (versionId: string | null) => {
+    pendingManualThreadSelectionRef.current = null
+    lastAppliedCommentQueryRef.current = null
+    setHighlightedCommentId( null )
+    const nextSearchParams = new URLSearchParams( searchParams )
+    nextSearchParams.delete( 'threadId' )
+    nextSearchParams.delete( 'commentId' )
+    setSearchParams( nextSearchParams, {
+      replace: true,
+      preventScrollReset: true,
+    } )
+    setSelectedVersionId( versionId )
+  }, [ searchParams, setSearchParams ] )
+
   const selectThreadKeepingViewport = useCallback( (threadId: string) => {
     if( !threadId ) {
       return
@@ -4373,7 +4387,7 @@ function VersionsPage() {
     if( isBusy ) {
       return
     }
-    setSelectedVersionId( versionId )
+    selectVersionAndClearThreadQuery( versionId )
   }
 
   const moveSelectedVersion = useCallback(
@@ -4385,13 +4399,13 @@ function VersionsPage() {
         ? versions.findIndex( ( version ) => version.id === selectedVersionId )
         : -1
       if( currentIndex < 0 ) {
-        setSelectedVersionId( versions[0].id )
+        selectVersionAndClearThreadQuery( versions[0].id )
         return
       }
       const nextIndex = Math.min( versions.length - 1, Math.max( 0, currentIndex + direction ) )
-      setSelectedVersionId( versions[nextIndex].id )
+      selectVersionAndClearThreadQuery( versions[nextIndex].id )
     },
-    [ isBusy, versions, selectedVersionId ],
+    [ isBusy, versions, selectedVersionId, selectVersionAndClearThreadQuery ],
   )
 
   return (
@@ -4467,7 +4481,7 @@ function VersionsPage() {
                 <select
                   className={`version-select ${versionSelectStatusClassName( selectedVersion )}`.trim()}
                   value={selectedVersion?.id ?? ''}
-                  onChange={( event ) => setSelectedVersionId( event.target.value || null )}
+                  onChange={( event ) => selectVersionAndClearThreadQuery( event.target.value || null )}
                   onKeyDown={( event ) => {
                     if( versions.length === 0 ) {
                       return
@@ -4480,10 +4494,10 @@ function VersionsPage() {
                       moveSelectedVersion( 1 )
                     } else if( event.key === 'Home' ) {
                       event.preventDefault()
-                      setSelectedVersionId( versions[0].id )
+                      selectVersionAndClearThreadQuery( versions[0].id )
                     } else if( event.key === 'End' ) {
                       event.preventDefault()
-                      setSelectedVersionId( versions[versions.length - 1].id )
+                      selectVersionAndClearThreadQuery( versions[versions.length - 1].id )
                     }
                   }}
                   disabled={isBusy}
