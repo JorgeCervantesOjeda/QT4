@@ -112,6 +112,13 @@ const ERROR_REPORT_UNLOCK_FILE_REF_ID = 'file-ref-e2e-error-report-unlock'
 const ERROR_REPORT_UNLOCK_REPORT_DOCUMENT_ID = 'document-e2e-error-report-linked'
 const ERROR_REPORT_UNLOCK_REPORT_VERSION_ID = 'version-e2e-error-report-linked'
 const ERROR_REPORT_UNLOCK_REPORT_FILE_REF_ID = 'file-ref-e2e-error-report-linked'
+const ERROR_REPORT_TRANSITION_PROJECT_ID = 'project-e2e-error-report-transition'
+const ERROR_REPORT_TRANSITION_DOCUMENT_ID = 'document-e2e-error-report-transition'
+const ERROR_REPORT_TRANSITION_VERSION_ID = 'version-e2e-error-report-transition'
+const ERROR_REPORT_TRANSITION_FILE_REF_ID = 'file-ref-e2e-error-report-transition'
+const ERROR_REPORT_TRANSITION_REPORT_DOCUMENT_ID = 'document-e2e-error-report-transition-linked'
+const ERROR_REPORT_TRANSITION_REPORT_VERSION_ID = 'version-e2e-error-report-transition-linked'
+const ERROR_REPORT_TRANSITION_REPORT_FILE_REF_ID = 'file-ref-e2e-error-report-transition-linked'
 const MODEL_UPDATE_PROJECT_ID = 'project-e2e-model-update'
 const MODEL_UPDATE_DOCUMENT_ID = 'document-e2e-model-update'
 const MODEL_UPDATE_VERSION_ID = 'version-e2e-model-update'
@@ -776,6 +783,133 @@ const seedFirestore = async () => {
     projectId: ERROR_REPORT_UNLOCK_PROJECT_ID,
     docId: ERROR_REPORT_UNLOCK_REPORT_DOCUMENT_ID,
     versionId: ERROR_REPORT_UNLOCK_REPORT_VERSION_ID,
+    createdBy: 'user-member-1',
+    timestamp: createdAt,
+  } )
+
+  batch.set( db.doc( `projects/${ERROR_REPORT_TRANSITION_PROJECT_ID}` ), {
+    name: 'Seeded Error Report Transition Project',
+    leaderId: 'user-member-1',
+    isActive: true,
+    shortId: 206,
+    createdAt,
+    updatedAt: createdAt,
+  } )
+  setProjectMember( batch, ERROR_REPORT_TRANSITION_PROJECT_ID, 'user-member-1', 'leader', 'member@example.com', createdAt )
+  setProjectMember( batch, ERROR_REPORT_TRANSITION_PROJECT_ID, 'user-reviewer-1', 'member', 'reviewer@example.com', createdAt )
+  batch.set( db.doc( `counters/documents_${ERROR_REPORT_TRANSITION_PROJECT_ID}` ), {
+    nextNumber: 713,
+    projectId: ERROR_REPORT_TRANSITION_PROJECT_ID,
+  } )
+  batch.set( db.doc( `documents/${ERROR_REPORT_TRANSITION_DOCUMENT_ID}` ), {
+    projectId: ERROR_REPORT_TRANSITION_PROJECT_ID,
+    title: 'Seeded Error Report Transition Document',
+    type: 'document',
+    createdBy: 'user-member-1',
+    authorId: 'user-member-1',
+    updatedBy: 'user-member-1',
+    shortId: 711,
+    createdAt,
+    updatedAt: acceptedAt,
+  } )
+  batch.set( db.doc( `versions/${ERROR_REPORT_TRANSITION_VERSION_ID}` ), {
+    projectId: ERROR_REPORT_TRANSITION_PROJECT_ID,
+    docId: ERROR_REPORT_TRANSITION_DOCUMENT_ID,
+    number: 1,
+    status: 'Accepted',
+    createdBy: 'user-member-1',
+    reviewerIds: [ 'user-reviewer-1' ],
+    reviewStartAt,
+    reviewEndAt,
+    hasFile: true,
+    fileRefId: ERROR_REPORT_TRANSITION_FILE_REF_ID,
+    stats: {
+      numThreads: 1,
+      numOpenThreads: 0,
+      numComments: 2,
+      numThreadsWithTwoPlusComments: 1,
+    },
+    numThreads: 1,
+    numOpenThreads: 0,
+    numComments: 2,
+    numThreadsWithTwoPlusComments: 1,
+    acceptedErrorReportId: null,
+    previousVersionId: null,
+    createdAt,
+    activityAt: acceptedAt,
+    updatedAt: acceptedAt,
+    updatedBy: 'user-member-1',
+  } )
+  batch.set( db.doc( `counters/versions_${ERROR_REPORT_TRANSITION_DOCUMENT_ID}` ), {
+    nextNumber: 2,
+    docId: ERROR_REPORT_TRANSITION_DOCUMENT_ID,
+    projectId: ERROR_REPORT_TRANSITION_PROJECT_ID,
+    previousVersionId: ERROR_REPORT_TRANSITION_VERSION_ID,
+  } )
+  setVersionFileRef( batch, {
+    fileRefId: ERROR_REPORT_TRANSITION_FILE_REF_ID,
+    fileKey: 'seeded/error-report-transition.pdf',
+    fileName: 'error-report-transition.pdf',
+    projectId: ERROR_REPORT_TRANSITION_PROJECT_ID,
+    docId: ERROR_REPORT_TRANSITION_DOCUMENT_ID,
+    versionId: ERROR_REPORT_TRANSITION_VERSION_ID,
+    createdBy: 'user-member-1',
+    timestamp: createdAt,
+  } )
+  batch.set( db.doc( `documents/${ERROR_REPORT_TRANSITION_REPORT_DOCUMENT_ID}` ), {
+    projectId: ERROR_REPORT_TRANSITION_PROJECT_ID,
+    title: 'Accepted transition error report',
+    type: 'errorReport',
+    baseDocId: ERROR_REPORT_TRANSITION_DOCUMENT_ID,
+    baseVersionId: ERROR_REPORT_TRANSITION_VERSION_ID,
+    createdBy: 'user-member-1',
+    authorId: 'user-member-1',
+    updatedBy: 'user-member-1',
+    shortId: 712,
+    createdAt,
+    updatedAt: linkedAcceptedAt,
+  } )
+  batch.set( db.doc( `versions/${ERROR_REPORT_TRANSITION_REPORT_VERSION_ID}` ), {
+    projectId: ERROR_REPORT_TRANSITION_PROJECT_ID,
+    docId: ERROR_REPORT_TRANSITION_REPORT_DOCUMENT_ID,
+    number: 1,
+    status: 'Accepted',
+    createdBy: 'user-member-1',
+    reviewerIds: [ 'user-reviewer-1' ],
+    reviewStartAt,
+    reviewEndAt,
+    hasFile: true,
+    fileRefId: ERROR_REPORT_TRANSITION_REPORT_FILE_REF_ID,
+    stats: {
+      numThreads: 1,
+      numOpenThreads: 0,
+      numComments: 2,
+      numThreadsWithTwoPlusComments: 1,
+    },
+    numThreads: 1,
+    numOpenThreads: 0,
+    numComments: 2,
+    numThreadsWithTwoPlusComments: 1,
+    acceptedErrorReportId: null,
+    previousVersionId: null,
+    createdAt,
+    activityAt: linkedAcceptedAt,
+    updatedAt: linkedAcceptedAt,
+    updatedBy: 'user-member-1',
+  } )
+  batch.set( db.doc( `counters/versions_${ERROR_REPORT_TRANSITION_REPORT_DOCUMENT_ID}` ), {
+    nextNumber: 2,
+    docId: ERROR_REPORT_TRANSITION_REPORT_DOCUMENT_ID,
+    projectId: ERROR_REPORT_TRANSITION_PROJECT_ID,
+    previousVersionId: ERROR_REPORT_TRANSITION_REPORT_VERSION_ID,
+  } )
+  setVersionFileRef( batch, {
+    fileRefId: ERROR_REPORT_TRANSITION_REPORT_FILE_REF_ID,
+    fileKey: 'seeded/error-report-transition-linked.pdf',
+    fileName: 'error-report-transition-linked.pdf',
+    projectId: ERROR_REPORT_TRANSITION_PROJECT_ID,
+    docId: ERROR_REPORT_TRANSITION_REPORT_DOCUMENT_ID,
+    versionId: ERROR_REPORT_TRANSITION_REPORT_VERSION_ID,
     createdBy: 'user-member-1',
     timestamp: createdAt,
   } )

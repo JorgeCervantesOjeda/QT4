@@ -8,6 +8,8 @@ type FakeFault = {
   once?: boolean
 }
 
+const ERROR_REPORT_TRANSITION_DOCUMENT_ID = 'document-e2e-error-report-transition'
+
 const skipUnlessFakeBackend = (testInfo: TestInfo) => {
   test.skip(
     testInfo.project.use.baseURL !== 'http://127.0.0.1:4173',
@@ -29,9 +31,21 @@ const login = async (page: Page, email: string) => {
   await expect( page.getByText( 'Dashboard' ) ).toBeVisible()
 }
 
+const openVersionsPage = async (page: Page, documentId: string) => {
+  await page.goto( `/documents/${documentId}/versions` )
+  await expect( page.getByText( 'Document Versions' ) ).toBeVisible( { timeout: 10000 } )
+  await expect( page.getByRole( 'heading', { name: 'Versions' } ) ).toBeVisible( { timeout: 10000 } )
+}
+
 const closeSuccessModal = async (page: Page, message: string) => {
   await expect( page.getByText( message ) ).toBeVisible()
   await page.getByRole( 'button', { name: 'OK' } ).click()
+  await expect( page.getByText( message ) ).toBeHidden()
+}
+
+const closeErrorModal = async (page: Page, message: string) => {
+  await expect( page.getByText( message ) ).toBeVisible()
+  await page.keyboard.press( 'Escape' )
   await expect( page.getByText( message ) ).toBeHidden()
 }
 
@@ -125,4 +139,78 @@ test( 'replace-file failure keeps the existing linked file visible', async ( { p
   await expect( page.getByText( 'Replacement blocked for testing.' ).first() ).toBeVisible()
   await expect( page.getByText( 'Name: draft-v1.txt' ) ).toBeVisible()
   await expect( page.getByText( 'Name: draft-v2.txt' ) ).toHaveCount( 0 )
+} )
+
+test( 'start review stays blocked until file and reviewers are ready, then persists after reload', async ( { page } ) => {
+  const startReviewGuardMessage =
+    'To start review, the version must be In Creation, have linked file metadata (fileRefId), have at least one reviewer, and you must be the author or leader.'
+
+  await login( page, 'member@example.com' )
+  await createInCreationDocumentWithReviewer( page, 'Review Transition' )
+
+  await page.getByRole( 'button', { name: 'Start review' } ).click()
+  await closeErrorModal( page, startReviewGuardMessage )
+
+  await page.locator( 'input[type="file"]' ).setInputFiles( 'src/test/e2e/fixtures/draft-v1.txt' )
+  await expect( page.getByText( 'Uploaded: draft-v1.txt' ) ).toBeVisible()
+  await expect( page.getByText( 'Name: draft-v1.txt' ) ).toBeVisible()
+
+  await page.getByRole( 'button', { name: 'Start review' } ).click()
+  await closeErrorModal( page, startReviewGuardMessage )
+
+  const reviewerCheckbox = reviewerRow( page ).locator( 'input[type="checkbox"]' )
+  await reviewerCheckbox.click()
+  await expect( reviewerCheckbox ).toBeChecked()
+  await expect( page.getByText( 'Reviewers: 1' ).last() ).toBeVisible()
+
+  await page.getByRole( 'button', { name: 'Start review' } ).click()
+  await expect( page.getByRole( 'heading', { name: 'Start review' } ) ).toBeVisible()
+  await page.getByRole( 'button', { name: 'Confirm' } ).click()
+  await closeSuccessModal( page, 'Review started successfully.' )
+
+  await expect( page.getByLabel( 'Selected version' ).locator( 'option:checked' ) ).toContainText( '0.01 - In Review' )
+  await expect( page.getByText( 'Reviewer Assignment (Before Review)' ) ).toHaveCount( 0 )
+
+  await page.reload()
+  await expect( page.getByText( 'Document Versions' ) ).toBeVisible()
+  await expect( page.getByLabel( 'Selected version' ).locator( 'option:checked' ) ).toContainText( '0.01 - In Review' )
+  await expect( page.getByText( 'Name: draft-v1.txt' ) ).toBeVisible()
+  await expect( page.getByText( 'Issues: 0 - Open: 0 - Comments: 0' ).last() ).toBeVisible()
+} )
+
+test( 'accepted version can create the next version, upload, assign reviewers, and start review after reload-safe transitions', async ( { page } ) => {
+  await login( page, 'member@example.com' )
+  await openVersionsPage( page, ERROR_REPORT_TRANSITION_DOCUMENT_ID )
+
+  await expect( page.getByText( 'Accepted transition error report' ) ).toBeVisible( { timeout: 15000 } )
+  await expect( page.getByRole( 'button', { name: 'Create next version' } ) ).toBeVisible()
+  await page.getByRole( 'button', { name: 'Create next version' } ).click()
+  await expect( page.getByRole( 'heading', { name: 'Create new version' } ) ).toBeVisible()
+  await page.getByRole( 'button', { name: 'Confirm' } ).click()
+  await closeSuccessModal( page, 'Version created successfully.' )
+
+  const selectedVersionInput = page.getByLabel( 'Selected version' )
+  await expect( selectedVersionInput ).toContainText( '0.02 - In Creation' )
+  await selectedVersionInput.selectOption( { label: '0.02 - In Creation' } )
+  await expect( selectedVersionInput.locator( 'option:checked' ) ).toContainText( '0.02 - In Creation' )
+  await page.locator( 'input[type="file"]' ).setInputFiles( 'src/test/e2e/fixtures/draft-v2.txt' )
+  await expect( page.getByText( 'Uploaded: draft-v2.txt' ) ).toBeVisible()
+  await expect( page.getByText( 'Name: draft-v2.txt' ) ).toBeVisible()
+
+  await page.getByRole( 'checkbox', { name: 'Select all reviewers' } ).check()
+  await expect( page.getByText( 'Reviewers: 1' ).last() ).toBeVisible()
+
+  await page.getByRole( 'button', { name: 'Start review' } ).click()
+  await expect( page.getByRole( 'heading', { name: 'Start review' } ) ).toBeVisible()
+  await page.getByRole( 'button', { name: 'Confirm' } ).click()
+  await closeSuccessModal( page, 'Review started successfully.' )
+
+  await expect( page.getByLabel( 'Selected version' ).locator( 'option:checked' ) ).toContainText( '0.02 - In Review' )
+  await expect( page.getByText( 'Issues: 0 - Open: 0 - Comments: 0' ).last() ).toBeVisible()
+
+  await page.reload()
+  await expect( page.getByText( 'Document Versions' ) ).toBeVisible()
+  await expect( selectedVersionInput.locator( 'option:checked' ) ).toContainText( '0.02 - In Review' )
+  await expect( page.getByText( 'Name: draft-v2.txt' ) ).toBeVisible()
+  await expect( page.getByText( /Reviewers: (Reviewer User|reviewer@example\.com)/ ) ).toBeVisible()
 } )

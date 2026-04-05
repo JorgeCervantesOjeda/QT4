@@ -50,6 +50,13 @@ const ERROR_REPORT_UNLOCK_FILE_REF_ID = 'file-ref-e2e-error-report-unlock'
 const ERROR_REPORT_UNLOCK_REPORT_DOCUMENT_ID = 'document-e2e-error-report-linked'
 const ERROR_REPORT_UNLOCK_REPORT_VERSION_ID = 'version-e2e-error-report-linked'
 const ERROR_REPORT_UNLOCK_REPORT_FILE_REF_ID = 'file-ref-e2e-error-report-linked'
+const ERROR_REPORT_TRANSITION_PROJECT_ID = 'project-e2e-error-report-transition'
+const ERROR_REPORT_TRANSITION_DOCUMENT_ID = 'document-e2e-error-report-transition'
+const ERROR_REPORT_TRANSITION_VERSION_ID = 'version-e2e-error-report-transition'
+const ERROR_REPORT_TRANSITION_FILE_REF_ID = 'file-ref-e2e-error-report-transition'
+const ERROR_REPORT_TRANSITION_REPORT_DOCUMENT_ID = 'document-e2e-error-report-transition-linked'
+const ERROR_REPORT_TRANSITION_REPORT_VERSION_ID = 'version-e2e-error-report-transition-linked'
+const ERROR_REPORT_TRANSITION_REPORT_FILE_REF_ID = 'file-ref-e2e-error-report-transition-linked'
 const MODEL_UPDATE_PROJECT_ID = 'project-e2e-model-update'
 const MODEL_UPDATE_DOCUMENT_ID = 'document-e2e-model-update'
 const MODEL_UPDATE_VERSION_ID = 'version-e2e-model-update'
@@ -814,6 +821,145 @@ const createSeedState = (): FakeState => {
     projectId: ERROR_REPORT_UNLOCK_PROJECT_ID,
     docId: ERROR_REPORT_UNLOCK_REPORT_DOCUMENT_ID,
     versionId: ERROR_REPORT_UNLOCK_REPORT_VERSION_ID,
+    createdBy: memberUser.uid,
+    timestamp: createdAt,
+  } )
+
+  withDoc( firestore, `projects/${ERROR_REPORT_TRANSITION_PROJECT_ID}`, {
+    name: 'Seeded Error Report Transition Project',
+    leaderId: memberUser.uid,
+    isActive: true,
+    shortId: 206,
+    createdAt,
+    updatedAt: createdAt,
+  } )
+  addProjectMember( firestore, {
+    projectId: ERROR_REPORT_TRANSITION_PROJECT_ID,
+    userId: memberUser.uid,
+    role: 'leader',
+    email: memberUser.email,
+    timestamp: createdAt,
+  } )
+  addProjectMember( firestore, {
+    projectId: ERROR_REPORT_TRANSITION_PROJECT_ID,
+    userId: reviewerUser.uid,
+    role: 'member',
+    email: reviewerUser.email,
+    timestamp: createdAt,
+  } )
+  withDoc( firestore, `counters/documents_${ERROR_REPORT_TRANSITION_PROJECT_ID}`, {
+    nextNumber: 713,
+    projectId: ERROR_REPORT_TRANSITION_PROJECT_ID,
+  } )
+  withDoc( firestore, `documents/${ERROR_REPORT_TRANSITION_DOCUMENT_ID}`, {
+    projectId: ERROR_REPORT_TRANSITION_PROJECT_ID,
+    title: 'Seeded Error Report Transition Document',
+    type: 'document',
+    createdBy: memberUser.uid,
+    authorId: memberUser.uid,
+    updatedBy: memberUser.uid,
+    shortId: 711,
+    createdAt,
+    updatedAt: acceptedAt,
+  } )
+  withDoc( firestore, `versions/${ERROR_REPORT_TRANSITION_VERSION_ID}`, {
+    projectId: ERROR_REPORT_TRANSITION_PROJECT_ID,
+    docId: ERROR_REPORT_TRANSITION_DOCUMENT_ID,
+    number: 1,
+    status: 'Accepted',
+    createdBy: memberUser.uid,
+    reviewerIds: [ reviewerUser.uid ],
+    reviewStartAt,
+    reviewEndAt,
+    hasFile: true,
+    fileRefId: ERROR_REPORT_TRANSITION_FILE_REF_ID,
+    stats: {
+      numThreads: 1,
+      numOpenThreads: 0,
+      numComments: 2,
+      numThreadsWithTwoPlusComments: 1,
+    },
+    numThreads: 1,
+    numOpenThreads: 0,
+    numComments: 2,
+    numThreadsWithTwoPlusComments: 1,
+    acceptedErrorReportId: null,
+    previousVersionId: null,
+    createdAt,
+    activityAt: acceptedAt,
+    updatedAt: acceptedAt,
+    updatedBy: memberUser.uid,
+  } )
+  withDoc( firestore, `counters/versions_${ERROR_REPORT_TRANSITION_DOCUMENT_ID}`, {
+    nextNumber: 2,
+    docId: ERROR_REPORT_TRANSITION_DOCUMENT_ID,
+    projectId: ERROR_REPORT_TRANSITION_PROJECT_ID,
+    previousVersionId: ERROR_REPORT_TRANSITION_VERSION_ID,
+  } )
+  addFileRef( firestore, {
+    fileRefId: ERROR_REPORT_TRANSITION_FILE_REF_ID,
+    fileKey: 'seeded/error-report-transition.pdf',
+    fileName: 'error-report-transition.pdf',
+    projectId: ERROR_REPORT_TRANSITION_PROJECT_ID,
+    docId: ERROR_REPORT_TRANSITION_DOCUMENT_ID,
+    versionId: ERROR_REPORT_TRANSITION_VERSION_ID,
+    createdBy: memberUser.uid,
+    timestamp: createdAt,
+  } )
+  withDoc( firestore, `documents/${ERROR_REPORT_TRANSITION_REPORT_DOCUMENT_ID}`, {
+    projectId: ERROR_REPORT_TRANSITION_PROJECT_ID,
+    title: 'Accepted transition error report',
+    type: 'errorReport',
+    baseDocId: ERROR_REPORT_TRANSITION_DOCUMENT_ID,
+    baseVersionId: ERROR_REPORT_TRANSITION_VERSION_ID,
+    createdBy: memberUser.uid,
+    authorId: memberUser.uid,
+    updatedBy: memberUser.uid,
+    shortId: 712,
+    createdAt,
+    updatedAt: linkedAcceptedAt,
+  } )
+  withDoc( firestore, `versions/${ERROR_REPORT_TRANSITION_REPORT_VERSION_ID}`, {
+    projectId: ERROR_REPORT_TRANSITION_PROJECT_ID,
+    docId: ERROR_REPORT_TRANSITION_REPORT_DOCUMENT_ID,
+    number: 1,
+    status: 'Accepted',
+    createdBy: memberUser.uid,
+    reviewerIds: [ reviewerUser.uid ],
+    reviewStartAt,
+    reviewEndAt,
+    hasFile: true,
+    fileRefId: ERROR_REPORT_TRANSITION_REPORT_FILE_REF_ID,
+    stats: {
+      numThreads: 1,
+      numOpenThreads: 0,
+      numComments: 2,
+      numThreadsWithTwoPlusComments: 1,
+    },
+    numThreads: 1,
+    numOpenThreads: 0,
+    numComments: 2,
+    numThreadsWithTwoPlusComments: 1,
+    acceptedErrorReportId: null,
+    previousVersionId: null,
+    createdAt,
+    activityAt: linkedAcceptedAt,
+    updatedAt: linkedAcceptedAt,
+    updatedBy: memberUser.uid,
+  } )
+  withDoc( firestore, `counters/versions_${ERROR_REPORT_TRANSITION_REPORT_DOCUMENT_ID}`, {
+    nextNumber: 2,
+    docId: ERROR_REPORT_TRANSITION_REPORT_DOCUMENT_ID,
+    projectId: ERROR_REPORT_TRANSITION_PROJECT_ID,
+    previousVersionId: ERROR_REPORT_TRANSITION_REPORT_VERSION_ID,
+  } )
+  addFileRef( firestore, {
+    fileRefId: ERROR_REPORT_TRANSITION_REPORT_FILE_REF_ID,
+    fileKey: 'seeded/error-report-transition-linked.pdf',
+    fileName: 'error-report-transition-linked.pdf',
+    projectId: ERROR_REPORT_TRANSITION_PROJECT_ID,
+    docId: ERROR_REPORT_TRANSITION_REPORT_DOCUMENT_ID,
+    versionId: ERROR_REPORT_TRANSITION_REPORT_VERSION_ID,
     createdBy: memberUser.uid,
     timestamp: createdAt,
   } )
