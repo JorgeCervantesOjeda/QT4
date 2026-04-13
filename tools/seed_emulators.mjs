@@ -97,6 +97,13 @@ const REVIEW_GRACE_THREAD_ID = 'thread-e2e-review-grace'
 const REVIEW_GRACE_COMMENT_1_ID = 'comment-e2e-review-grace-1'
 const REVIEW_GRACE_COMMENT_2_ID = 'comment-e2e-review-grace-2'
 
+const TRAFFIC_PROJECT_ID = 'project-traffic-review'
+const TRAFFIC_DOCUMENT_ID = 'document-traffic-review'
+const TRAFFIC_VERSION_ID = 'version-traffic-review'
+const TRAFFIC_FILE_REF_ID = 'file-ref-traffic-review'
+const TRAFFIC_THREAD_ID = 'thread-traffic-review'
+const TRAFFIC_COMMENT_ID = 'comment-traffic-review-1'
+
 const UI_NOTIFY_PROJECT_ID = 'project-e2e-ui-notify'
 const UI_NOTIFY_DOCUMENT_ID = 'document-e2e-ui-notify'
 const UI_NOTIFY_VERSION_ID = 'version-e2e-ui-notify'
@@ -545,6 +552,100 @@ const seedFirestore = async () => {
     createdBy: 'user-member-1',
     createdAt: graceResolvedAt,
     updatedAt: graceResolvedAt,
+  } )
+
+  batch.set( db.doc( `projects/${TRAFFIC_PROJECT_ID}` ), {
+    name: 'Seeded Traffic Review Project',
+    leaderId: 'user-member-1',
+    isActive: true,
+    shortId: 207,
+    createdAt,
+    updatedAt: createdAt,
+  } )
+  setProjectMember( batch, TRAFFIC_PROJECT_ID, 'user-member-1', 'leader', 'member@example.com', createdAt )
+  setProjectMember( batch, TRAFFIC_PROJECT_ID, 'user-reviewer-1', 'member', 'reviewer@example.com', createdAt )
+  batch.set( db.doc( `counters/documents_${TRAFFIC_PROJECT_ID}` ), {
+    nextNumber: 902,
+    projectId: TRAFFIC_PROJECT_ID,
+  } )
+  batch.set( db.doc( `documents/${TRAFFIC_DOCUMENT_ID}` ), {
+    projectId: TRAFFIC_PROJECT_ID,
+    title: 'Seeded Traffic Review Document',
+    type: 'document',
+    createdBy: 'user-member-1',
+    authorId: 'user-member-1',
+    updatedBy: 'user-member-1',
+    shortId: 901,
+    createdAt,
+    updatedAt: createdAt,
+  } )
+  batch.set( db.doc( `versions/${TRAFFIC_VERSION_ID}` ), {
+    projectId: TRAFFIC_PROJECT_ID,
+    docId: TRAFFIC_DOCUMENT_ID,
+    number: 1,
+    status: 'In Review',
+    createdBy: 'user-member-1',
+    reviewerIds: [ 'user-reviewer-1' ],
+    reviewStartAt,
+    reviewEndAt,
+    hasFile: true,
+    fileRefId: TRAFFIC_FILE_REF_ID,
+    stats: {
+      numThreads: 1,
+      numOpenThreads: 1,
+      numComments: 1,
+      numThreadsWithTwoPlusComments: 0,
+    },
+    numThreads: 1,
+    numOpenThreads: 1,
+    numComments: 1,
+    numThreadsWithTwoPlusComments: 0,
+    acceptedErrorReportId: null,
+    previousVersionId: null,
+    createdAt,
+    activityAt: reviewStartAt,
+    updatedAt: reviewStartAt,
+    updatedBy: 'user-member-1',
+  } )
+  batch.set( db.doc( `counters/versions_${TRAFFIC_DOCUMENT_ID}` ), {
+    nextNumber: 2,
+    docId: TRAFFIC_DOCUMENT_ID,
+    projectId: TRAFFIC_PROJECT_ID,
+    previousVersionId: TRAFFIC_VERSION_ID,
+  } )
+  setVersionFileRef( batch, {
+    fileRefId: TRAFFIC_FILE_REF_ID,
+    fileKey: 'seeded/traffic-review.pdf',
+    fileName: 'traffic-review.pdf',
+    projectId: TRAFFIC_PROJECT_ID,
+    docId: TRAFFIC_DOCUMENT_ID,
+    versionId: TRAFFIC_VERSION_ID,
+    createdBy: 'user-member-1',
+    timestamp: createdAt,
+  } )
+  batch.set( db.doc( `threads/${TRAFFIC_THREAD_ID}` ), {
+    projectId: TRAFFIC_PROJECT_ID,
+    docId: TRAFFIC_DOCUMENT_ID,
+    versionId: TRAFFIC_VERSION_ID,
+    status: 'open',
+    title: 'Seeded traffic issue',
+    createdBy: 'user-reviewer-1',
+    commentCount: 1,
+    lastCommentAt: reviewStartAt,
+    lastCommentBy: 'user-reviewer-1',
+    createdAt: reviewStartAt,
+    updatedAt: reviewStartAt,
+    updatedBy: 'user-reviewer-1',
+  } )
+  batch.set( db.doc( `comments/${TRAFFIC_COMMENT_ID}` ), {
+    projectId: TRAFFIC_PROJECT_ID,
+    docId: TRAFFIC_DOCUMENT_ID,
+    versionId: TRAFFIC_VERSION_ID,
+    threadId: TRAFFIC_THREAD_ID,
+    body: 'Seeded traffic baseline comment.',
+    createdBy: 'user-reviewer-1',
+    createdAt: reviewStartAt,
+    updatedAt: reviewStartAt,
   } )
 
   batch.set( db.doc( `projects/${UI_NOTIFY_PROJECT_ID}` ), {

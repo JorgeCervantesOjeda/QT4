@@ -1,0 +1,378 @@
+UITD "QualiTeam" {
+    UI 1 "Bienvenidos" actions {
+        clicks "Entrar";
+        clicks "Registrarse";
+    }
+    UI 2 "Registro de Usuario" actions {
+        clicks "Submitir";
+    }
+    UI 3 "Administrador de Proyectos" actions {
+        clicks "Salir";
+        clicks "Crear PROYECTO";
+        clicks "Mostrar solo los mios";
+        clicks "Mostrar Todos";
+        clicks "Mi cuenta";
+        clicks "Sesiones";
+        clicks "Configuracion";
+        clicks "Documentos";
+    }
+    UI 4 "Usuario Invalido" actions {
+        clicks "Regresar";
+        clicks "Enviar contrasena";
+    }
+    UI 41 "Usuario Registrado" actions {
+        clicks "Regresar";
+    }
+    UI 5 "Edicion del Proyecto" actions {
+        clicks "Regresar";
+        clicks "Guardar Proyecto";
+        clicks "Mostrar Integrantes Seleccionados";
+    }
+    UI 55 "Consulta del Proyecto" actions {
+        clicks "Regresar";
+    }
+    UI 60 "Cuenta" actions {
+        clicks "Regresar";
+    }
+    UI 70 "Sesiones Activas" actions {
+        clicks "Regresar";
+    }
+    UI 200 "Menu de Proyecto" actions {
+        clicks "Documentos";
+        clicks "Solicitudes de Cambio";
+        clicks "Reportes de Error";
+        clicks "Pruebas";
+    }
+    UI 61 "Documentos del Proyecto" actions {
+        clicks "Crear Documento";
+        clicks "Regresar";
+        clicks "Mostrar solo los mios";
+        clicks "Mostrar Todos";
+        clicks "Versiones";
+        clicks "Rep. Error";
+    }
+    UI 62 "Versiones del Documento" actions {
+        clicks "Regresar";
+        clicks "Ver detalle";
+        clicks "Bajar Documento";
+        clicks "Rep. Error";
+        clicks "Crear Siguiente Version";
+    }
+    UI 8 "Ver Detalle del Documento" actions {
+        clicks "Regresar";
+        clicks "Editar Propiedades";
+        clicks "Bajar Documento";
+        clicks "Ver Comentarios";
+        clicks "Aceptar Documento";
+        clicks "Rechazar Documento";
+        clicks "Crear Siguiente Version";
+    }
+    UI 10 "Ver Comentarios" actions {
+        clicks "Regresar";
+        clicks "Crear Nuevo Hilo";
+        clicks "Ver";
+        clicks "Hilo Anterior";
+        clicks "Hilo Siguiente";
+        clicks "Agregar";
+        clicks "Cerrar Hilo";
+        clicks "Reabrir Hilo";
+    }
+    UI 12 "Editar Propiedades del Documento" actions {
+        clicks "Regresar";
+        clicks "Mostrar Revisores Seleccionados";
+        clicks "Subir Archivo";
+        clicks "Iniciar revisión";
+    }
+    UI 14 "Solicitudes de Cambio" actions {
+        clicks "Regresar";
+        clicks "Crear Solicitud de Cambio";
+        clicks "Ver detalles";
+        clicks "Bajar Documento";
+    }
+    UI 140 "Seleccionar Proyecto Base CR" actions {
+        clicks "Ver Doctos";
+        clicks "Cancelar";
+    }
+    UI 141 "Seleccionar Docto Base CR" actions {
+        clicks "Selecionar Docto";
+    }
+    UI 16 "Reportes de Error" actions {
+        clicks "Regresar";
+        clicks "Ver detalles";
+        clicks "Bajar Documento";
+        clicks "Crear Reporte de Error";
+    }
+    UI 161 "Seleccionar Docto Base TR" actions {
+        clicks "Seleccionar Docto";
+        clicks "Cancelar";
+    }
+    UI 15 "Pruebas" actions {
+        clicks "Regresar";
+        clicks "bitácoras de pruebas";
+        clicks "Procedimientos de Prueba";
+        clicks "Disenos de Prueba";
+    }
+    UI 22 "Procedimientos de Prueba" actions {
+        clicks "Regresar";
+        clicks "Crear Nuevo Procedimiento";
+        clicks "Ver detalles";
+        clicks "Versiones";
+        clicks "Bajar Documento";
+    }
+    UI 23 "Bitacoras de Prueba" actions {
+        clicks "Regresar";
+        clicks "Crear Nueva Bitácora";
+        clicks "Ver detalles";
+        clicks "Versiones";
+        clicks "Bajar Documento";
+    }
+    UI 24 "Disenos de Prueba" actions {
+        clicks "Regresar";
+        clicks "Crear Nuevo Diseño";
+        clicks "Ver detalles";
+        clicks "Ver Casos";
+        clicks "Versiones";
+        clicks "Bajar Documento";
+    }
+    UI 25 "Casos de Prueba" actions {
+        clicks "Regresar";
+        clicks "Crear Nuevo Caso de Prueba";
+        clicks "Ver detalles";
+        clicks "Selec. Proc.";
+        clicks "Versiones";
+        clicks "Bajar Documento";
+    }
+    UI 26 "Seleccionar Procedimiento" actions {
+        clicks "Regresar";
+        clicks "Seleccionar Proc.";
+    }
+    FRAGMENT "Login y Registro" {
+        DRAW {
+            1, 2, 4, 41, 3
+        };
+        TRANSITION from 1 to 3
+        if user clicks "Entrar" AND "las credenciales son válidas";
+        TRANSITION from 1 to 4 if user clicks "Entrar" AND "las credenciales son inválidas";
+        TRANSITION from 1 to 2 if user clicks "Registrarse";
+        TRANSITION from 2 to 41 if user clicks "Submitir" AND "el registro es válido";
+        TRANSITION from 2 to 4 if user clicks "Submitir" AND "el registro es inválido";
+        TRANSITION from 4 to 1 if user clicks "Regresar";
+        TRANSITION from 4 to 1 if user clicks "Enviar contrasena";
+        TRANSITION from 41 to 1 if user clicks "Regresar";
+    }
+    FRAGMENT "Administrador de Proyectos" {
+        DRAW {
+            3, 5, 55, 61, 60, 70, 1
+        };
+        TRANSITION from 3 to 1
+        if user clicks "Salir";
+        TRANSITION from 3 to 3
+        if user clicks "Crear PROYECTO";
+        TRANSITION from 3 to 3
+        if user clicks "Mostrar solo los mios";
+        TRANSITION from 3 to 3
+        if user clicks "Mostrar Todos";
+        TRANSITION from 3 to 60
+        if user clicks "Mi cuenta";
+        TRANSITION from 3 to 70
+        if user clicks "Sesiones";
+        TRANSITION from 3 to 5
+        if user clicks "Configuracion" AND "el usuario es líder";
+        TRANSITION from 3 to 55
+        if user clicks "Configuracion" AND "el usuario no es líder";
+        TRANSITION from 3 to 61
+        if user clicks "Documentos";
+        TRANSITION from 5 to 3
+        if user clicks "Regresar";
+        TRANSITION from 5 to 5
+        if user clicks "Guardar Proyecto";
+        TRANSITION from 5 to 5
+        if user clicks "Mostrar Integrantes Seleccionados";
+        TRANSITION from 55 to 3
+        if user clicks "Regresar";
+        TRANSITION from 60 to 3
+        if user clicks "Regresar";
+        TRANSITION from 70 to 3
+        if user clicks "Regresar";
+    }
+    FRAGMENT "Documentos del Proyecto" {
+        DRAW {
+            61[200], 14[200], 16[200], 15[200], 62[200], 3
+        };
+        TRANSITION from 61 to 61
+        if user clicks "Crear Documento" AND "el usuario es líder o integrante y hay un proyecto activo";
+        TRANSITION from 61 to 3
+        if user clicks "Regresar";
+        TRANSITION from 61 to 61
+        if user clicks "Mostrar solo los mios";
+        TRANSITION from 61 to 61
+        if user clicks "Mostrar Todos";
+        TRANSITION from 61 to 62
+        if user clicks "Versiones" AND "hay un documento seleccionado";
+        TRANSITION from 61 to 16
+        if user clicks "Rep. Error" AND "hay un documento seleccionado";
+        TRANSITION from 14 to 61
+        if user clicks "Regresar";
+        TRANSITION from 16 to 61
+        if user clicks "Regresar";
+        TRANSITION from 15 to 61
+        if user clicks "Regresar";
+        TRANSITION from 62 to 61
+        if user clicks "Regresar";
+    }
+    FRAGMENT "Menu de Proyecto" {
+        DRAW {
+            200, 61, 14, 16, 15
+        };
+        TRANSITION from 200 to 61
+        if user clicks "Documentos";
+        TRANSITION from 200 to 14
+        if user clicks "Solicitudes de Cambio";
+        TRANSITION from 200 to 16
+        if user clicks "Reportes de Error";
+        TRANSITION from 200 to 15
+        if user clicks "Pruebas";
+    }
+    FRAGMENT "Versiones y Detalle" {
+        DRAW {
+            62[200], 8[200], 12[200], 10[200], 16
+        };
+        TRANSITION from 62 to 8
+        if user clicks "Ver detalle" AND "hay una versión seleccionada";
+        TRANSITION from 62 to 62
+        if user clicks "Bajar Documento" AND "la versión tiene archivo";
+        TRANSITION from 62 to 16
+        if user clicks "Rep. Error" AND "la versión está en 'Aceptado' y el usuario es(autor o líder)y la versión tiene archivo";
+        TRANSITION from 62 to 62
+        if user clicks "Crear Siguiente Version" AND "el usuario es(autor o líder)y(la versión está en 'En Revisión' o(la versión está en 'Aceptado' y hay un reporte de error aceptado))";
+        TRANSITION from 8 to 62
+        if user clicks "Regresar";
+        TRANSITION from 8 to 12
+        if user clicks "Editar Propiedades" AND "el usuario es(autor o líder)y(la versión está en 'En Creación' o en 'En Revisión')";
+        TRANSITION from 8 to 8
+        if user clicks "Bajar Documento" AND "el documento tiene archivo";
+        TRANSITION from 8 to 10
+        if user clicks "Ver Comentarios";
+        TRANSITION from 8 to 62
+        if user clicks "Aceptar Documento" AND "el usuario es(autor o líder o tiene permiso especial)y la versión está en 'En Revisión' y hay al menos un hilo y hay al menos un comentario y todos los hilos están cerrados y el documento tiene archivo";
+        TRANSITION from 8 to 62
+        if user clicks "Rechazar Documento" AND "el usuario es(autor o líder o tiene permiso especial)y la versión está en 'En Revisión' y hay al menos un hilo y hay al menos un comentario y todos los hilos están cerrados y el documento tiene archivo";
+        TRANSITION from 8 to 62
+        if user clicks "Crear Siguiente Version" AND "el usuario es(autor o líder)y(la versión está en 'En Revisión' o(la versión está en 'Aceptado' y hay un reporte de error aceptado))";
+        TRANSITION from 12 to 8
+        if user clicks "Regresar";
+        TRANSITION from 12 to 12
+        if user clicks "Mostrar Revisores Seleccionados";
+        TRANSITION from 12 to 12
+        if user clicks "Subir Archivo" AND "el usuario es(autor o líder)y la versión está en 'En Creación' y el archivo es válido";
+        TRANSITION from 12 to 62
+        if user clicks "Iniciar revisión" AND "el usuario es(autor o líder)y la versión está en 'En Creación' y el documento tiene archivo";
+        TRANSITION from 10 to 8
+        if user clicks "Regresar";
+        TRANSITION from 10 to 10
+        if user clicks "Crear Nuevo Hilo" AND "el usuario es(autor o líder o revisor)y la versión está en 'En Revisión' y la revisión está vigente";
+        TRANSITION from 10 to 10
+        if user clicks "Ver" AND "hay un hilo seleccionado";
+        TRANSITION from 10 to 10
+        if user clicks "Hilo Anterior" AND "hay hilos disponibles";
+        TRANSITION from 10 to 10
+        if user clicks "Hilo Siguiente" AND "hay hilos disponibles";
+        TRANSITION from 10 to 10
+        if user clicks "Agregar" AND "el hilo está abierto y el comentario no está vacío y el usuario es(autor o líder o revisor)y la revisión está vigente";
+        TRANSITION from 10 to 10
+        if user clicks "Cerrar Hilo" AND "hay un hilo seleccionado y el usuario tiene permisos y comentarios son suficientes";
+        TRANSITION from 10 to 10
+        if user clicks "Reabrir Hilo" AND "hay un hilo seleccionado y el usuario tiene permisos y comentarios son suficientes";
+    }
+    FRAGMENT "Solicitudes de Cambio" {
+        DRAW {
+            14[200], 140, 141, 8
+        };
+        TRANSITION from 14 to 140
+        if user clicks "Crear Solicitud de Cambio" AND "el usuario es líder o integrante y hay un proyecto activo";
+        TRANSITION from 14 to 8
+        if user clicks "Ver detalles" AND "hay un documento seleccionado";
+        TRANSITION from 14 to 14
+        if user clicks "Bajar Documento" AND "el documento tiene archivo";
+        TRANSITION from 140 to 141
+        if user clicks "Ver Doctos";
+        TRANSITION from 141 to 14
+        if user clicks "Selecionar Docto";
+        TRANSITION from 140 to 14
+        if user clicks "Cancelar";
+    }
+    FRAGMENT "Reportes de Error" {
+        DRAW {
+            16[200], 161, 8
+        };
+        TRANSITION from 16 to 8
+        if user clicks "Ver detalles" AND "hay un documento seleccionado";
+        TRANSITION from 16 to 16
+        if user clicks "Bajar Documento" AND "el documento tiene archivo";
+        TRANSITION from 16 to 161
+        if user clicks "Crear Reporte de Error" AND "el usuario es líder o integrante y hay un proyecto activo";
+        TRANSITION from 161 to 16
+        if user clicks "Seleccionar Docto";
+        TRANSITION from 161 to 16
+        if user clicks "Cancelar";
+    }
+    FRAGMENT "Pruebas" {
+        DRAW {
+            15[200], 22, 23, 24, 25, 26, 8, 62
+        };
+        TRANSITION from 15 to 22
+        if user clicks "Procedimientos de Prueba";
+        TRANSITION from 15 to 23
+        if user clicks "bitácoras de pruebas";
+        TRANSITION from 15 to 24
+        if user clicks "Disenos de Prueba";
+        TRANSITION from 22 to 15
+        if user clicks "Regresar";
+        TRANSITION from 22 to 22
+        if user clicks "Crear Nuevo Procedimiento" AND "el usuario es líder o integrante y hay un proyecto activo";
+        TRANSITION from 22 to 8
+        if user clicks "Ver detalles" AND "hay un documento seleccionado";
+        TRANSITION from 22 to 62
+        if user clicks "Versiones" AND "hay un documento seleccionado";
+        TRANSITION from 22 to 22
+        if user clicks "Bajar Documento" AND "el documento tiene archivo";
+        TRANSITION from 23 to 15
+        if user clicks "Regresar";
+        TRANSITION from 23 to 23
+        if user clicks "Crear Nueva Bitácora" AND "el usuario es líder o integrante y hay un proyecto activo";
+        TRANSITION from 23 to 8
+        if user clicks "Ver detalles" AND "hay un documento seleccionado";
+        TRANSITION from 23 to 62
+        if user clicks "Versiones" AND "hay un documento seleccionado";
+        TRANSITION from 23 to 23
+        if user clicks "Bajar Documento" AND "el documento tiene archivo";
+        TRANSITION from 24 to 15
+        if user clicks "Regresar";
+        TRANSITION from 24 to 24
+        if user clicks "Crear Nuevo Diseño" AND "el usuario es líder o integrante y hay un proyecto activo";
+        TRANSITION from 24 to 8
+        if user clicks "Ver detalles" AND "hay un documento seleccionado";
+        TRANSITION from 24 to 62
+        if user clicks "Versiones" AND "hay un documento seleccionado";
+        TRANSITION from 24 to 25
+        if user clicks "Ver Casos";
+        TRANSITION from 24 to 24
+        if user clicks "Bajar Documento" AND "el documento tiene archivo";
+        TRANSITION from 25 to 24
+        if user clicks "Regresar";
+        TRANSITION from 25 to 25
+        if user clicks "Crear Nuevo Caso de Prueba" AND "el usuario es líder o integrante y hay un proyecto activo";
+        TRANSITION from 25 to 8
+        if user clicks "Ver detalles" AND "hay un documento seleccionado";
+        TRANSITION from 25 to 62
+        if user clicks "Versiones" AND "hay un documento seleccionado";
+        TRANSITION from 25 to 26
+        if user clicks "Selec. Proc." AND "el usuario es(autor o líder)";
+        TRANSITION from 25 to 25
+        if user clicks "Bajar Documento" AND "el documento tiene archivo";
+        TRANSITION from 26 to 25
+        if user clicks "Regresar";
+        TRANSITION from 26 to 25
+        if user clicks "Seleccionar Proc." AND "hay un procedimiento seleccionado";
+    }
+}
