@@ -153,6 +153,19 @@ const toTimestampDate = (value: unknown): Date | null => {
 const hasLinkedFileMetadata = (version: Pick<VersionSummary, 'hasFile' | 'fileRefId'> | null | undefined) =>
   Boolean( version?.hasFile && version.fileRefId )
 
+const assertValidFileMetadataLink = (value: {
+  projectId: string
+  docId: string
+  versionId: string
+  fileRefId?: string
+}) => {
+  if( !value.projectId || !value.docId || !value.versionId ) {
+    throw new Error(
+      `Invalid linked file metadata${value.fileRefId ? ` for fileRefId ${value.fileRefId}` : ''}: projectId, docId, and versionId are required.`,
+    )
+  }
+}
+
 const isPermissionDeniedError = (value: unknown): boolean => {
   if( !value || typeof value !== 'object' ) {
     return false
@@ -378,6 +391,35 @@ const formatEmailRecipientsLine = (recipients: { to: string[]; cc: string[] }) =
   return `${toPart}${ccPart}`
 }
 
+const isOfflineFirestoreError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String( error ?? '' )
+  const loweredMessage = message.toLowerCase()
+  const code = error && typeof error === 'object' && 'code' in error
+    ? String( ( error as { code?: unknown } ).code ?? '' ).toLowerCase()
+    : ''
+  return (
+    loweredMessage.includes( 'client is offline' ) ||
+    loweredMessage.includes( 'failed to get document because the client is offline' ) ||
+    loweredMessage.includes( 'offline' ) ||
+    code.includes( 'unavailable' ) ||
+    code.includes( 'deadline-exceeded' )
+  )
+}
+
+const isIndexBuildingFirestoreError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String( error ?? '' )
+  const loweredMessage = message.toLowerCase()
+  const code = error && typeof error === 'object' && 'code' in error
+    ? String( ( error as { code?: unknown } ).code ?? '' ).toLowerCase()
+    : ''
+  return (
+    loweredMessage.includes( 'requires an index' ) ||
+    loweredMessage.includes( 'the query requires an index' ) ||
+    loweredMessage.includes( 'index is currently building' ) ||
+    code.includes( 'failed-precondition' )
+  )
+}
+
 function VersionsPage() {
   const { docId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -451,6 +493,7 @@ function VersionsPage() {
   const filePanelRef = useRef<HTMLElement | null>( null )
   const reviewIssuesPanelRef = useRef<HTMLElement | null>( null )
   const lastAppliedDashboardFocusRef = useRef<string | null>( null )
+  const commentsRetryTimeoutRef = useRef<number | null>( null )
   const [userDirectoryById, setUserDirectoryById] = useState<Record<string, { email?: string | null; displayName?: string | null }>>( {} )
   const [errorReportGate, setErrorReportGate] = useState<{ isBlocking: boolean; isLoading: boolean }>({
     isBlocking: false,
@@ -461,6 +504,7 @@ function VersionsPage() {
   const [threads, setThreads] = useState<ThreadSummary[]>([] )
   const [visibleThreadRows, setVisibleThreadRows] = useState<ThreadSummary[]>([] )
   const [commentsByThread, setCommentsByThread] = useState<Record<string, CommentSummary[]>>( {} )
+  const [commentsRetryToken, setCommentsRetryToken] = useState( 0 )
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>( null )
   const [highlightedCommentId, setHighlightedCommentId] = useState<string | null>( null )
   const [pendingThreadStatusChange, setPendingThreadStatusChange] = useState<ThreadSummary | null>( null )
@@ -535,9 +579,12 @@ function VersionsPage() {
     source: 'firestore' | 'storage' | 'auth' | 'ui' | 'network' | 'unknown' = 'firestore',
     overrides?: {
       versionId?: string | null
-      threadId?: string | null
+    threadId?: string | null
     },
   ) => {
+    if( isOfflineFirestoreError( error ) ) {
+      return
+    }
     void reportAbnormalError( {
       error,
       source,
@@ -1740,6 +1787,10 @@ function VersionsPage() {
       setNewCommentBody( '' )
       setPendingThreadStatusChange( null )
       lastAppliedThreadQueryRef.current = null
+      if( commentsRetryTimeoutRef.current !== null ) {
+        window.clearTimeout( commentsRetryTimeoutRef.current )
+        commentsRetryTimeoutRef.current = null
+      }
       return
     }
     // Clear stale issue/comment state immediately when switching versions.
@@ -1752,12 +1803,20 @@ function VersionsPage() {
     setNewThreadTitle( '' )
     setNewCommentBody( '' )
     setPendingThreadStatusChange( null )
+    if( commentsRetryTimeoutRef.current !== null ) {
+      window.clearTimeout( commentsRetryTimeoutRef.current )
+      commentsRetryTimeoutRef.current = null
+    }
     if( !threadIdFromQuery ) {
       lastAppliedThreadQueryRef.current = null
     }
     setIsLoadingThreads( true )
     const threadsUnsub = onSnapshot(
-      query( collection( db, 'threads' ), where( 'versionId', '==', selectedVersion.id ) ),
+      query(
+        collection( db, 'threads' ),
+        where( 'projectId', '==', projectId ),
+        where( 'versionId', '==', selectedVersion.id ),
+      ),
       ( snapshot ) => {
         const nextThreads = snapshot.docs.map( ( threadSnapshot ) => {
           const data = threadSnapshot.data()
@@ -1789,6 +1848,7 @@ function VersionsPage() {
     const commentsUnsub = onSnapshot(
       query(
         collection( db, 'comments' ),
+        where( 'projectId', '==', projectId ),
         where( 'versionId', '==', selectedVersion.id ),
         orderBy( 'createdAt', 'asc' ),
       ),
@@ -1814,6 +1874,18 @@ function VersionsPage() {
         )
       },
       ( err ) => {
+        if( isIndexBuildingFirestoreError( err ) ) {
+          setIsLoadingThreads( true )
+          setError( null )
+          if( commentsRetryTimeoutRef.current !== null ) {
+            window.clearTimeout( commentsRetryTimeoutRef.current )
+          }
+          commentsRetryTimeoutRef.current = window.setTimeout( () => {
+            commentsRetryTimeoutRef.current = null
+            setCommentsRetryToken( ( current ) => current + 1 )
+          }, 5000 )
+          return
+        }
         const message = err instanceof Error ? err.message : 'Unexpected error'
         reportVersionsError( err, 'versions.subscribeComments', 'firestore' )
         setError( `Comments failed to load: ${message}` )
@@ -1822,8 +1894,12 @@ function VersionsPage() {
     return () => {
       threadsUnsub()
       commentsUnsub()
+      if( commentsRetryTimeoutRef.current !== null ) {
+        window.clearTimeout( commentsRetryTimeoutRef.current )
+        commentsRetryTimeoutRef.current = null
+      }
     }
-  }, [ selectedVersion?.id, threadIdFromQuery, reportVersionsError ] )
+  }, [ selectedVersion?.id, threadIdFromQuery, reportVersionsError, commentsRetryToken ] )
 
   useEffect( () => {
     if( !threadIdFromQuery ) {
@@ -2012,6 +2088,13 @@ function VersionsPage() {
       } catch( err ) {
         if( isActive ) {
           if( isPermissionDeniedError( err ) ) {
+            console.warn( 'File metadata read denied', {
+              versionId: selectedVersion?.id ?? null,
+              fileRefId,
+              projectId: projectId ?? null,
+              docId: docId ?? null,
+              hasFile: selectedVersion?.hasFile ?? false,
+            } )
             reportVersionsError( err, 'versions.loadFileMetadata', 'firestore' )
             setSelectedFileRef( null )
             setFileMetadataNotice( 'You do not have permission to read linked file metadata for this version.' )
@@ -3150,6 +3233,11 @@ function VersionsPage() {
         updatedAt: serverTimestamp(),
         updatedBy: userId,
       }
+      assertValidFileMetadataLink( {
+        projectId: fileRefPayload.projectId,
+        docId: fileRefPayload.docId,
+        versionId: fileRefPayload.versionId,
+      } )
       const batch = writeBatch( db )
       batch.set( fileRefDoc, fileRefPayload )
       batch.update( doc( db, 'versions', selectedVersion.id ), {
@@ -5050,7 +5138,7 @@ function VersionsPage() {
                   </button>
                 </div>
                 <p className="issue-title-hint muted">
-                  Single-line title. Maximum {ISSUE_TITLE_MAX_LENGTH} characters.
+                  One-line title. Up to {ISSUE_TITLE_MAX_LENGTH} characters.
                 </p>
               </div>
               {isLoadingThreads ? (

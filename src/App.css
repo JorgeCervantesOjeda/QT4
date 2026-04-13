@@ -872,7 +872,7 @@
 }
 
 .actions--capture-row .comment-input,
-.actions--capture-row > input[type="text"] {
+.actions--capture-row > input[type="text"]:not(.issue-title-input) {
   flex: 1;
   min-width: 260px;
 }
@@ -882,7 +882,9 @@
 }
 
 .issue-title-input {
-  max-width: 44rem;
+  flex: 0 1 21rem;
+  width: 21rem;
+  max-width: 100%;
 }
 
 .issue-title-hint {
@@ -1327,7 +1329,7 @@
   .actions > button,
   .actions > .link,
   .actions > select,
-  .actions > input,
+  .actions > input:not(.issue-title-input),
   .actions > textarea {
     width: 100%;
   }

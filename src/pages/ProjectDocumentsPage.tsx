@@ -100,6 +100,21 @@ const resolveVersionDocumentActivityAt = (versionData: Record<string, unknown>):
   return pickLatestDate( fileUploadedAt, reviewStartAt, createdAt )
 }
 
+const isOfflineFirestoreError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String( error ?? '' )
+  const loweredMessage = message.toLowerCase()
+  const code = error && typeof error === 'object' && 'code' in error
+    ? String( ( error as { code?: unknown } ).code ?? '' ).toLowerCase()
+    : ''
+  return (
+    loweredMessage.includes( 'client is offline' ) ||
+    loweredMessage.includes( 'failed to get document because the client is offline' ) ||
+    loweredMessage.includes( 'offline' ) ||
+    code.includes( 'unavailable' ) ||
+    code.includes( 'deadline-exceeded' )
+  )
+}
+
 function ProjectDocumentsPage() {
   const { projectId } = useParams()
   const { user } = useAuth()
@@ -524,12 +539,14 @@ function ProjectDocumentsPage() {
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
       console.error( `ProjectDocuments loadDocuments failed at ${step}:`, err )
-      void reportAbnormalError( {
-        error: err,
-        source: 'firestore',
-        action: `projectDocuments.load.${step}`,
-        projectId,
-      } )
+      if( !isOfflineFirestoreError( err ) ) {
+        void reportAbnormalError( {
+          error: err,
+          source: 'firestore',
+          action: `projectDocuments.load.${step}`,
+          projectId,
+        } )
+      }
       openError( `Project documents failed at ${step}: ${message}`, [
         { label: '(project is selected)', ok: Boolean( projectId ) },
         { label: '(network connection is available)', ok: typeof navigator !== 'undefined' ? navigator.onLine : true },
@@ -717,12 +734,14 @@ function ProjectDocumentsPage() {
       } )()
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
-      void reportAbnormalError( {
-        error: err,
-        source: 'firestore',
-        action: 'projectDocuments.createDocument',
-        projectId,
-      } )
+      if( !isOfflineFirestoreError( err ) ) {
+        void reportAbnormalError( {
+          error: err,
+          source: 'firestore',
+          action: 'projectDocuments.createDocument',
+          projectId,
+        } )
+      }
       openError( message, [
         { label: '(project is selected)', ok: Boolean( projectId ) },
         { label: '(user is signed in)', ok: Boolean( userId ) },

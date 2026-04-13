@@ -42,6 +42,18 @@ type ProjectMember = {
 }
 
 const isLikelyEmail = (value: string) => /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test( value )
+const isOfflineFirestoreError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String( error ?? '' )
+  const loweredMessage = message.toLowerCase()
+  const code = error && typeof error === 'object' && 'code' in error ? String( ( error as { code?: unknown } ).code ?? '' ).toLowerCase() : ''
+  return (
+    loweredMessage.includes( 'client is offline' )
+    || loweredMessage.includes( 'failed to get document because the client is offline' )
+    || loweredMessage.includes( 'offline' )
+    || code.includes( 'unavailable' )
+    || code.includes( 'deadline-exceeded' )
+  )
+}
 
 function ProjectsPage() {
   const { user } = useAuth()
@@ -354,11 +366,13 @@ function ProjectsPage() {
       setUserDirectoryById( nextDirectoryById )
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
-      void reportAbnormalError( {
-        error: err,
-        source: 'firestore',
-        action: 'projects.loadProjects',
-      } )
+      if( !isOfflineFirestoreError( err ) ) {
+        void reportAbnormalError( {
+          error: err,
+          source: 'firestore',
+          action: 'projects.loadProjects',
+        } )
+      }
       openError( message, [
         { label: '(user is signed in)', ok: Boolean( userId ) },
         { label: '(network connection is available)', ok: typeof navigator !== 'undefined' ? navigator.onLine : true },
@@ -384,6 +398,14 @@ function ProjectsPage() {
       },
       ( err ) => {
         const message = err instanceof Error ? err.message : 'Unexpected error'
+        if( isOfflineFirestoreError( err ) ) {
+          openError( `Projects could not be loaded while offline: ${message}`, [
+            { label: '(user is signed in)', ok: Boolean( userId ) },
+            { label: '(network connection is available)', ok: false },
+          ] )
+          setIsLoadingProjects( false )
+          return
+        }
         openError( `Projects failed to load: ${message}`, [
           { label: '(user is signed in)', ok: Boolean( userId ) },
           { label: '(network connection is available)', ok: typeof navigator !== 'undefined' ? navigator.onLine : true },

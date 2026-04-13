@@ -271,4 +271,13 @@ describe( 'pages/ProjectsPage', () => {
     expect( getDocMock ).not.toHaveBeenCalled()
     expect( getDocsMock ).not.toHaveBeenCalled()
   }, 15000 )
+
+  it( 'does not report offline project loads as abnormal errors', async () => {
+    getDocMock.mockRejectedValueOnce( new Error( 'Failed to get document because the client is offline.' ) )
+
+    render( <ProjectsPage /> )
+
+    expect( await screen.findByText( 'Failed to get document because the client is offline.' ) ).toBeTruthy()
+    expect( reportAbnormalErrorMock ).not.toHaveBeenCalled()
+  }, 15000 )
 } )
