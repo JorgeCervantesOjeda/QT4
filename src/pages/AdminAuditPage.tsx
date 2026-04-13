@@ -146,6 +146,7 @@ const calendarLocalizer = dateFnsLocalizer( {
 } )
 
 const DATA_MODEL_UPDATE_VERSION = 2
+const ALL_USERS_FILTER = '__all_users__'
 
 function AdminAuditPage() {
   const { user } = useAuth()
@@ -194,6 +195,11 @@ function AdminAuditPage() {
   const [modelUpdateStatus, setModelUpdateStatus] = useState<'idle' | 'running' | 'done' | 'error'>( 'idle' )
   const [modelUpdateMessage, setModelUpdateMessage] = useState<string>( '' )
   const [modelUpdateSummary, setModelUpdateSummary] = useState<string>( '' )
+  const [modelUpdateProgress, setModelUpdateProgress] = useState( 0 )
+  const [modelUpdateProgressLabel, setModelUpdateProgressLabel] = useState( '' )
+  const [modelUpdateLog, setModelUpdateLog] = useState<string[]>([] )
+  const [isModelUpdateLogOpen, setIsModelUpdateLogOpen] = useState( false )
+  const [modelUpdateLogCopyStatus, setModelUpdateLogCopyStatus] = useState<'idle' | 'copied' | 'error'>( 'idle' )
   const [confirmModelUpdate, setConfirmModelUpdate] = useState( false )
   const [reviewRepairStatus, setReviewRepairStatus] = useState<'idle' | 'running' | 'done' | 'error'>( 'idle' )
   const [reviewRepairMessage, setReviewRepairMessage] = useState<string>( '' )
@@ -202,6 +208,21 @@ function AdminAuditPage() {
   const runReportButtonRef = useRef<HTMLButtonElement | null>( null )
   const shouldRestoreRunReportFocusRef = useRef( false )
   const reportUserId = isAdmin ? selectedUserId : userId
+  const isAllUsersSelected = isAdmin && reportUserId === ALL_USERS_FILTER
+
+  const copyModelUpdateLog = useCallback( async () => {
+    const text = [ ...modelUpdateLog, modelUpdateSummary ].filter( Boolean ).join( '\n' )
+    if( !text ) {
+      setModelUpdateLogCopyStatus( 'error' )
+      return
+    }
+    try {
+      await navigator.clipboard.writeText( text )
+      setModelUpdateLogCopyStatus( 'copied' )
+    } catch {
+      setModelUpdateLogCopyStatus( 'error' )
+    }
+  }, [ modelUpdateLog, modelUpdateSummary ] )
 
   const errorChecklist = useMemo( () => buildAdminAuditErrorChecklist( error, {
     userSignedIn: Boolean( userId ),
@@ -655,6 +676,11 @@ function AdminAuditPage() {
     setModelUpdateStatus( 'running' )
     setModelUpdateMessage( 'Loading data...' )
     setModelUpdateSummary( '' )
+    setModelUpdateProgress( 5 )
+    setModelUpdateProgressLabel( 'Loading data' )
+    setModelUpdateLog( [] )
+    setIsModelUpdateLogOpen( true )
+    setModelUpdateLogCopyStatus( 'idle' )
     try {
       const [ projectsSnap, documentsSnap, versionsSnap, threadsSnap, commentsSnap, filesSnap ] = await Promise.all( [
         getDocs( collection( db, 'projects' ) ),
@@ -732,6 +758,12 @@ function AdminAuditPage() {
         }
       } )
 
+      const projectRepairLog: string[] = []
+      const documentRepairLog: string[] = []
+      const threadRepairLog: string[] = []
+      const versionRepairLog: string[] = []
+      const fileRepairLog: string[] = []
+
       const missingProjects = projects.filter( ( project ) => !Number.isFinite( project.shortId ) )
       const missingDocuments = documents.filter( ( document ) => !Number.isFinite( document.shortId ) )
       const maxProjectShortId = projects.reduce( ( currentMax, project ) => {
@@ -778,6 +810,7 @@ function AdminAuditPage() {
             const start = Math.max( Number( counterSnap.data()?.nextNumber ?? 1 ), minimumNext )
             let next = start
             chunk.forEach( ( entry ) => {
+              projectRepairLog.push( `${collectionName === 'projects' ? 'Project' : 'Document'} ${entry.id}: shortId -> ${next}.` )
               transaction.update( doc( db, collectionName, entry.id ), {
                 shortId: next,
                 updatedAt: serverTimestamp(),
@@ -794,6 +827,9 @@ function AdminAuditPage() {
 
       if( missingProjects.length > 0 ) {
         setModelUpdateMessage( 'Assigning project short IDs...' )
+        setModelUpdateProgress( 20 )
+        setModelUpdateProgressLabel( 'Assigning project short IDs' )
+        setModelUpdateLog( ( previous ) => [ ...previous, `Projects: assigning short IDs to ${missingProjects.length} record(s).` ] )
       }
       const assignedProjects = await assignShortIds( 'projects', missingProjects )
 
@@ -829,6 +865,7 @@ function AdminAuditPage() {
               const counterSnap = await transaction.get( counterRef )
               let next = Math.max( Number( counterSnap.data()?.nextNumber ?? 1 ), minimumNext )
               chunk.forEach( ( entry ) => {
+                documentRepairLog.push( `Document ${entry.id}: shortId -> ${next} (project ${projectKey}).` )
                 transaction.update( doc( db, 'documents', entry.id ), {
                   shortId: next,
                   updatedAt: serverTimestamp(),
@@ -846,10 +883,18 @@ function AdminAuditPage() {
 
       if( missingDocuments.length > 0 ) {
         setModelUpdateMessage( 'Assigning missing document short IDs per project...' )
+        setModelUpdateProgress( 35 )
+        setModelUpdateProgressLabel( 'Assigning document short IDs' )
+        setModelUpdateLog( ( previous ) => [
+          ...previous,
+          `Documents: assigning short IDs to ${missingDocuments.length} record(s), grouped by project.`,
+        ] )
       }
       const assignedDocuments = await assignDocumentShortIds( missingDocuments )
 
       setModelUpdateMessage( 'Updating thread statistics...' )
+      setModelUpdateProgress( 55 )
+      setModelUpdateProgressLabel( 'Updating thread statistics' )
       const threadAggById = new Map<
         string,
         { count: number; lastAt: Date | null; lastBy: string | null }
@@ -880,6 +925,9 @@ function AdminAuditPage() {
         ) {
           return []
         }
+        threadRepairLog.push(
+          `Thread ${thread.id}: commentCount ${thread.commentCount} -> ${agg.count}; lastCommentAt ${thread.lastCommentAt ? thread.lastCommentAt.toISOString() : '(missing)'} -> ${nextLastAt ? nextLastAt.toISOString() : '(missing)'}; lastCommentBy ${thread.lastCommentBy ?? '(missing)'} -> ${nextLastBy ?? '(missing)'}.`,
+        )
         return [
           {
             ref: doc( db, 'threads', thread.id ),
@@ -906,6 +954,8 @@ function AdminAuditPage() {
       }
 
       setModelUpdateMessage( 'Updating version statistics...' )
+      setModelUpdateProgress( 75 )
+      setModelUpdateProgressLabel( 'Updating version statistics' )
       const versionAggById = new Map<string, {
         numThreads: number
         numOpenThreads: number
@@ -987,6 +1037,9 @@ function AdminAuditPage() {
         ) {
           return []
         }
+        versionRepairLog.push(
+          `Version ${version.id}: stats.numThreads ${currentNumThreads} -> ${agg.numThreads}; stats.numOpenThreads ${currentNumOpenThreads} -> ${agg.numOpenThreads}; stats.numComments ${currentNumComments} -> ${agg.numComments}; stats.numThreadsWithTwoPlusComments ${currentNumThreadsWithTwoPlusComments} -> ${agg.numThreadsWithTwoPlusComments}.`,
+        )
         return [
           {
             ref: doc( db, 'versions', version.id ),
@@ -1020,6 +1073,8 @@ function AdminAuditPage() {
       }
 
       setModelUpdateMessage( 'Backfilling file metadata links...' )
+      setModelUpdateProgress( 90 )
+      setModelUpdateProgressLabel( 'Backfilling file metadata links' )
       const documentProjectIdById = new Map( documents.map( ( document ) => [ document.id, document.projectId ] ) )
       const versionById = new Map(
         versions.map( ( version ) => [
@@ -1044,7 +1099,7 @@ function AdminAuditPage() {
 
       const fileUpdates = files.flatMap( ( file ) => {
         const linkedVersion =
-          ( file.versionId ? versionById.get( file.versionId ) : undefined ) ??
+          ( file.versionId ? versionById.get( file.versionId ) : undefined ) ?? 
           versionByFileRefId.get( file.id )
         const nextVersionId =
           file.versionId ||
@@ -1072,6 +1127,14 @@ function AdminAuditPage() {
         if( Object.keys( patch ).length === 0 ) {
           return []
         }
+        const changeParts = [
+          file.projectId !== nextProjectId ? `projectId: ${file.projectId || '(missing)'} -> ${nextProjectId || '(missing)'}` : null,
+          file.docId !== nextDocId ? `docId: ${file.docId || '(missing)'} -> ${nextDocId || '(missing)'}` : null,
+          file.versionId !== nextVersionId ? `versionId: ${file.versionId || '(missing)'} -> ${nextVersionId || '(missing)'}` : null,
+        ].filter( Boolean ) as string[]
+        if( changeParts.length > 0 ) {
+          fileRepairLog.push( `File ${file.id}: ${changeParts.join( '; ' )}.` )
+        }
         return [
           {
             ref: doc( db, 'files', file.id ),
@@ -1084,6 +1147,9 @@ function AdminAuditPage() {
         ]
       } )
       const fileChunks = chunkArray( fileUpdates, 400 )
+      if( fileRepairLog.length > 0 ) {
+        setModelUpdateLog( ( previous ) => [ ...previous, ...fileRepairLog ] )
+      }
       for( const chunk of fileChunks ) {
         if( chunk.length === 0 ) {
           continue
@@ -1097,13 +1163,25 @@ function AdminAuditPage() {
 
       setModelUpdateStatus( 'done' )
       setModelUpdateMessage( `Data model update v${DATA_MODEL_UPDATE_VERSION} completed.` )
+      setModelUpdateProgress( 100 )
+      setModelUpdateProgressLabel( 'Completed' )
       setModelUpdateSummary(
         `Projects updated: ${assignedProjects}. Documents updated: ${assignedDocuments}. Threads updated: ${threadUpdates.length}. Versions updated: ${versionUpdates.length}. Files updated: ${fileUpdates.length}.`,
       )
+      setModelUpdateLog( [
+        ...projectRepairLog,
+        ...documentRepairLog,
+        ...threadRepairLog,
+        ...versionRepairLog,
+        ...fileRepairLog,
+        `Summary: projects=${assignedProjects}, documents=${assignedDocuments}, threads=${threadUpdates.length}, versions=${versionUpdates.length}, files=${fileUpdates.length}.`,
+      ] )
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
       setModelUpdateStatus( 'error' )
       setModelUpdateMessage( `Data model update failed: ${message}` )
+      setModelUpdateProgressLabel( 'Failed' )
+      setModelUpdateLog( ( previous ) => [ ...previous, `Error: ${message}` ] )
     }
   }
 
@@ -1542,6 +1620,9 @@ function AdminAuditPage() {
       }
       return
     }
+    if( selectedUserId === ALL_USERS_FILTER ) {
+      return
+    }
     const selectedExists = sortedUsers.some( ( entry ) => entry.userId === selectedUserId )
     if( !selectedExists ) {
       setSelectedUserId( sortedUsers[0]?.userId ?? '' )
@@ -1583,12 +1664,30 @@ function AdminAuditPage() {
         setError( 'Select a user before running the audit report.' )
         return
       }
+      const selectedUser = isAdmin ? sortedUsers.find( ( entry ) => entry.userId === selectedUserId ) : null
+      console.log( '[Audit report] Starting run', {
+        selectedUserId: reportUserId,
+        selectedUserEmail: selectedUser?.email ?? user?.email ?? null,
+        selectedUserName: selectedUser?.displayName ?? user?.displayName ?? null,
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+        rangeLabel,
+      } )
       const constraints = [
-        where( 'actorId', '==', reportUserId ),
+        ...( isAllUsersSelected ? [] : [ where( 'actorId', '==', reportUserId ) ] ),
         where( 'createdAt', '>=', start ),
         where( 'createdAt', '<=', end ),
         orderBy( 'createdAt', 'desc' ),
       ]
+      console.log( '[Audit report] Firestore query', {
+        collection: 'auditLogs',
+        constraints: [
+          ...( isAllUsersSelected ? [] : [ { field: 'actorId', op: '==', value: reportUserId } ] ),
+          { field: 'createdAt', op: '>=', value: start.toISOString() },
+          { field: 'createdAt', op: '<=', value: end.toISOString() },
+          { field: 'createdAt', op: 'orderBy desc', value: null },
+        ],
+      } )
       const logsSnapshot = await getDocs(
         query( collection( db, 'auditLogs' ), ...constraints ),
       )
@@ -1610,6 +1709,12 @@ function AdminAuditPage() {
           createdAt: toTimestampDate( data.createdAt ),
           metadata: ( data.metadata as Record<string, unknown> | undefined ) ?? undefined,
         }
+      } )
+      console.log( '[Audit report] Query result', {
+        count: nextLogs.length,
+        ids: nextLogs.map( ( log ) => log.id ),
+        actors: nextLogs.map( ( log ) => log.actorId ),
+        createdAt: nextLogs.map( ( log ) => log.createdAt?.toISOString() ?? null ),
       } )
       setLogs( nextLogs )
       setLastReportRangeLabel( rangeLabel )
@@ -1844,6 +1949,80 @@ function AdminAuditPage() {
             ) : null}
           </section>
         ) : null}
+        {isModelUpdateLogOpen ? (
+          <ModalDialog onClose={() => setIsModelUpdateLogOpen( false )}>
+            <h3>Data model update log</h3>
+            <GiphyInline reason="thinking" mode="inline" />
+            <p className="muted">
+              Review the repair steps below, then close this window when you are done.
+            </p>
+            {modelUpdateStatus === 'running' || modelUpdateStatus === 'done' || modelUpdateStatus === 'error' ? (
+              <div className="stack">
+                <div className="muted" aria-live="polite">
+                  {modelUpdateProgressLabel ? `${modelUpdateProgressLabel} (${modelUpdateProgress}%)` : `${modelUpdateProgress}%`}
+                </div>
+                <div
+                  aria-label="Data model update progress"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={modelUpdateProgress}
+                  style={{
+                    height: '10px',
+                    borderRadius: '999px',
+                    background: 'rgba(0,0,0,0.12)',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${Math.max( 0, Math.min( 100, modelUpdateProgress ) )}%`,
+                      height: '100%',
+                      background: 'var(--color-accent, #1e88e5)',
+                      transition: 'width 180ms ease',
+                    }}
+                  />
+                </div>
+              </div>
+            ) : null}
+            <div className="stack" style={{ maxHeight: '50vh', overflow: 'auto' }}>
+              {modelUpdateLog.length === 0 ? (
+                <p className="muted">No repair steps were recorded.</p>
+              ) : (
+                modelUpdateLog.map( ( line, index ) => (
+                  <pre
+                    key={`${index}-${line}`}
+                    className="muted"
+                    style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+                  >
+                    {line}
+                  </pre>
+                ) )
+              )}
+              {modelUpdateSummary ? <p className="muted">{modelUpdateSummary}</p> : null}
+            </div>
+            <div
+              className="actions"
+              style={{
+                position: 'sticky',
+                bottom: 0,
+                paddingTop: '0.5rem',
+                paddingBottom: '0.25rem',
+                background: 'var(--panel-background, #fff)',
+                borderTop: '1px solid rgba(0,0,0,0.08)',
+              }}
+            >
+              <button type="button" onClick={() => void copyModelUpdateLog()} disabled={modelUpdateLog.length === 0}>
+                Copy log
+              </button>
+              <button type="button" onClick={() => setIsModelUpdateLogOpen( false )}>
+                Close log
+              </button>
+            </div>
+            {modelUpdateLogCopyStatus === 'copied' ? <p className="muted">Log copied to clipboard.</p> : null}
+            {modelUpdateLogCopyStatus === 'error' ? <p className="error">Could not copy the log.</p> : null}
+          </ModalDialog>
+        ) : null}
         {isAdmin ? (
           <section className="panel stack">
             <h2>Legacy timestamp repair</h2>
@@ -1925,6 +2104,7 @@ function AdminAuditPage() {
               <span>User</span>
               {isAdmin ? (
                 <select value={selectedUserId} onChange={( event ) => setSelectedUserId( event.target.value )}>
+                  <option value={ALL_USERS_FILTER}>All users</option>
                   {sortedUsers.map( ( entry ) => (
                     <option key={entry.userId} value={entry.userId}>
                       {entry.displayName || entry.email || 'Unknown user'}
