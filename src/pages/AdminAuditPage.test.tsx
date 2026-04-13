@@ -6,12 +6,14 @@ const {
   getDocsMock,
   loadAppRuntimeConfigMock,
   saveAppRuntimeConfigMock,
+  lastAuditTableData,
   currentUserState,
 } = vi.hoisted( () => ( {
   getDocMock: vi.fn(),
   getDocsMock: vi.fn(),
   loadAppRuntimeConfigMock: vi.fn(),
   saveAppRuntimeConfigMock: vi.fn(),
+  lastAuditTableData: { current: [] as unknown[] },
   currentUserState: {
     user: {
       uid: 'user-member-1',
@@ -53,7 +55,10 @@ vi.mock( '../components/BackStack', () => ( {
 } ) )
 
 vi.mock( '../components/DataTable', () => ( {
-  default: ({ data }: { data: unknown[] }) => <div data-testid="audit-table">{data.length} rows</div>,
+  default: ({ data }: { data: unknown[] }) => {
+    lastAuditTableData.current = data
+    return <div data-testid="audit-table">{data.length} rows</div>
+  },
 } ) )
 
 vi.mock( '../components/ErrorChecklistModal', () => ( {
@@ -135,6 +140,20 @@ const getCollectionName = ( queryOrCollection: unknown ) => {
     }
   }
   return ''
+}
+
+const getQueryWhereValue = ( queryArg: unknown, field: string ) => {
+  if( !queryArg || typeof queryArg !== 'object' || !('kind' in queryArg) ) {
+    return undefined
+  }
+  const record = queryArg as {
+    kind?: string
+    constraints?: Array<{ type?: string; field?: string; value?: unknown }>
+  }
+  if( record.kind !== 'query' ) {
+    return undefined
+  }
+  return record.constraints?.find( ( constraint ) => constraint.type === 'where' && constraint.field === field )?.value
 }
 
 const mockFetchOk = () => {
@@ -467,5 +486,303 @@ describe( 'pages/AdminAuditPage', () => {
     expect(
       await screen.findByText( 'Start date must be on or before end date.' ),
     ).toBeTruthy()
+  }, 15000 )
+
+  it( 'filters audit logs by actorId for the selected user', async () => {
+    currentUserState.user = {
+      uid: 'user-admin-1',
+      email: 'admin@example.com',
+      displayName: 'Admin User',
+      getIdToken: vi.fn().mockResolvedValue( 'admin-token' ),
+    }
+    getDocMock.mockImplementation( async ( docRef: { collection: string; id: string } ) => {
+      if( docRef.collection === 'userProfiles' && docRef.id === 'user-admin-1' ) {
+        return createDocSnapshot( {
+          id: 'user-admin-1',
+          data: {
+            isAdmin: true,
+          },
+        } )
+      }
+      return createMissingSnapshot( docRef.id )
+    } )
+    getDocsMock.mockImplementation( async ( queryArg: unknown ) => {
+      const collectionName = getCollectionName( queryArg )
+      if( collectionName === 'userDirectory' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'user-admin-1',
+            data: {
+              userId: 'user-admin-1',
+              email: 'admin@example.com',
+              displayName: 'Admin User',
+            },
+          },
+        ] )
+      }
+      if( collectionName === 'auditLogs' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'audit-log-1',
+            data: {
+              actorId: 'user-admin-1',
+              targetUserId: 'user-admin-1',
+              action: 'updateVersion',
+              entityType: 'version',
+              entityId: 'version-1',
+              createdAt: { toDate: () => new Date( '2026-04-10T12:00:00.000Z' ) },
+            },
+          },
+        ] )
+      }
+      return createQuerySnapshot( [] )
+    } )
+    loadAppRuntimeConfigMock.mockResolvedValue( {
+      config: {
+        fileStorageProvider: 'firebase-storage',
+        emailProvider: 'files-api',
+      },
+      source: 'firestore',
+    } )
+
+    render( <AdminAuditPage /> )
+
+    expect( await screen.findByRole( 'heading', { name: 'Admin Audit' }, { timeout: 10000 } ) ).toBeTruthy()
+    await waitFor( () => {
+      expect( ( screen.getByLabelText( 'User' ) as HTMLSelectElement ).value ).toBe( 'user-admin-1' )
+    } )
+
+    fireEvent.change( screen.getByLabelText( 'Start date' ), {
+      target: { value: '2026-04-10' },
+    } )
+    fireEvent.change( screen.getByLabelText( 'End date' ), {
+      target: { value: '2026-04-11' },
+    } )
+    fireEvent.click( screen.getByRole( 'button', { name: 'Run report' } ) )
+
+    await waitFor( () => {
+      const auditLogsCall = getDocsMock.mock.calls.find( ( [ queryArg ] ) => getCollectionName( queryArg ) === 'auditLogs' )
+      expect( auditLogsCall ).toBeTruthy()
+      expect( getQueryWhereValue( auditLogsCall?.[0], 'actorId' ) ).toBe( 'user-admin-1' )
+    } )
+    expect( screen.getByTestId( 'audit-table' ).textContent ).toBe( '1 rows' )
+    expect( lastAuditTableData.current ).toHaveLength( 1 )
+    expect( lastAuditTableData.current[0] ).toEqual( expect.objectContaining( {
+      id: 'audit-log-1',
+      actorId: 'user-admin-1',
+      targetUserId: 'user-admin-1',
+      action: 'updateVersion',
+      entityType: 'version',
+      entityId: 'version-1',
+    } ) )
+  }, 15000 )
+
+  it( 'renders audit activity for all users in the selected date range', async () => {
+    currentUserState.user = {
+      uid: 'user-admin-1',
+      email: 'admin@example.com',
+      displayName: 'Admin User',
+      getIdToken: vi.fn().mockResolvedValue( 'admin-token' ),
+    }
+    getDocMock.mockImplementation( async ( docRef: { collection: string; id: string } ) => {
+      if( docRef.collection === 'userProfiles' && docRef.id === 'user-admin-1' ) {
+        return createDocSnapshot( {
+          id: 'user-admin-1',
+          data: {
+            isAdmin: true,
+          },
+        } )
+      }
+      return createMissingSnapshot( docRef.id )
+    } )
+    getDocsMock.mockImplementation( async ( queryArg: unknown ) => {
+      const collectionName = getCollectionName( queryArg )
+      if( collectionName === 'userDirectory' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'user-admin-1',
+            data: {
+              userId: 'user-admin-1',
+              email: 'admin@example.com',
+              displayName: 'Admin User',
+            },
+          },
+          {
+            id: 'user-jorge-1',
+            data: {
+              userId: 'user-jorge-1',
+              email: 'jorge.cervantes.ojeda@gmail.com',
+              displayName: 'Jorge Cervantes Ojeda',
+            },
+          },
+        ] )
+      }
+      if( collectionName === 'auditLogs' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'audit-log-admin-1',
+            data: {
+              actorId: 'user-admin-1',
+              action: 'updateVersion',
+              entityType: 'version',
+              entityId: 'version-admin-1',
+              createdAt: { toDate: () => new Date( '2026-02-15T09:00:00.000Z' ) },
+            },
+          },
+          {
+            id: 'audit-log-jorge-1',
+            data: {
+              actorId: 'user-jorge-1',
+              action: 'updateVersion',
+              entityType: 'version',
+              entityId: 'version-jorge-1',
+              createdAt: { toDate: () => new Date( '2026-02-15T10:00:00.000Z' ) },
+            },
+          },
+        ] )
+      }
+      return createQuerySnapshot( [] )
+    } )
+    loadAppRuntimeConfigMock.mockResolvedValue( {
+      config: {
+        fileStorageProvider: 'firebase-storage',
+        emailProvider: 'files-api',
+      },
+      source: 'firestore',
+    } )
+
+    render( <AdminAuditPage /> )
+
+    expect( await screen.findByRole( 'heading', { name: 'Admin Audit' }, { timeout: 10000 } ) ).toBeTruthy()
+    await waitFor( () => {
+      expect( ( screen.getByLabelText( 'User' ) as HTMLSelectElement ).value ).toBe( 'user-admin-1' )
+    } )
+
+    fireEvent.change( screen.getByLabelText( 'User' ), {
+      target: { value: '__all_users__' },
+    } )
+    fireEvent.change( screen.getByLabelText( 'Start date' ), {
+      target: { value: '2026-02-01' },
+    } )
+    fireEvent.change( screen.getByLabelText( 'End date' ), {
+      target: { value: '2026-02-28' },
+    } )
+    fireEvent.click( screen.getByRole( 'button', { name: 'Run report' } ) )
+
+    await waitFor( () => {
+      const auditLogsCall = getDocsMock.mock.calls.find( ( [ queryArg ] ) => getCollectionName( queryArg ) === 'auditLogs' )
+      expect( auditLogsCall ).toBeTruthy()
+      expect( getQueryWhereValue( auditLogsCall?.[0], 'actorId' ) ).toBeUndefined()
+    } )
+    expect( screen.getByTestId( 'audit-table' ).textContent ).toBe( '2 rows' )
+    expect( lastAuditTableData.current ).toHaveLength( 2 )
+  }, 15000 )
+
+  it( 'renders audit activity for a manually selected user and date range', async () => {
+    currentUserState.user = {
+      uid: 'user-admin-1',
+      email: 'admin@example.com',
+      displayName: 'Admin User',
+      getIdToken: vi.fn().mockResolvedValue( 'admin-token' ),
+    }
+    getDocMock.mockImplementation( async ( docRef: { collection: string; id: string } ) => {
+      if( docRef.collection === 'userProfiles' && docRef.id === 'user-admin-1' ) {
+        return createDocSnapshot( {
+          id: 'user-admin-1',
+          data: {
+            isAdmin: true,
+          },
+        } )
+      }
+      return createMissingSnapshot( docRef.id )
+    } )
+    getDocsMock.mockImplementation( async ( queryArg: unknown ) => {
+      const collectionName = getCollectionName( queryArg )
+      if( collectionName === 'userDirectory' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'user-admin-1',
+            data: {
+              userId: 'user-admin-1',
+              email: 'admin@example.com',
+              displayName: 'Admin User',
+            },
+          },
+          {
+            id: 'user-jorge-1',
+            data: {
+              userId: 'user-jorge-1',
+              email: 'jorge.cervantes.ojeda@gmail.com',
+              displayName: 'Jorge Cervantes Ojeda',
+            },
+          },
+        ] )
+      }
+      if( collectionName === 'auditLogs' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'audit-log-jorge-1',
+            data: {
+              actorId: 'user-jorge-1',
+              actorEmail: 'jorge.cervantes.ojeda@gmail.com',
+              targetUserId: 'user-jorge-1',
+              action: 'updateVersion',
+              entityType: 'version',
+              entityId: 'version-jorge-1',
+              projectId: 'project-jorge-1',
+              docId: 'document-jorge-1',
+              versionId: 'version-jorge-1',
+              createdAt: { toDate: () => new Date( '2026-02-15T10:00:00.000Z' ) },
+            },
+          },
+        ] )
+      }
+      return createQuerySnapshot( [] )
+    } )
+    loadAppRuntimeConfigMock.mockResolvedValue( {
+      config: {
+        fileStorageProvider: 'firebase-storage',
+        emailProvider: 'files-api',
+      },
+      source: 'firestore',
+    } )
+
+    render( <AdminAuditPage /> )
+
+    expect( await screen.findByRole( 'heading', { name: 'Admin Audit' }, { timeout: 10000 } ) ).toBeTruthy()
+    await waitFor( () => {
+      expect( ( screen.getByLabelText( 'User' ) as HTMLSelectElement ).value ).toBe( 'user-admin-1' )
+    } )
+
+    fireEvent.change( screen.getByLabelText( 'User' ), {
+      target: { value: 'user-jorge-1' },
+    } )
+    fireEvent.change( screen.getByLabelText( 'Start date' ), {
+      target: { value: '2026-01-01' },
+    } )
+    fireEvent.change( screen.getByLabelText( 'End date' ), {
+      target: { value: '2026-03-31' },
+    } )
+    fireEvent.click( screen.getByRole( 'button', { name: 'Run report' } ) )
+
+    await waitFor( () => {
+      const auditLogsCall = getDocsMock.mock.calls.find( ( [ queryArg ] ) => getCollectionName( queryArg ) === 'auditLogs' )
+      expect( auditLogsCall ).toBeTruthy()
+      expect( getQueryWhereValue( auditLogsCall?.[0], 'actorId' ) ).toBe( 'user-jorge-1' )
+    } )
+    expect( screen.getByTestId( 'audit-table' ).textContent ).toBe( '1 rows' )
+    expect( lastAuditTableData.current ).toHaveLength( 1 )
+    expect( lastAuditTableData.current[0] ).toEqual( expect.objectContaining( {
+      id: 'audit-log-jorge-1',
+      actorId: 'user-jorge-1',
+      actorEmail: 'jorge.cervantes.ojeda@gmail.com',
+      targetUserId: 'user-jorge-1',
+      action: 'updateVersion',
+      entityType: 'version',
+      entityId: 'version-jorge-1',
+      projectId: 'project-jorge-1',
+      docId: 'document-jorge-1',
+      versionId: 'version-jorge-1',
+    } ) )
   }, 15000 )
 } )
