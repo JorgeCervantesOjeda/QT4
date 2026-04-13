@@ -7,7 +7,9 @@ import {
   getCollectionDocs,
   getDocData,
   readComparable,
+  stateStorageKey,
   setDocData,
+  syncStateFromStorage,
   updateDocData,
 } from './state'
 import { consumeInjectedFault } from './faults'
@@ -66,6 +68,7 @@ type BatchOperation =
 const db = { kind: 'db' as const, path: '' }
 const listeners = new Map<number, Listener>()
 let nextListenerKey = 1
+let isCrossContextSnapshotSyncReady = false
 
 const makeDocSnapshot = (ref: DocumentReference): FakeDocumentSnapshot => {
   const data = getDocData( ref.path )
@@ -388,6 +391,22 @@ const emitSnapshots = () => {
     )
   } )
 }
+
+const ensureCrossContextSnapshotSync = () => {
+  if( isCrossContextSnapshotSyncReady || typeof window === 'undefined' ) {
+    return
+  }
+  window.addEventListener( 'storage', (event) => {
+    if( event.key !== stateStorageKey ) {
+      return
+    }
+    syncStateFromStorage()
+    emitSnapshots()
+  } )
+  isCrossContextSnapshotSyncReady = true
+}
+
+ensureCrossContextSnapshotSync()
 
 const enableNetwork = async () => undefined
 const disableNetwork = async () => undefined

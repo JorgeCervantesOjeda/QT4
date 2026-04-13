@@ -1216,6 +1216,15 @@ const getState = (): FakeState => {
   return holder[globalStateKey] as FakeState
 }
 
+const syncStateFromStorage = () => {
+  const persistedState = loadPersistedState()
+  if( !persistedState ) {
+    return
+  }
+  const holder = getGlobalStateHolder()
+  holder[globalStateKey] = persistedState
+}
+
 const resetState = () => {
   try {
     window.localStorage.removeItem( currentUserStorageKey )
@@ -1332,6 +1341,7 @@ export {
   DELETE_FIELD_SENTINEL,
   FakeTimestamp,
   SERVER_TIMESTAMP_SENTINEL,
+  stateStorageKey,
   deepClone,
   deleteDocData,
   generateId,
@@ -1345,5 +1355,6 @@ export {
   readComparable,
   resetState,
   setDocData,
+  syncStateFromStorage,
   updateDocData,
 }

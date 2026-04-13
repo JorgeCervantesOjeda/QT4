@@ -84,3 +84,55 @@ test( 'reviewer cannot accept the latest version without author or leader privil
 
   await expect( page.getByLabel( 'Selected version' ).locator( 'option:checked' ) ).toContainText( 'In Review' )
 } )
+
+test( 'review issue state stays synchronized across two open tabs without reload', async ( { page } ) => {
+  const issueTitle = 'Concurrent snapshot issue'
+  const reviewerComment = 'Reviewer opens a live multi-tab discussion.'
+  const followUpComment = 'Reviewer resolves the discussion from the second tab.'
+
+  await login( page, 'reviewer@example.com' )
+  await openVersionsPage( page, REVIEW_FLOW_DOCUMENT_ID )
+
+  const mirrorPage = await page.context().newPage()
+  try {
+    await openVersionsPage( mirrorPage, REVIEW_FLOW_DOCUMENT_ID )
+
+    await page.getByPlaceholder( 'New issue title' ).fill( issueTitle )
+    await page.getByRole( 'button', { name: 'Create issue' } ).click()
+    await closeSuccessModal( page, 'Issue created successfully.' )
+    await expect( page.locator( '.selected-thread-title' ) ).toContainText( issueTitle )
+
+    await page.getByPlaceholder( 'Write a comment' ).fill( reviewerComment )
+    await page.getByRole( 'button', { name: 'Add comment' } ).click()
+    await closeSuccessModal( page, 'The comment was added successfully.' )
+
+    const mirrorIssueCard = mirrorPage.locator( 'article.project-card' ).filter( { hasText: issueTitle } )
+    await expect( mirrorIssueCard ).toBeVisible( { timeout: 10000 } )
+    await expect( mirrorPage.getByText( 'Issues: 1 - Open: 1 - Comments: 1' ).last() ).toBeVisible()
+
+    await mirrorIssueCard.click( { position: { x: 16, y: 16 } } )
+    await expect( mirrorPage.locator( '.selected-thread-title' ) ).toContainText( issueTitle )
+    await expect( mirrorPage.getByText( reviewerComment ) ).toBeVisible()
+
+    await mirrorPage.getByPlaceholder( 'Write a comment' ).fill( followUpComment )
+    await mirrorPage.getByRole( 'button', { name: 'Add comment' } ).click()
+    await closeSuccessModal( mirrorPage, 'The comment was added successfully.' )
+
+    await expect( page.locator( '.selected-thread-title' ) ).toContainText( issueTitle )
+    await expect( page.getByText( followUpComment ) ).toBeVisible( { timeout: 10000 } )
+    await expect( page.getByText( 'Issues: 1 - Open: 1 - Comments: 2' ).last() ).toBeVisible()
+
+    await mirrorPage.getByRole( 'button', { name: 'Close issue' } ).click()
+    await expect( mirrorPage.getByRole( 'heading', { name: 'Close issue' } ) ).toBeVisible()
+    await mirrorPage.getByRole( 'button', { name: 'Confirm' } ).click()
+    await closeSuccessModal( mirrorPage, 'Issue closed successfully.' )
+    await expect( mirrorPage.getByText( 'Issues: 1 - Open: 0 - Comments: 2' ).last() ).toBeVisible()
+
+    await expect( page.locator( '.selected-thread-title' ) ).toContainText( issueTitle )
+    await expect( page.getByText( 'Issues: 1 - Open: 0 - Comments: 2' ).last() ).toBeVisible( { timeout: 10000 } )
+    await expect( page.getByRole( 'button', { name: 'Reopen issue' } ) ).toBeVisible()
+    await expect( page.getByText( followUpComment ) ).toBeVisible()
+  } finally {
+    await mirrorPage.close()
+  }
+} )

@@ -409,3 +409,116 @@ test( 'keyboard Home navigation clears stale deep-link issue state', async ( { p
   await expect( page.locator( '.selected-thread-title' ) ).toHaveCount( 0 )
   await expect( page.getByText( 'Issues: 0 - Open: 0 - Comments: 0' ).last() ).toBeVisible()
 } )
+
+test( 'direct versionId deep link keeps an older version selected across reload', async ( { page } ) => {
+  await login( page, 'member@example.com' )
+  await createInCreationDocumentWithReviewer( page, 'Version Query Deep Link' )
+
+  await page.locator( 'input[type="file"]' ).setInputFiles( 'src/test/e2e/fixtures/draft-v1.txt' )
+  await expect( page.getByText( 'Uploaded: draft-v1.txt' ) ).toBeVisible()
+
+  const reviewerCheckbox = reviewerRow( page ).locator( 'input[type="checkbox"]' )
+  await reviewerCheckbox.click()
+  await expect( reviewerCheckbox ).toBeChecked()
+
+  await page.getByRole( 'button', { name: 'Start review' } ).click()
+  await expect( page.getByRole( 'heading', { name: 'Start review' } ) ).toBeVisible()
+  await page.getByRole( 'button', { name: 'Confirm' } ).click()
+  await closeSuccessModal( page, 'Review started successfully.' )
+
+  await page.getByRole( 'button', { name: 'Create next version' } ).click()
+  await expect( page.getByRole( 'heading', { name: 'Create new version' } ) ).toBeVisible()
+  await page.getByRole( 'button', { name: 'Confirm' } ).click()
+  await closeSuccessModal( page, 'Version created successfully.' )
+
+  const selectedVersionInput = page.getByLabel( 'Selected version' )
+  await expect( selectedVersionInput ).toContainText( '0.01 - Reviewed' )
+  await expect( selectedVersionInput ).toContainText( '0.02 - In Creation' )
+
+  const sourceUrl = new URL( page.url() )
+  const olderVersionId = await selectedVersionInput.locator( 'option' ).nth( 1 ).getAttribute( 'value' )
+  if( !olderVersionId ) {
+    throw new Error( 'Expected an older version option for the direct versionId deep link.' )
+  }
+
+  await page.goto(
+    `${sourceUrl.pathname}?projectId=${sourceUrl.searchParams.get( 'projectId' ) ?? ''}&versionId=${olderVersionId}`,
+  )
+  await expect( page.getByText( 'Document Versions' ) ).toBeVisible()
+  await expect( selectedVersionInput.locator( 'option:checked' ) ).toContainText( '0.01 - Reviewed' )
+  await expect( page.getByText( 'Name: draft-v1.txt' ) ).toBeVisible()
+  await expect( page ).toHaveURL( new RegExp( `versionId=${olderVersionId}` ) )
+
+  await page.reload()
+  await expect( page.getByText( 'Document Versions' ) ).toBeVisible()
+  await expect( selectedVersionInput.locator( 'option:checked' ) ).toContainText( '0.01 - Reviewed' )
+  await expect( page.getByText( 'Name: draft-v1.txt' ) ).toBeVisible()
+  await expect( page ).toHaveURL( new RegExp( `versionId=${olderVersionId}` ) )
+} )
+
+test( 'versionId deep links ignore stale thread and comment ids from another version', async ( { page } ) => {
+  await login( page, 'member@example.com' )
+  await createInCreationDocumentWithReviewer( page, 'Version Mixed Query Deep Link' )
+
+  await page.locator( 'input[type="file"]' ).setInputFiles( 'src/test/e2e/fixtures/draft-v1.txt' )
+  await expect( page.getByText( 'Uploaded: draft-v1.txt' ) ).toBeVisible()
+
+  const reviewerCheckbox = reviewerRow( page ).locator( 'input[type="checkbox"]' )
+  await reviewerCheckbox.click()
+  await expect( reviewerCheckbox ).toBeChecked()
+
+  await page.getByRole( 'button', { name: 'Start review' } ).click()
+  await expect( page.getByRole( 'heading', { name: 'Start review' } ) ).toBeVisible()
+  await page.getByRole( 'button', { name: 'Confirm' } ).click()
+  await closeSuccessModal( page, 'Review started successfully.' )
+
+  await page.getByPlaceholder( 'New issue title' ).fill( 'Mixed query issue' )
+  await page.getByRole( 'button', { name: 'Create issue' } ).click()
+  await closeSuccessModal( page, 'Issue created successfully.' )
+  await expect( page.locator( '.selected-thread-title' ) ).toContainText( 'Mixed query issue' )
+
+  await page.getByPlaceholder( 'Write a comment' ).fill( 'Comment bound to the reviewed version only.' )
+  await page.getByRole( 'button', { name: 'Add comment' } ).click()
+  await closeSuccessModal( page, 'The comment was added successfully.' )
+
+  await page.locator( 'article.project-card' ).filter( { hasText: 'Mixed query issue' } ).click( {
+    position: { x: 16, y: 16 },
+  } )
+  await expect( page ).toHaveURL( /threadId=/ )
+
+  await page.getByRole( 'button', { name: 'Create next version' } ).click()
+  await expect( page.getByRole( 'heading', { name: 'Create new version' } ) ).toBeVisible()
+  await page.getByRole( 'button', { name: 'Confirm' } ).click()
+  await closeSuccessModal( page, 'Version created successfully.' )
+
+  const selectedVersionInput = page.getByLabel( 'Selected version' )
+  const newerVersionId = await selectedVersionInput.locator( 'option' ).first().getAttribute( 'value' )
+  const sourceUrl = new URL( page.url() )
+  const threadId = sourceUrl.searchParams.get( 'threadId' )
+  const commentAnchorId = await page
+    .locator( '.comment-list article' )
+    .filter( { hasText: 'Comment bound to the reviewed version only.' } )
+    .getAttribute( 'id' )
+
+  if( !newerVersionId || !threadId || !commentAnchorId ) {
+    throw new Error( 'Expected mixed-query identifiers before opening the stale deep link.' )
+  }
+
+  const commentId = commentAnchorId.replace( 'qt4-comment-', '' )
+  await page.goto(
+    `${sourceUrl.pathname}?projectId=${sourceUrl.searchParams.get( 'projectId' ) ?? ''}&versionId=${newerVersionId}&threadId=${threadId}&commentId=${commentId}&focus=comments`,
+  )
+
+  await expect( page.getByText( 'Document Versions' ) ).toBeVisible()
+  await expect( selectedVersionInput.locator( 'option:checked' ) ).toContainText( '0.02 - In Creation' )
+  await expect( page.getByText( 'Issues: 0 - Open: 0 - Comments: 0' ).last() ).toBeVisible()
+  await expect( page.locator( '.selected-thread-title' ) ).toHaveCount( 0 )
+  await expect( page.locator( `#qt4-comment-${commentId}` ) ).toHaveCount( 0 )
+
+  await page.reload()
+  await expect( page.getByText( 'Document Versions' ) ).toBeVisible()
+  await expect( selectedVersionInput.locator( 'option:checked' ) ).toContainText( '0.02 - In Creation' )
+  await expect( page.getByText( 'Issues: 0 - Open: 0 - Comments: 0' ).last() ).toBeVisible()
+  await expect( page.locator( '.selected-thread-title' ) ).toHaveCount( 0 )
+  await expect( page.locator( `#qt4-comment-${commentId}` ) ).toHaveCount( 0 )
+} )
