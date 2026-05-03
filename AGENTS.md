@@ -22,4 +22,6 @@ These rules apply to work inside `QT4/` and complement repository-level guidance
 - Keep commentary updates to the minimum.
 - Do not narrate routine searches, file reads, or obvious intermediate steps.
 - Only send commentary when starting implementation, when blocked, or when reporting validation results.
+- Before making implementation decisions or editing files, first explain the proposed decisions briefly and wait for the user's explicit `ok`.
+- Do not apply code, configuration, or content changes until the user confirms with `ok`.
 - Keep final responses brief by default, unless the user asks for more detail.

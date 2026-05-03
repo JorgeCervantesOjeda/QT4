@@ -1,24 +1,26 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const {
-  getDocMock,
-  getDocsMock,
-  loadAppRuntimeConfigMock,
-  saveAppRuntimeConfigMock,
-  lastAuditTableData,
-  currentUserState,
-} = vi.hoisted( () => ( {
-  getDocMock: vi.fn(),
-  getDocsMock: vi.fn(),
-  loadAppRuntimeConfigMock: vi.fn(),
-  saveAppRuntimeConfigMock: vi.fn(),
-  lastAuditTableData: { current: [] as unknown[] },
-  currentUserState: {
-    user: {
-      uid: 'user-member-1',
-      email: 'member@example.com',
-      displayName: 'Member User',
+  const {
+    getDocMock,
+    getDocsMock,
+    loadAppRuntimeConfigMock,
+    saveAppRuntimeConfigMock,
+    lastAuditTableData,
+    lastTaskTableData,
+    currentUserState,
+  } = vi.hoisted( () => ( {
+    getDocMock: vi.fn(),
+    getDocsMock: vi.fn(),
+    loadAppRuntimeConfigMock: vi.fn(),
+    saveAppRuntimeConfigMock: vi.fn(),
+    lastAuditTableData: { current: [] as unknown[] },
+    lastTaskTableData: { current: [] as unknown[] },
+    currentUserState: {
+      user: {
+        uid: 'user-member-1',
+        email: 'member@example.com',
+        displayName: 'Member User',
       getIdToken: vi.fn().mockResolvedValue( 'member-token' ),
     },
   },
@@ -55,9 +57,14 @@ vi.mock( '../components/BackStack', () => ( {
 } ) )
 
 vi.mock( '../components/DataTable', () => ( {
-  default: ({ data }: { data: unknown[] }) => {
-    lastAuditTableData.current = data
-    return <div data-testid="audit-table">{data.length} rows</div>
+  default: ({ data, storageKey }: { data: unknown[]; storageKey?: string }) => {
+    if( storageKey === 'qt4_table_audit_logs' ) {
+      lastAuditTableData.current = data
+    }
+    if( storageKey === 'qt4_table_audit_tasks' ) {
+      lastTaskTableData.current = data
+    }
+    return <div data-testid={storageKey === 'qt4_table_audit_tasks' ? 'audit-tasks-table' : 'audit-table'}>{data.length} rows</div>
   },
 } ) )
 
@@ -639,6 +646,62 @@ describe( 'pages/AdminAuditPage', () => {
               createdAt: { toDate: () => new Date( '2026-02-15T10:00:00.000Z' ) },
             },
           },
+          {
+            id: 'audit-task-admin-appear',
+            data: {
+              actorId: 'user-admin-1',
+              action: 'taskAppear',
+              entityType: 'task',
+              entityId: 'task-admin-1',
+              metadata: {
+                taskKey: 'task-admin-1',
+                taskType: 'review',
+              },
+              createdAt: { toDate: () => new Date( '2026-02-15T10:30:00.000Z' ) },
+            },
+          },
+          {
+            id: 'audit-task-admin-complete',
+            data: {
+              actorId: 'user-admin-1',
+              action: 'taskComplete',
+              entityType: 'task',
+              entityId: 'task-admin-1',
+              metadata: {
+                taskKey: 'task-admin-1',
+                taskType: 'review',
+              },
+              createdAt: { toDate: () => new Date( '2026-02-15T11:00:00.000Z' ) },
+            },
+          },
+          {
+            id: 'audit-task-jorge-appear',
+            data: {
+              actorId: 'user-jorge-1',
+              action: 'taskAppear',
+              entityType: 'task',
+              entityId: 'task-jorge-1',
+              metadata: {
+                taskKey: 'task-jorge-1',
+                taskType: 'review',
+              },
+              createdAt: { toDate: () => new Date( '2026-02-15T11:30:00.000Z' ) },
+            },
+          },
+          {
+            id: 'audit-task-jorge-complete',
+            data: {
+              actorId: 'user-jorge-1',
+              action: 'taskComplete',
+              entityType: 'task',
+              entityId: 'task-jorge-1',
+              metadata: {
+                taskKey: 'task-jorge-1',
+                taskType: 'review',
+              },
+              createdAt: { toDate: () => new Date( '2026-02-15T12:00:00.000Z' ) },
+            },
+          },
         ] )
       }
       return createQuerySnapshot( [] )
@@ -674,8 +737,30 @@ describe( 'pages/AdminAuditPage', () => {
       expect( auditLogsCall ).toBeTruthy()
       expect( getQueryWhereValue( auditLogsCall?.[0], 'actorId' ) ).toBeUndefined()
     } )
-    expect( screen.getByTestId( 'audit-table' ).textContent ).toBe( '2 rows' )
-    expect( lastAuditTableData.current ).toHaveLength( 2 )
+    expect( screen.getByTestId( 'audit-table' ).textContent ).toBe( '6 rows' )
+    expect( lastAuditTableData.current ).toHaveLength( 6 )
+    expect( lastAuditTableData.current ).toEqual( expect.arrayContaining( [
+      expect.objectContaining( {
+        actorId: 'user-jorge-1',
+        actorLabel: 'Jorge Cervantes Ojeda (jorge.cervantes.ojeda@gmail.com)',
+      } ),
+      expect.objectContaining( {
+        actorId: 'user-admin-1',
+        actorLabel: 'Admin User (admin@example.com)',
+      } ),
+    ] ) )
+    expect( screen.getByTestId( 'audit-tasks-table' ).textContent ).toBe( '2 rows' )
+    expect( lastTaskTableData.current ).toHaveLength( 2 )
+    expect( lastTaskTableData.current ).toEqual( expect.arrayContaining( [
+      expect.objectContaining( {
+        actorId: 'user-jorge-1',
+        actorLabel: 'Jorge Cervantes Ojeda (jorge.cervantes.ojeda@gmail.com)',
+      } ),
+      expect.objectContaining( {
+        actorId: 'user-admin-1',
+        actorLabel: 'Admin User (admin@example.com)',
+      } ),
+    ] ) )
   }, 15000 )
 
   it( 'renders audit activity for a manually selected user and date range', async () => {

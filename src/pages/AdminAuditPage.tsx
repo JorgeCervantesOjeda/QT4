@@ -68,6 +68,8 @@ type AuditLogEntry = {
 type TaskDurationEntry = {
   taskKey: string
   taskType: string
+  actorId?: string
+  actorEmail?: string | null
   appearedAt: Date | null
   completedAt: Date | null
   isApproximate: boolean
@@ -237,8 +239,9 @@ function AdminAuditPage() {
       logs.map( ( log ) => ( {
         ...log,
         createdAtMs: log.createdAt ? log.createdAt.getTime() : 0,
+        actorLabel: formatActorLabel( log ),
       } ) ),
-    [ logs ],
+    [ logs, userDirectoryById ],
   )
 
   const calendarEvents = useMemo<AuditCalendarEvent[]>(
@@ -249,14 +252,16 @@ function AdminAuditPage() {
           const start = log.createdAt as Date
           const end = new Date( start.getTime() + 30 * 60 * 1000 )
           return {
-            title: `${log.action} (${log.entityType})`,
+            title: isAllUsersSelected
+              ? `${formatActorLabel( log )} - ${log.action} (${log.entityType})`
+              : `${log.action} (${log.entityType})`,
             start,
             end,
             allDay: false,
             resource: log,
           }
         } ),
-    [ logs ],
+    [ logs, userDirectoryById, isAllUsersSelected ],
   )
 
   const visibleCalendarEvents = useMemo<AuditCalendarEvent[]>( () => {
@@ -274,7 +279,7 @@ function AdminAuditPage() {
     } )
   }, [ calendarEvents, calendarDate, calendarView ] )
 
-  const logColumns = useMemo<ColumnDef<AuditLogEntry & { createdAtMs: number }>[]>(
+  const logColumns = useMemo<ColumnDef<AuditLogEntry & { createdAtMs: number; actorLabel: string }>[]>( 
     () => {
       const resolveUserLabel = (memberUserId?: string) => {
         if( !memberUserId ) {
@@ -349,6 +354,14 @@ function AdminAuditPage() {
           header: 'Action',
           accessorKey: 'action',
         },
+        ...( isAllUsersSelected
+          ? [
+            {
+              header: 'Actor',
+              accessorKey: 'actorLabel',
+            },
+          ]
+          : [] ),
         {
           header: 'Project',
           accessorKey: 'projectId',
@@ -385,7 +398,15 @@ function AdminAuditPage() {
         },
       ]
     },
-    [ projectNameById, documentById, versionNumberById, threadTitleById, commentBodyById, userDirectoryById ],
+    [
+      projectNameById,
+      documentById,
+      versionNumberById,
+      threadTitleById,
+      commentBodyById,
+      userDirectoryById,
+      isAllUsersSelected,
+    ],
   )
 
   const taskTableRows = useMemo(
@@ -394,12 +415,21 @@ function AdminAuditPage() {
         ...entry,
         appearedAtMs: entry.appearedAt ? entry.appearedAt.getTime() : 0,
         completedAtMs: entry.completedAt ? entry.completedAt.getTime() : 0,
+        actorLabel: formatActorLabelByIdentity( entry.actorId, entry.actorEmail ),
       } ) ),
-    [ taskDurations ],
+    [ taskDurations, userDirectoryById ],
   )
 
-  const taskColumns = useMemo<ColumnDef<TaskDurationEntry & { appearedAtMs: number; completedAtMs: number }>[]>(
+  const taskColumns = useMemo<ColumnDef<TaskDurationEntry & { appearedAtMs: number; completedAtMs: number; actorLabel: string }>[]>( 
     () => [
+      ...( isAllUsersSelected
+        ? [
+          {
+            header: 'User',
+            accessorKey: 'actorLabel',
+          },
+        ]
+        : [] ),
       {
         header: 'Task',
         accessorKey: 'taskType',
@@ -434,7 +464,7 @@ function AdminAuditPage() {
         },
       },
     ],
-    [],
+    [ isAllUsersSelected ],
   )
 
   const sortedUsers = useMemo(
@@ -511,12 +541,36 @@ function AdminAuditPage() {
     return `Comment: ${trimmed.slice( 0, 80 )}...`
   }
 
+  function formatActorLabelByIdentity( actorId?: string, actorEmail?: string | null ) {
+    if( !actorId && !actorEmail ) {
+      return 'Unknown user'
+    }
+    const entry = actorId ? userDirectoryById[actorId] : undefined
+    const displayName = entry?.displayName ?? ''
+    const email = entry?.email ?? actorEmail ?? ''
+    if( displayName && email ) {
+      return `${displayName} (${email})`
+    }
+    if( displayName ) {
+      return displayName
+    }
+    if( email ) {
+      return email
+    }
+    return 'Unknown user'
+  }
+
+  function formatActorLabel( log: AuditLogEntry ) {
+    return formatActorLabelByIdentity( log.actorId, log.actorEmail )
+  }
+
   const formatCalendarLogSummary = (log: AuditLogEntry) => {
+    const actor = formatActorLabel( log )
     const project = log.projectId ? ( projectNameById[log.projectId] ?? 'Unknown project' ) : '-'
     const document = log.docId ? formatDocumentLabel( log.docId ) : '-'
     const version = log.versionId ? formatVersionLabel( log.versionId ) : '-'
     const targetUser = log.targetUserId ? formatUserLabel( log.targetUserId ) : '-'
-    return { project, document, version, targetUser }
+    return { actor, project, document, version, targetUser }
   }
 
   useEffect( () => {
@@ -1723,17 +1777,33 @@ function AdminAuditPage() {
         .filter( ( entry ) => entry.action === 'taskAppear' || entry.action === 'taskComplete' )
         .map( ( entry ) => ( {
           action: entry.action,
+          actorId: entry.actorId,
+          actorEmail: entry.actorEmail,
           createdAt: entry.createdAt ?? null,
           metadata: entry.metadata ?? {},
         } ) )
-      const taskKeyMap = new Map<string, { taskType: string; appearAt: Date | null; completeAt: Date | null }>()
+      const taskKeyMap = new Map<string, {
+        taskType: string
+        actorId?: string
+        actorEmail?: string | null
+        appearAt: Date | null
+        completeAt: Date | null
+      }>()
       taskLogs.forEach( ( entry ) => {
         const taskKey = ( entry.metadata?.taskKey as string | undefined ) ?? ''
         const taskType = ( entry.metadata?.taskType as string | undefined ) ?? 'task'
         if( !taskKey ) {
           return
         }
-        const current = taskKeyMap.get( taskKey ) ?? { taskType, appearAt: null, completeAt: null }
+        const taskActorKey = entry.actorId || entry.actorEmail || 'unknown-user'
+        const mapKey = `${taskActorKey}::${taskKey}`
+        const current = taskKeyMap.get( mapKey ) ?? {
+          taskType,
+          actorId: entry.actorId,
+          actorEmail: entry.actorEmail,
+          appearAt: null,
+          completeAt: null,
+        }
         if( entry.action === 'taskAppear' ) {
           current.appearAt = current.appearAt
             ? new Date( Math.min( current.appearAt.getTime(), entry.createdAt?.getTime() ?? current.appearAt.getTime() ) )
@@ -1745,13 +1815,17 @@ function AdminAuditPage() {
             : entry.createdAt ?? current.completeAt
         }
         current.taskType = taskType
-        taskKeyMap.set( taskKey, current )
+        current.actorId = current.actorId ?? entry.actorId
+        current.actorEmail = current.actorEmail ?? entry.actorEmail
+        taskKeyMap.set( mapKey, current )
       } )
 
       const durations = Array.from( taskKeyMap.entries() ).map( ( [ taskKey, entry ] ) => {
         return {
           taskKey,
           taskType: entry.taskType,
+          actorId: entry.actorId,
+          actorEmail: entry.actorEmail,
           appearedAt: entry.appearAt,
           completedAt: entry.completeAt,
           isApproximate: false,
@@ -2250,6 +2324,9 @@ function AdminAuditPage() {
                       </button>
                     </div>
                     <p><strong>When:</strong> {selectedCalendarLog.createdAt ? selectedCalendarLog.createdAt.toLocaleString() : 'Unknown'}</p>
+                    {isAllUsersSelected ? (
+                      <p><strong>User:</strong> {formatCalendarLogSummary( selectedCalendarLog ).actor}</p>
+                    ) : null}
                     <p><strong>Action:</strong> {selectedCalendarLog.action}</p>
                     <p><strong>Entity:</strong> {selectedCalendarLog.entityType}</p>
                     <p><strong>Project:</strong> {formatCalendarLogSummary( selectedCalendarLog ).project}</p>
