@@ -1,0 +1,50 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userProfile() {
+      return firestore.get(/databases/(default)/documents/userProfiles/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      return isSignedIn() && userProfile().data.isAdmin == true;
+    }
+
+    function projectMember(projectId) {
+      return firestore.get(/databases/(default)/documents/projectMembers/$(projectId + '_' + request.auth.uid));
+    }
+
+    function isProjectMember(projectId) {
+      return isSignedIn() && projectMember(projectId).data.role in ['leader', 'member'];
+    }
+
+    function versionDoc(versionId) {
+      return firestore.get(/databases/(default)/documents/versions/$(versionId));
+    }
+
+    function isVersionAuthorInProject(projectId, versionId, documentId) {
+      return isSignedIn()
+        && versionId is string
+        && versionId.size() > 0
+        && versionDoc(versionId).data.createdBy == request.auth.uid;
+    }
+
+    function matchesExistingVersionPath(versionId, documentId) {
+      return isSignedIn()
+        && versionId is string
+        && versionId.size() > 0
+        && versionDoc(versionId).data.docId == documentId;
+    }
+
+    match /qt4/{projectId}/{documentId}/{versionId}/{fileName} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

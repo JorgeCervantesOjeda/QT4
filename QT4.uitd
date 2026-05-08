@@ -1,0 +1,273 @@
+UITD "QT4 Migration UI Flow" {
+UI 1 "Login" actions {
+  submits "Log in";
+  clicks "Reset password";
+  clicks "Create account";
+}
+
+UI 2 "Register" actions {
+  submits "Create account";
+  clicks "I already have an account";
+}
+
+UI 3 "Dashboard" actions {
+  clicks "Go to Projects";
+  clicks "Activity log";
+  clicks "Open task link";
+  clicks "Log out";
+  waits "Inactivity timeout";
+}
+
+UI 4 "Projects" actions {
+  submits "Create project";
+  submits "Add member";
+  clicks "Open project documents";
+  clicks "Dashboard";
+  clicks "Log out";
+  waits "Inactivity timeout";
+}
+
+UI 5 "Project Documents" actions {
+  submits "Create document";
+  toggles "All or mine filter";
+  clicks "Open versions";
+  clicks "Projects breadcrumb";
+  clicks "Dashboard";
+  clicks "Log out";
+  waits "Inactivity timeout";
+}
+
+UI 6 "Versions" actions {
+  clicks "Projects breadcrumb";
+  clicks "Documents breadcrumb";
+  clicks "Create initial version";
+  clicks "Create next version";
+  clicks "Start review";
+  clicks "Accept latest";
+  clicks "Reject latest";
+  clicks "Create error report";
+  uploads "Upload file";
+  downloads "Download file";
+  clicks "Assign author";
+  clicks "Assign reviewer";
+  clicks "Create issue";
+  clicks "Close issue";
+  clicks "Reopen issue";
+  clicks "Add comment";
+  clicks "Log out";
+  waits "Inactivity timeout";
+}
+
+UI 7 "Admin Audit or My Activity" actions {
+  clicks "Check connection";
+  clicks "Update existing data";
+  clicks "Run report";
+  toggles "Table or calendar view";
+  selects "Calendar event";
+  clicks "Dashboard";
+  clicks "Log out";
+  waits "Inactivity timeout";
+}
+
+UI 8 "Login Error Modal" actions {
+  toggles "Show checklist";
+  selects "View failed conditions";
+  selects "View satisfied conditions";
+  clicks "Close error modal";
+}
+
+UI 9 "Register Error Modal" actions {
+  toggles "Show checklist";
+  selects "View failed conditions";
+  selects "View satisfied conditions";
+  clicks "Close error modal";
+}
+
+UI 10 "Projects Error Modal" actions {
+  toggles "Show checklist";
+  selects "View failed conditions";
+  selects "View satisfied conditions";
+  clicks "Close error modal";
+}
+
+UI 11 "Projects Success Modal" actions {
+  clicks "Close success modal";
+}
+
+UI 12 "Project Documents Error Modal" actions {
+  toggles "Show checklist";
+  selects "View failed conditions";
+  selects "View satisfied conditions";
+  clicks "Close error modal";
+}
+
+UI 13 "Project Documents Success Modal" actions {
+  clicks "Close success modal";
+}
+
+UI 14 "Versions Error Modal" actions {
+  toggles "Show checklist";
+  selects "View failed conditions";
+  selects "View satisfied conditions";
+  clicks "Close error modal";
+}
+
+UI 15 "Versions Success Modal" actions {
+  clicks "Close success modal";
+}
+
+UI 16 "Versions Decision Modal" actions {
+  clicks "Confirm modal";
+  clicks "Cancel modal";
+}
+
+UI 17 "Versions Pending Action Modal" actions {
+  clicks "Confirm modal";
+  clicks "Cancel modal";
+}
+
+UI 18 "Versions Error Report Modal" actions {
+  clicks "Confirm modal";
+  clicks "Cancel modal";
+}
+
+UI 19 "Versions Thread Status Modal" actions {
+  clicks "Confirm modal";
+  clicks "Cancel modal";
+}
+
+UI 20 "Admin Model Update Confirmation Modal" actions {
+  clicks "Confirm modal";
+  clicks "Cancel modal";
+}
+
+FRAGMENT "Authentication" {
+  WIDTH 38;
+  DRAW { 1(2,8,9), 3, 4, 5, 6, 7 };
+  TRANSITION from 1 to 3 if user submits "Log in" AND "credentials are valid and no return path exists";
+  TRANSITION from 1 to 3 if user submits "Log in" AND "credentials are valid and return path is '/app'";
+  TRANSITION from 1 to 4 if user submits "Log in" AND "credentials are valid and return path is '/projects'";
+  TRANSITION from 1 to 5 if user submits "Log in" AND "credentials are valid and return path is a project documents page";
+  TRANSITION from 1 to 6 if user submits "Log in" AND "credentials are valid and return path is a versions page";
+  TRANSITION from 1 to 7 if user submits "Log in" AND "credentials are valid and return path is '/admin/audit'";
+  TRANSITION from 1 to 8 if user submits "Log in" AND "login is invalid";
+  TRANSITION from 1 to 1 if user clicks "Reset password" AND "email is present and reset request succeeds";
+  TRANSITION from 1 to 8 if user clicks "Reset password" AND "reset request cannot be processed";
+  TRANSITION from 1 to 2 if user clicks "Create account";
+  TRANSITION from 8 to 1 if user clicks "Close error modal";
+  TRANSITION from 8 to 8 if user toggles "Show checklist";
+  TRANSITION from 8 to 8 if user selects "View failed conditions";
+  TRANSITION from 8 to 8 if user selects "View satisfied conditions";
+  TRANSITION from 2 to 3 if user submits "Create account" AND "registration succeeds";
+  TRANSITION from 2 to 9 if user submits "Create account" AND "registration fails";
+  TRANSITION from 2 to 1 if user clicks "I already have an account";
+  TRANSITION from 9 to 2 if user clicks "Close error modal";
+  TRANSITION from 9 to 9 if user toggles "Show checklist";
+  TRANSITION from 9 to 9 if user selects "View failed conditions";
+  TRANSITION from 9 to 9 if user selects "View satisfied conditions";
+}
+
+FRAGMENT "Primary Navigation" {
+  WIDTH 42;
+  DRAW { 1, 3(4(5(6))), 7 };
+  TRANSITION from 3 to 4 if user clicks "Go to Projects";
+  TRANSITION from 3 to 7 if user clicks "Activity log";
+  TRANSITION from 3 to 5 if user clicks "Open task link" AND "task opens project documents";
+  TRANSITION from 3 to 6 if user clicks "Open task link" AND "task opens versions";
+  TRANSITION from 4 to 5 if user clicks "Open project documents";
+  TRANSITION from 4 to 3 if user clicks "Dashboard";
+  TRANSITION from 5 to 6 if user clicks "Open versions";
+  TRANSITION from 5 to 4 if user clicks "Projects breadcrumb";
+  TRANSITION from 5 to 3 if user clicks "Dashboard";
+  TRANSITION from 6 to 5 if user clicks "Documents breadcrumb";
+  TRANSITION from 6 to 4 if user clicks "Projects breadcrumb";
+  TRANSITION from 6 to 3 if user clicks "Dashboard";
+  TRANSITION from 7 to 3 if user clicks "Dashboard";
+  TRANSITION from 3 to 1 if user clicks "Log out";
+  TRANSITION from 4 to 1 if user clicks "Log out";
+  TRANSITION from 5 to 1 if user clicks "Log out";
+  TRANSITION from 6 to 1 if user clicks "Log out";
+  TRANSITION from 7 to 1 if user clicks "Log out";
+  TRANSITION from 3 to 1 if user waits "Inactivity timeout";
+  TRANSITION from 4 to 1 if user waits "Inactivity timeout";
+  TRANSITION from 5 to 1 if user waits "Inactivity timeout";
+  TRANSITION from 6 to 1 if user waits "Inactivity timeout";
+  TRANSITION from 7 to 1 if user waits "Inactivity timeout";
+}
+
+FRAGMENT "Versions Lifecycle And Modals" {
+  WIDTH 44;
+  DRAW { 6(14,15,16,17,18,19) };
+  TRANSITION from 6 to 17 if user clicks "Create initial version" AND "no versions exist and user is latest author or leader or admin";
+  TRANSITION from 6 to 17 if user clicks "Create next version" AND "latest version is in 'In Review' or 'Reviewed' and user is latest author or leader or admin";
+  TRANSITION from 6 to 17 if user clicks "Create next version" AND "latest version is in 'Accepted' and at least one related error report latest version is in 'Accepted'";
+  TRANSITION from 6 to 17 if user clicks "Start review" AND "latest version is in 'In Creation' and has file and reviewers and reviewStartAt and reviewEndAt are recorded";
+  TRANSITION from 6 to 16 if user clicks "Accept latest" AND "latest version is in 'In Review' and has file and has issues and has comments and no open issues and user is latest author or leader or admin";
+  TRANSITION from 6 to 16 if user clicks "Reject latest" AND "latest version is in 'In Review' and has file and has issues and has comments and no open issues and user is latest author or leader or admin";
+  TRANSITION from 6 to 18 if user clicks "Create error report" AND "latest version is in 'Accepted' and user is project member or admin";
+  TRANSITION from 6 to 6 if user uploads "Upload file" AND "selected version is in 'In Creation' and user is selected author or leader or admin and selected version has no file";
+  TRANSITION from 6 to 17 if user uploads "Upload file" AND "selected version is in 'In Creation' and user is selected author or leader or admin and selected version already has file";
+  TRANSITION from 6 to 6 if user downloads "Download file" AND "a file is linked to the selected version";
+  TRANSITION from 6 to 6 if user clicks "Assign author" AND "selected version is in 'In Creation' and user is leader or admin";
+  TRANSITION from 6 to 6 if user clicks "Assign reviewer" AND "selected version is in 'In Creation' and user is selected author or leader or admin and reviewer is project member and reviewer is not selected author";
+  TRANSITION from 6 to 6 if user clicks "Create issue" AND "selected version is in active review time and user can participate in review and issue title is provided";
+  TRANSITION from 6 to 6 if user clicks "Add comment" AND "selected issue is open and user can participate in review and comment body is provided and (selected version is in active review time or selected issue last comment is less than 1 hour old after review expiration)";
+  TRANSITION from 6 to 6 if user waits "Review expiration and no comments" AND "selected version is in 'In Review' and now is after reviewEndAt and selected version has no comments and selected version becomes 'Reviewed'";
+  TRANSITION from 6 to 6 if user waits "Review expiration and 1 hour since latest comment" AND "selected version is in 'In Review' and now is after reviewEndAt and latest selected version comment is at least 1 hour old and selected version becomes 'Reviewed'";
+  TRANSITION from 6 to 19 if user clicks "Close issue" AND "selected issue is open and selected version is in active review time and user can participate in review";
+  TRANSITION from 6 to 19 if user clicks "Reopen issue" AND "selected issue is closed and selected version is in active review time and user can participate in review";
+  TRANSITION from 6 to 14 if user clicks "Create initial version" AND "request is blocked by validation or backend error";
+  TRANSITION from 6 to 14 if user clicks "Create next version" AND "request is blocked by validation or backend error";
+  TRANSITION from 6 to 14 if user clicks "Start review" AND "request is blocked by validation or backend error";
+  TRANSITION from 6 to 14 if user clicks "Accept latest" AND "request is blocked by validation or backend error";
+  TRANSITION from 6 to 14 if user clicks "Reject latest" AND "request is blocked by validation or backend error";
+  TRANSITION from 6 to 14 if user clicks "Create error report" AND "request is blocked by validation or backend error";
+  TRANSITION from 6 to 14 if user uploads "Upload file" AND "upload fails";
+  TRANSITION from 6 to 15 if user clicks "Assign author" AND "update succeeds with success notice";
+  TRANSITION from 6 to 15 if user clicks "Assign reviewer" AND "update succeeds with success notice";
+  TRANSITION from 6 to 15 if user clicks "Create issue" AND "issue is created with success notice";
+  TRANSITION from 6 to 15 if user clicks "Add comment" AND "comment is created with success notice";
+  TRANSITION from 14 to 6 if user clicks "Close error modal";
+  TRANSITION from 14 to 14 if user toggles "Show checklist";
+  TRANSITION from 14 to 14 if user selects "View failed conditions";
+  TRANSITION from 14 to 14 if user selects "View satisfied conditions";
+  TRANSITION from 15 to 6 if user clicks "Close success modal";
+  TRANSITION from 16 to 6 if user clicks "Confirm modal";
+  TRANSITION from 16 to 6 if user clicks "Cancel modal";
+  TRANSITION from 17 to 6 if user clicks "Confirm modal";
+  TRANSITION from 17 to 6 if user clicks "Cancel modal";
+  TRANSITION from 18 to 6 if user clicks "Confirm modal";
+  TRANSITION from 18 to 6 if user clicks "Cancel modal";
+  TRANSITION from 19 to 6 if user clicks "Confirm modal";
+  TRANSITION from 19 to 6 if user clicks "Cancel modal";
+}
+
+FRAGMENT "Projects Documents And Audit Modals" {
+  WIDTH 40;
+  DRAW { 4(10,11), 5(12,13), 7(20) };
+  TRANSITION from 4 to 11 if user submits "Create project" AND "operation succeeds";
+  TRANSITION from 4 to 10 if user submits "Create project" AND "operation fails";
+  TRANSITION from 4 to 11 if user submits "Add member" AND "operation succeeds";
+  TRANSITION from 4 to 10 if user submits "Add member" AND "operation fails";
+  TRANSITION from 10 to 4 if user clicks "Close error modal";
+  TRANSITION from 10 to 10 if user toggles "Show checklist";
+  TRANSITION from 10 to 10 if user selects "View failed conditions";
+  TRANSITION from 10 to 10 if user selects "View satisfied conditions";
+  TRANSITION from 11 to 4 if user clicks "Close success modal";
+  TRANSITION from 5 to 13 if user submits "Create document" AND "operation succeeds";
+  TRANSITION from 5 to 12 if user submits "Create document" AND "operation fails";
+  TRANSITION from 5 to 5 if user toggles "All or mine filter";
+  TRANSITION from 12 to 5 if user clicks "Close error modal";
+  TRANSITION from 12 to 12 if user toggles "Show checklist";
+  TRANSITION from 12 to 12 if user selects "View failed conditions";
+  TRANSITION from 12 to 12 if user selects "View satisfied conditions";
+  TRANSITION from 13 to 5 if user clicks "Close success modal";
+  TRANSITION from 7 to 7 if user clicks "Check connection" AND "the user is admin";
+  TRANSITION from 7 to 20 if user clicks "Update existing data" AND "the user is admin";
+  TRANSITION from 20 to 7 if user clicks "Confirm modal";
+  TRANSITION from 20 to 7 if user clicks "Cancel modal";
+  TRANSITION from 7 to 7 if user clicks "Run report";
+  TRANSITION from 7 to 7 if user toggles "Table or calendar view";
+  TRANSITION from 7 to 7 if user selects "Calendar event";
+}
+}

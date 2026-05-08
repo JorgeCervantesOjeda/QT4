@@ -1,0 +1,18 @@
+{
+  "projects": {
+    "default": "qualiteam-app"
+  },
+  "targets": {
+    "qualiteam-app": {
+      "hosting": {
+        "prod": [
+          "qualiteam-plus"
+        ],
+        "test": [
+          "qualiteam-app"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

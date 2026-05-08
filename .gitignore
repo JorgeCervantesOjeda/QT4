@@ -1,0 +1,45 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+.firebase/
+.firebase-home/
+.env
+.env.*
+!.env.example
+!.env.production.example
+*.zip
+firestore-debug.log
+traffic-smoke.log
+user_activity_important/
+user_activity_reports/
+user_activity_reports_filtered/
+user_activity_reports_qt4_only/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Python / migration artifacts
+*.pyc
+tools/__pycache__/
+migration_work/
+.migration_start_time.txt
+test-results/
+tools/jdk-21.0.10+7/
