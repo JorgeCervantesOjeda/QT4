@@ -55,6 +55,8 @@
 }
 
 .brand-banner {
+  position: relative;
+  display: block;
   width: 100%;
   min-height: 150px;
   padding: 18px 20px;
@@ -62,19 +64,21 @@
   overflow: hidden;
   border: 1px solid var(--qt-border);
   background: var(--qt-accent);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 24px;
 }
 
 .brand-banner__content {
   min-width: 0;
+  padding-right: min(380px, 34vw);
+  position: relative;
+  z-index: 1;
 }
 
 .brand-banner__logo {
-  justify-self: end;
-  width: min(248px, 28vw);
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: min(348px, 32vw);
   max-width: 100%;
 }
 
@@ -82,7 +86,6 @@
   display: block;
   width: 100%;
   height: auto;
-  max-height: 108px;
   object-fit: contain;
   object-position: center;
 }
@@ -1253,12 +1256,22 @@
   .brand-banner {
     min-height: 110px;
     padding: 14px;
+    display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: 14px;
   }
 
+  .brand-banner__content {
+    padding-right: 0;
+  }
+
   .brand-banner__logo {
-    width: min(180px, 52vw);
+    position: static;
+    right: auto;
+    top: auto;
+    transform: none;
+    justify-self: end;
+    width: min(220px, 60vw);
   }
 
   .panel {
@@ -1472,7 +1485,7 @@
   }
 
   .brand-banner__logo {
-    width: min(150px, 56vw);
+    width: min(190px, 62vw);
   }
 }
 
