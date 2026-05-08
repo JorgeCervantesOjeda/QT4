@@ -55,7 +55,6 @@
 }
 
 .brand-banner {
-  position: relative;
   width: 100%;
   min-height: 150px;
   padding: 18px 20px;
@@ -63,22 +62,29 @@
   overflow: hidden;
   border: 1px solid var(--qt-border);
   background: var(--qt-accent);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 24px;
 }
 
-.brand-banner::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image: url("/uam-logo.jpg");
-  background-repeat: no-repeat;
-  background-position: left center;
-  background-size: auto 100%;
-  opacity: 1;
+.brand-banner__content {
+  min-width: 0;
 }
 
-.brand-banner > div {
-  position: relative;
-  z-index: 1;
+.brand-banner__logo {
+  justify-self: end;
+  width: min(248px, 28vw);
+  max-width: 100%;
+}
+
+.brand-banner__logo img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 108px;
+  object-fit: contain;
+  object-position: center;
 }
 
 .brand-title-link {
@@ -1247,11 +1253,12 @@
   .brand-banner {
     min-height: 110px;
     padding: 14px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
   }
 
-  .brand-banner::before {
-    background-size: auto 80%;
-    background-position: left 10px center;
+  .brand-banner__logo {
+    width: min(180px, 52vw);
   }
 
   .panel {
@@ -1462,6 +1469,10 @@
 
   .project-card {
     padding: 10px;
+  }
+
+  .brand-banner__logo {
+    width: min(150px, 56vw);
   }
 }
 

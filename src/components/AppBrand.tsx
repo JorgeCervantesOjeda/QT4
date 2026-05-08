@@ -43,7 +43,7 @@ function AppBrand( { pageTitle }: AppBrandProps ) {
 
   return (
     <div className="brand-block brand-banner">
-      <div>
+      <div className="brand-banner__content">
         <p className="app-eyebrow">Metropolitan Autonomous University</p>
         <h1>
           <a href="http://www.cua.uam.mx" target="_blank" rel="noreferrer" className="brand-title-link">
@@ -72,6 +72,9 @@ function AppBrand( { pageTitle }: AppBrandProps ) {
             </p>
           </div>
         ) : null}
+      </div>
+      <div className="brand-banner__logo" aria-hidden="true">
+        <img src="/uam-logo.jpg" alt="" />
       </div>
     </div>
   )
