@@ -50,16 +50,23 @@ const runCapturedCommand = ( fileName, args, options = {} ) => {
 }
 
 export const runStreamingCommand = ( fileName, args, options = {} ) => {
+  const executableName = resolveExecutableName( fileName )
+  const shouldUseShell = process.platform === 'win32'
   const result = spawnSync(
-    resolveExecutableName( fileName ),
+    shouldUseShell ? fileName : executableName,
     args,
     {
       cwd: rootDirPath,
       stdio: 'inherit',
-      shell: false,
+      shell: shouldUseShell,
       ...options,
     },
   )
+  if( result.error ) {
+    throw new Error(
+      `Command failed (${fileName} ${args.join( ' ' )}): ${result.error.message}`,
+    )
+  }
   if( result.status !== 0 ) {
     throw new Error(
       `Command failed (${fileName} ${args.join( ' ' )}) with exit code ${String( result.status ?? 'unknown' )}.`,
