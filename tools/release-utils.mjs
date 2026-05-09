@@ -51,7 +51,7 @@ const runCapturedCommand = ( fileName, args, options = {} ) => {
 
 export const runStreamingCommand = ( fileName, args, options = {} ) => {
   const executableName = resolveExecutableName( fileName )
-  const shouldUseShell = process.platform === 'win32'
+  const shouldUseShell = process.platform === 'win32' && executableName !== fileName
   const result = spawnSync(
     shouldUseShell ? fileName : executableName,
     args,
