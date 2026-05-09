@@ -1,6 +1,7 @@
 // src/components/AppBrand.test.tsx: Verifies help and About affordances in the brand banner.
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import { APP_METADATA } from '../lib/appMetadata'
 import AppBrand from './AppBrand'
 
 vi.mock( '../auth/useAuth', () => ( {
@@ -38,6 +39,6 @@ describe( 'AppBrand', () => {
 
     expect( within( aboutDialog ).getByRole( 'heading', { name: 'QualiTeam' } ) ).toBeTruthy()
     expect( within( aboutDialog ).getByText( 'Version' ) ).toBeTruthy()
-    expect( within( aboutDialog ).getByText( '4.0.0' ) ).toBeTruthy()
+    expect( within( aboutDialog ).getByText( APP_METADATA.appVersion ) ).toBeTruthy()
   } )
 } )
