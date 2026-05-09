@@ -25,6 +25,9 @@
     "deploy:functions:prod": "npx firebase-tools deploy --only functions --project qualiteam-app",
     "deploy:test": "npm run build:test && npx firebase-tools deploy --only hosting:test,firestore,storage --project qualiteam-plus-test",
     "deploy:prod": "npm run build:prod && npx firebase-tools deploy --only hosting:prod,firestore,storage --project qualiteam-app",
+    "release:bootstrap:prod": "node tools/bootstrap-prod-tag.mjs",
+    "release:plan:prod": "node tools/release-version.mjs",
+    "release:prod": "node tools/release-prod.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },

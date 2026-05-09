@@ -33,6 +33,38 @@ QT4_FILES_API_BASE_URL=http://localhost:42873/api/v1
 npm run build
 ```
 
+## Production release versioning
+
+Use `npm run release:prod` for production releases that must bump `appVersion`.
+Keep `npm run deploy:functions:prod` and `npm run deploy:prod` for partial or technical deploys that should not change the app version.
+
+Bootstrap the first production tag from the commit that is already deployed:
+
+```bash
+npm run release:bootstrap:prod -- <deployed-commit>
+```
+
+Review the next release bump before deploying:
+
+```bash
+npm run release:plan:prod
+```
+
+Release impact rules:
+
+- `MAJOR`: commits with `BREAKING CHANGE:` or `type!:` markers
+- `MINOR`: commits with `feat:`
+- `PATCH`: commits with `fix:`, `perf:`, `refactor:`, or `revert:`
+- `NONE`: commits with `build:`, `chore:`, `ci:`, `docs:`, `release:`, `style:`, or `test:`
+
+If a commit does not match the supported conventional patterns, the release planner treats it as `PATCH` and reports that fallback explicitly.
+
+You can preview the bootstrap tag without creating it:
+
+```bash
+npm run release:bootstrap:prod -- <deployed-commit> preview
+```
+
 ## Environment variables
 
 ### Firebase (Vite env)
