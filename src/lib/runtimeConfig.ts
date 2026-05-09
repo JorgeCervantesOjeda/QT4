@@ -9,6 +9,11 @@ export type AppRuntimeConfig = {
 
 export type AppRuntimeConfigSource = 'firestore' | 'defaults'
 
+type LoadAppRuntimeConfigResult = {
+  config: AppRuntimeConfig
+  source: AppRuntimeConfigSource
+}
+
 export const normalizeFileStorageProvider = (value: unknown): FileStorageProviderKind => {
   return value === 'firebase-storage' ? 'firebase-storage' : 'files-api'
 }
@@ -25,16 +30,30 @@ const DEFAULT_EMAIL_PROVIDER = normalizeEmailProvider(
 )
 
 const runtimeConfigRef = doc( db, 'systemConfig', 'runtime' )
+let runtimeConfigCache: LoadAppRuntimeConfigResult | null = null
+let runtimeConfigPromise: Promise<LoadAppRuntimeConfigResult> | null = null
 
 export const getDefaultAppRuntimeConfig = (): AppRuntimeConfig => ( {
   fileStorageProvider: DEFAULT_FILE_STORAGE_PROVIDER,
   emailProvider: DEFAULT_EMAIL_PROVIDER,
 } )
 
-export const loadAppRuntimeConfig = async (): Promise<{
-  config: AppRuntimeConfig
-  source: AppRuntimeConfigSource
-}> => {
+const cloneLoadResult = (value: LoadAppRuntimeConfigResult): LoadAppRuntimeConfigResult => ( {
+  config: { ...value.config },
+  source: value.source,
+} )
+
+const cacheLoadResult = (value: LoadAppRuntimeConfigResult): LoadAppRuntimeConfigResult => {
+  runtimeConfigCache = cloneLoadResult( value )
+  return cloneLoadResult( value )
+}
+
+export const clearAppRuntimeConfigCache = (): void => {
+  runtimeConfigCache = null
+  runtimeConfigPromise = null
+}
+
+const loadRuntimeConfigFromFirestore = async (): Promise<LoadAppRuntimeConfigResult> => {
   const defaults = getDefaultAppRuntimeConfig()
   try {
     const snapshot = await getDoc( runtimeConfigRef )
@@ -60,6 +79,24 @@ export const loadAppRuntimeConfig = async (): Promise<{
   }
 }
 
+export const loadAppRuntimeConfig = async (
+  options: { forceRefresh?: boolean } = {},
+): Promise<LoadAppRuntimeConfigResult> => {
+  if( options.forceRefresh ) {
+    clearAppRuntimeConfigCache()
+  }
+  if( runtimeConfigCache ) {
+    return cloneLoadResult( runtimeConfigCache )
+  }
+  if( !runtimeConfigPromise ) {
+    runtimeConfigPromise = loadRuntimeConfigFromFirestore().then( (result) => {
+      runtimeConfigPromise = null
+      return cacheLoadResult( result )
+    } )
+  }
+  return cloneLoadResult( await runtimeConfigPromise )
+}
+
 export const saveAppRuntimeConfig = async (
   config: AppRuntimeConfig,
   updatedBy: string,
@@ -67,16 +104,25 @@ export const saveAppRuntimeConfig = async (
   if( !updatedBy ) {
     throw new Error( 'User session is required.' )
   }
+  const normalizedConfig: AppRuntimeConfig = {
+    fileStorageProvider: normalizeFileStorageProvider( config.fileStorageProvider ),
+    emailProvider: normalizeEmailProvider( config.emailProvider ),
+  }
   await setDoc(
     runtimeConfigRef,
     {
-      fileStorageProvider: normalizeFileStorageProvider( config.fileStorageProvider ),
-      emailProvider: normalizeEmailProvider( config.emailProvider ),
+      fileStorageProvider: normalizedConfig.fileStorageProvider,
+      emailProvider: normalizedConfig.emailProvider,
       updatedAt: serverTimestamp(),
       updatedBy,
     },
     { merge: true },
   )
+  cacheLoadResult( {
+    config: normalizedConfig,
+    source: 'firestore',
+  } )
+  runtimeConfigPromise = null
 }
 
 export const formatRuntimeConfigSummary = (config: AppRuntimeConfig): string => {

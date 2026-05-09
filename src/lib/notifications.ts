@@ -44,7 +44,12 @@ const notifyEmailWithFirebaseFunctions = async (params: NotifyEmailParams): Prom
   if( !user ) {
     throw new Error( 'User session is required.' )
   }
-  const idToken = await user.getIdToken( true )
+  let idToken = ''
+  try {
+    idToken = await user.getIdToken()
+  } catch {
+    idToken = await user.getIdToken( true )
+  }
   const resp = await fetch( FIREBASE_NOTIFY_FUNCTION_URL, {
     method: 'POST',
     headers: {

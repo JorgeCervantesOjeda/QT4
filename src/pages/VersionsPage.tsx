@@ -2529,7 +2529,7 @@ function VersionsPage() {
       setIsDocumentTitleModalOpen( false )
       setSuccessEmailRecipients( null )
       setSuccessMessage( 'Document title updated successfully.' )
-      await logAudit( {
+      void logAudit( {
         actorId: userId,
         actorEmail: user?.email ?? null,
         action: 'updateDocumentTitle',
@@ -2540,6 +2540,8 @@ function VersionsPage() {
         metadata: {
           title: trimmedTitle,
         },
+      } ).catch( ( err ) => {
+        console.warn( 'Audit log failed (update document title):', err )
       } )
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
@@ -2990,25 +2992,22 @@ function VersionsPage() {
       setIsBusy( false )
       return
     }
-    try {
-      await logAudit( {
-        actorId: userId,
-        actorEmail: user?.email ?? null,
-        action: 'updateReviewers',
-        entityType: 'version',
-        entityId: selectedVersion.id,
-        projectId,
-        docId,
-        versionId: selectedVersion.id,
-        metadata: {
-          reviewerIds: nextReviewerIds,
-        },
-      } )
-    } catch( err ) {
+    void logAudit( {
+      actorId: userId,
+      actorEmail: user?.email ?? null,
+      action: 'updateReviewers',
+      entityType: 'version',
+      entityId: selectedVersion.id,
+      projectId,
+      docId,
+      versionId: selectedVersion.id,
+      metadata: {
+        reviewerIds: nextReviewerIds,
+      },
+    } ).catch( ( err ) => {
       console.warn( 'Audit log failed (update reviewers):', err )
-    } finally {
-      setIsBusy( false )
-    }
+    } )
+    setIsBusy( false )
   }, [
     selectedVersion,
     userId,
@@ -3057,26 +3056,23 @@ function VersionsPage() {
       setIsBusy( false )
       return
     }
-    try {
-      await logAudit( {
-        actorId: userId,
-        actorEmail: user?.email ?? null,
-        action: 'updateReviewers',
-        entityType: 'version',
-        entityId: selectedVersion.id,
-        projectId,
-        docId,
-        versionId: selectedVersion.id,
-        metadata: {
-          reviewerIds: nextReviewerIds,
-          source: checked ? 'selectAll' : 'clearAll',
-        },
-      } )
-    } catch( err ) {
+    void logAudit( {
+      actorId: userId,
+      actorEmail: user?.email ?? null,
+      action: 'updateReviewers',
+      entityType: 'version',
+      entityId: selectedVersion.id,
+      projectId,
+      docId,
+      versionId: selectedVersion.id,
+      metadata: {
+        reviewerIds: nextReviewerIds,
+        source: checked ? 'selectAll' : 'clearAll',
+      },
+    } ).catch( ( err ) => {
       console.warn( 'Audit log failed (toggle all reviewers):', err )
-    } finally {
-      setIsBusy( false )
-    }
+    } )
+    setIsBusy( false )
   }, [
     selectedVersion,
     userId,
@@ -3147,23 +3143,20 @@ function VersionsPage() {
       setIsBusy( false )
       return
     }
-    try {
-      await logAudit( {
-        actorId: userId,
-        actorEmail: user?.email ?? null,
-        action: 'assignAuthor',
-        entityType: 'version',
-        entityId: selectedVersion.id,
-        projectId,
-        docId,
-        versionId: selectedVersion.id,
-        targetUserId: authorId,
-      } )
-    } catch( err ) {
+    void logAudit( {
+      actorId: userId,
+      actorEmail: user?.email ?? null,
+      action: 'assignAuthor',
+      entityType: 'version',
+      entityId: selectedVersion.id,
+      projectId,
+      docId,
+      versionId: selectedVersion.id,
+      targetUserId: authorId,
+    } ).catch( ( err ) => {
       console.warn( 'Audit log failed (assign author):', err )
-    } finally {
-      setIsBusy( false )
-    }
+    } )
+    setIsBusy( false )
   }, [
     selectedVersion,
     userId,
@@ -3250,7 +3243,7 @@ function VersionsPage() {
         updatedBy: userId,
       } )
       await batch.commit()
-      await logAudit( {
+      void logAudit( {
         actorId: userId,
         actorEmail: user?.email ?? null,
         action: 'uploadFile',
@@ -3263,6 +3256,8 @@ function VersionsPage() {
           fileKey,
           fileName: file.name,
         },
+      } ).catch( ( err ) => {
+        console.warn( 'Audit log failed (upload file):', err )
       } )
       if( shouldDeleteExistingAfterCommit && existingFileKey ) {
         try {
@@ -3860,7 +3855,7 @@ function VersionsPage() {
           { merge: true },
         )
       } )
-      await logAudit( {
+      void logAudit( {
         actorId: userId,
         actorEmail: user?.email ?? null,
         action: 'createErrorReport',
@@ -3872,6 +3867,8 @@ function VersionsPage() {
           baseDocId: docId,
           baseVersionId: latestVersion.id,
         },
+      } ).catch( ( err ) => {
+        console.warn( 'Audit log failed (create error report):', err )
       } )
       setIsErrorReportModalOpen( false )
       setErrorReportTitle( '' )

@@ -30,6 +30,7 @@ vi.mock( './firebase', () => ( {
 } ) )
 
 import {
+  clearAppRuntimeConfigCache,
   formatRuntimeConfigSummary,
   getDefaultAppRuntimeConfig,
   loadAppRuntimeConfig,
@@ -40,6 +41,7 @@ import {
 
 describe( 'lib/runtimeConfig', () => {
   afterEach( () => {
+    clearAppRuntimeConfigCache()
     vi.clearAllMocks()
   } )
 
@@ -82,6 +84,22 @@ describe( 'lib/runtimeConfig', () => {
       },
       source: 'firestore',
     } )
+  } )
+
+  it( 'reuses the cached runtime config across repeated loads', async () => {
+    getDocMock.mockResolvedValueOnce( {
+      exists: () => true,
+      data: () => ( {
+        fileStorageProvider: 'firebase-storage',
+        emailProvider: 'firebase-functions',
+      } ),
+    } )
+
+    const first = await loadAppRuntimeConfig()
+    const second = await loadAppRuntimeConfig()
+
+    expect( getDocMock ).toHaveBeenCalledTimes( 1 )
+    expect( second ).toEqual( first )
   } )
 
   it( 'falls back to defaults when loading the runtime config throws', async () => {
@@ -129,6 +147,29 @@ describe( 'lib/runtimeConfig', () => {
       } ),
       { merge: true },
     )
+  } )
+
+  it( 'updates the in-memory cache after saving the runtime config', async () => {
+    setDocMock.mockResolvedValueOnce( undefined )
+
+    await saveAppRuntimeConfig(
+      {
+        fileStorageProvider: 'firebase-storage',
+        emailProvider: 'firebase-functions',
+      },
+      'user-admin-1',
+    )
+
+    const result = await loadAppRuntimeConfig()
+
+    expect( getDocMock ).not.toHaveBeenCalled()
+    expect( result ).toEqual( {
+      config: {
+        fileStorageProvider: 'firebase-storage',
+        emailProvider: 'firebase-functions',
+      },
+      source: 'firestore',
+    } )
   } )
 
   it( 'formats a readable runtime config summary', () => {

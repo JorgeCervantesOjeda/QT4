@@ -77,7 +77,7 @@ function RegisterPage() {
           )
         }
       }
-      await logAudit( {
+      void logAudit( {
         actorId: result.user.uid,
         actorEmail: result.user.email ?? null,
         action: 'registerUser',
@@ -86,6 +86,8 @@ function RegisterPage() {
         metadata: {
           email: authEmail,
         },
+      } ).catch( ( err ) => {
+        console.warn( 'Audit log failed (register user):', err )
       } )
       setPassword( '' )
       navigate( '/app', { replace: true } )

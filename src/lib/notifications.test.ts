@@ -138,7 +138,7 @@ describe( 'lib/notifications', () => {
       'firebase-functions',
     )
 
-    expect( authMock.currentUser.getIdToken ).toHaveBeenCalledWith( true )
+    expect( authMock.currentUser.getIdToken ).toHaveBeenCalledWith()
     expect( fetchMock ).toHaveBeenCalledWith(
       notifyUrl,
       expect.objectContaining( {
@@ -146,6 +146,46 @@ describe( 'lib/notifications', () => {
         headers: expect.objectContaining( {
           Authorization: 'Bearer token-123',
           'Content-Type': 'application/json',
+        } ),
+      } ),
+    )
+  } )
+
+  it( 'falls back to a forced token refresh when the cached token lookup fails', async () => {
+    vi.stubGlobal( 'fetch', fetchMock )
+    const notifyUrl = ( import.meta.env.VITE_FIREBASE_NOTIFY_FUNCTION_URL ?? '' ).trim()
+
+    if( !notifyUrl ) {
+      return
+    }
+
+    authMock.currentUser = {
+      getIdToken: vi.fn()
+        .mockRejectedValueOnce( new Error( 'cached token unavailable' ) )
+        .mockResolvedValueOnce( 'token-refresh-123' ),
+    }
+    fetchMock.mockResolvedValueOnce( {
+      ok: true,
+      status: 200,
+      text: vi.fn().mockResolvedValue( '' ),
+    } )
+
+    await notifyEmailUsingActiveProvider(
+      {
+        to: [ 'reviewer@example.com' ],
+        subject: 'Review needed',
+        text: 'Please review the version.',
+      },
+      'firebase-functions',
+    )
+
+    expect( authMock.currentUser.getIdToken ).toHaveBeenNthCalledWith( 1 )
+    expect( authMock.currentUser.getIdToken ).toHaveBeenNthCalledWith( 2, true )
+    expect( fetchMock ).toHaveBeenCalledWith(
+      notifyUrl,
+      expect.objectContaining( {
+        headers: expect.objectContaining( {
+          Authorization: 'Bearer token-refresh-123',
         } ),
       } ),
     )

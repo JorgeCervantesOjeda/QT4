@@ -346,46 +346,45 @@ export const buildDashboardTasks = async (
   const reviewerVersions = reviewerCandidateVersions.filter(
     ( version ) => version.status === 'In Review' || version.status === 'Reviewed',
   )
-
-  const userCommentsSnapshot = needsReviewer || needsReply
-    ? await safeGetDocs( () =>
-      getDocs(
-        query(
-          collection( db, 'comments' ),
-          where( 'createdBy', '==', userId ),
-        ),
-      ),
-    )
-    : null
-
-  const authorReviewVersions = needsReply
-    ? await fetchVersionsForAuthorAcrossProjects( [ 'In Review', 'Reviewed' ] )
-    : []
-
   const leaderProjectIds = needsReply
     ? projectIds.filter( ( projectId ) => projectRoleById[projectId] === 'leader' )
     : []
   const leaderProjectChunks = chunkArray( leaderProjectIds, 10 ).filter( ( chunk ) => chunk.length > 0 )
-  const leaderReviewSnapshots = needsReply
-    ? await Promise.all(
-      leaderProjectChunks.flatMap( ( chunk ) => ( [
+  const [ userCommentsSnapshot, authorReviewVersions, leaderReviewSnapshots ] = await Promise.all( [
+    needsReviewer || needsReply
+      ? safeGetDocs( () =>
         getDocs(
           query(
-            collection( db, 'versions' ),
-            where( 'projectId', 'in', chunk ),
-            where( 'status', '==', 'In Review' ),
+            collection( db, 'comments' ),
+            where( 'createdBy', '==', userId ),
           ),
         ),
-        getDocs(
-          query(
-            collection( db, 'versions' ),
-            where( 'projectId', 'in', chunk ),
-            where( 'status', '==', 'Reviewed' ),
+      )
+      : Promise.resolve( null ),
+    needsReply
+      ? fetchVersionsForAuthorAcrossProjects( [ 'In Review', 'Reviewed' ] )
+      : Promise.resolve( [] ),
+    needsReply
+      ? Promise.all(
+        leaderProjectChunks.flatMap( ( chunk ) => ( [
+          getDocs(
+            query(
+              collection( db, 'versions' ),
+              where( 'projectId', 'in', chunk ),
+              where( 'status', '==', 'In Review' ),
+            ),
           ),
-        ),
-      ] ) ),
-    )
-    : []
+          getDocs(
+            query(
+              collection( db, 'versions' ),
+              where( 'projectId', 'in', chunk ),
+              where( 'status', '==', 'Reviewed' ),
+            ),
+          ),
+        ] ) ),
+      )
+      : Promise.resolve( [] ),
+  ] )
   const leaderReviewVersions = leaderReviewSnapshots.flatMap( ( snapshot ) => snapshot.docs ).map( toVersionRecord )
 
   const userCommentLatestByThread = new Map<string, number>()
@@ -410,10 +409,15 @@ export const buildDashboardTasks = async (
       userCommentedVersionIds.add( versionId )
     }
   } )
+  const canBuildReplyTasks = needsReply && userCommentsSnapshot !== null
 
   const reviewAccessVersions = Array.from(
     new Map(
-      [ ...reviewerVersions, ...authorReviewVersions, ...leaderReviewVersions ].map( ( version ) => [
+      [
+        ...reviewerVersions,
+        ...( canBuildReplyTasks ? authorReviewVersions : [] ),
+        ...( canBuildReplyTasks ? leaderReviewVersions : [] ),
+      ].map( ( version ) => [
         version.id,
         version,
       ] ),
@@ -465,7 +469,7 @@ export const buildDashboardTasks = async (
   const repliedThreadTasks: ReplyTask[] = []
   const replyThreadById = new Map<string, ThreadRecord>()
   const replyTaskThreadIds = new Set<string>()
-  if( needsReply ) {
+  if( canBuildReplyTasks ) {
     try {
       const threads = openReviewThreads
       for( const thread of threads ) {
@@ -878,10 +882,12 @@ export const refreshDashboard = async (
     throw injectedFault
   }
   const dashboardRef = doc( db, 'dashboard', userId )
-  const existingSnapshot = await getDoc( dashboardRef )
+  const [ existingSnapshot, storedTaskSnapshots ] = await Promise.all( [
+    getDoc( dashboardRef ),
+    getDocs( collection( dashboardRef, 'tasks' ) ),
+  ] )
   const existingData = existingSnapshot.exists() ? existingSnapshot.data() : {}
   const storageVersion = Number( existingData.storageVersion ?? 1 )
-  const storedTaskSnapshots = await getDocs( collection( dashboardRef, 'tasks' ) )
   const storedTasks = storedTaskSnapshots.docs.map( ( snapshot ) =>
     deserializeDashboardTask( snapshot.id, snapshot.data() as Record<string, unknown> ),
   )
@@ -933,15 +939,13 @@ export const refreshDashboard = async (
     },
     { merge: true },
   )
-  try {
-    await logAudit( {
-      actorId: userId,
-      action: 'refreshDashboard',
-      entityType: 'dashboard',
-      entityId: userId,
-    } )
-  } catch( err ) {
+  void logAudit( {
+    actorId: userId,
+    action: 'refreshDashboard',
+    entityType: 'dashboard',
+    entityId: userId,
+  } ).catch( ( err ) => {
     console.warn( 'Dashboard audit log failed:', err )
-  }
+  } )
   return nextTasks
 }
