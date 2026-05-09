@@ -25,3 +25,15 @@ These rules apply to work inside `QT4/` and complement repository-level guidance
 - Before making implementation decisions or editing files, first explain the proposed decisions briefly and wait for the user's explicit `ok`.
 - Do not apply code, configuration, or content changes until the user confirms with `ok`.
 - Keep final responses brief by default, unless the user asks for more detail.
+
+## Production Release Rule
+
+- Treat a full production deploy as a release, not as a technical deploy.
+- For full production releases, always use `npm run release:prod`.
+- Do not bump `package.json.version` manually for production releases; the release workflow must compute it from commits since the latest `prod/vX.Y.Z` tag.
+- Before a production release, the agent may inspect the planned bump with `npm run release:plan:prod`.
+- Partial or technical deploys must not change app version:
+  - `npm run deploy:functions:prod`
+  - `npm run deploy:prod`
+  - test deploys or other non-release deploys
+- If the user asks to `deploy` without qualification, interpret it as a full production release and use the release workflow unless the user explicitly requests a partial or technical deploy.
