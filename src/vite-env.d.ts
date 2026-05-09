@@ -1,4 +1,7 @@
-﻿/// <reference types="vite/client" />
+/// <reference types="vite/client" />
+
+// src/vite-env.d.ts: Declares Vite-provided environment variables and build-time globals.
+declare const __APP_VERSION__: string
 
 interface ImportMetaEnv {
   readonly VITE_FIREBASE_API_KEY: string;

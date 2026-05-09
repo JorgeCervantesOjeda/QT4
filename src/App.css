@@ -1,3 +1,4 @@
+/* src/App.css: Defines the shared visual system, layout, modal, and responsive styles for QT4. */
 :root {
   --qt-bg: #f5ede3;
   --qt-paper: #fffdf9;
@@ -1246,6 +1247,89 @@
 
 .checklist-item--fail {
   color: #8f1f1f;
+}
+
+.about-card {
+  display: grid;
+  gap: 14px;
+}
+
+.about-card h3 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.about-card__intro {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.about-card__section {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--qt-border);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.about-card__section p {
+  margin: 0;
+}
+
+.about-card__label {
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--qt-ink-strong);
+}
+
+.about-card__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.about-card__links a {
+  color: var(--qt-accent-strong);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.about-card__links a:hover {
+  box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
+}
+
+.about-card__meta {
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.about-card__meta div {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--qt-border);
+  background: rgba(255, 246, 235, 0.92);
+}
+
+.about-card__meta dt {
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(36, 19, 15, 0.78);
+}
+
+.about-card__meta dd {
+  margin: 0;
+  color: var(--qt-ink-strong);
+  font-weight: 600;
 }
 
 @media (max-width: 768px) {

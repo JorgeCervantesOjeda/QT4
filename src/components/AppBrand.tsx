@@ -1,9 +1,10 @@
+// src/components/AppBrand.tsx: Renders the app banner, help entrypoint, session label, and About dialog trigger.
 import { useEffect, useState } from 'react'
 import { doc, getDoc } from 'firebase/firestore'
 import { useAuth } from '../auth/useAuth'
 import { db } from '../lib/firebase'
-
-const NOTEBOOKLM_HELP_URL = 'https://notebooklm.google.com/notebook/a602cd8e-4c62-4baa-b559-53ae95facaef'
+import { APP_METADATA } from '../lib/appMetadata'
+import AboutDialog from './AboutDialog'
 
 type AppBrandProps = {
   pageTitle: string
@@ -12,6 +13,7 @@ type AppBrandProps = {
 function AppBrand( { pageTitle }: AppBrandProps ) {
   const { user } = useAuth()
   const [profileName, setProfileName] = useState<string>( '' )
+  const [isAboutOpen, setIsAboutOpen] = useState( false )
   const displayName = user?.displayName ?? ''
   const sessionLabel = displayName || profileName
 
@@ -42,43 +44,58 @@ function AppBrand( { pageTitle }: AppBrandProps ) {
   }, [ user?.uid ] )
 
   return (
-    <div className="brand-block brand-banner">
-      <div className="brand-banner__content">
-        <p className="app-eyebrow">Metropolitan Autonomous University</p>
-        <h1>
-          <a href="http://www.cua.uam.mx" target="_blank" rel="noreferrer" className="brand-title-link">
-            QualiTeam <span className="brand-version">4.0</span>
-          </a>
-        </h1>
-        <p className="brand-page-title">{pageTitle}</p>
-        <div className="brand-support-row">
-          <a
-            href={NOTEBOOKLM_HELP_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="brand-session-button brand-help-button"
-            aria-label="Open the QualiTeam help assistant"
-          >
-            Help
-          </a>
-          <p className="brand-support-copy">
-            Ask questions about how to use QualiTeam.
-          </p>
-        </div>
-        {sessionLabel ? (
-          <div className="brand-session-row">
-            <p className="brand-session">
-              Signed in as {sessionLabel}
+    <>
+      <div className="brand-block brand-banner">
+        <div className="brand-banner__content">
+          <p className="app-eyebrow">{APP_METADATA.institutionName}</p>
+          <h1>
+            <a
+              href={APP_METADATA.institutionSiteUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="brand-title-link"
+            >
+              {APP_METADATA.productName} <span className="brand-version">{APP_METADATA.marketingVersion}</span>
+            </a>
+          </h1>
+          <p className="brand-page-title">{pageTitle}</p>
+          <div className="brand-support-row">
+            <a
+              href={APP_METADATA.helpAssistantUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="brand-session-button brand-help-button"
+              aria-label="Open the QualiTeam help assistant"
+            >
+              Help
+            </a>
+            <button
+              type="button"
+              className="brand-session-button brand-help-button"
+              aria-haspopup="dialog"
+              onClick={() => setIsAboutOpen( true )}
+            >
+              About
+            </button>
+            <p className="brand-support-copy">
+              {APP_METADATA.supportCopy}
             </p>
           </div>
-        ) : null}
+          {sessionLabel ? (
+            <div className="brand-session-row">
+              <p className="brand-session">
+                Signed in as {sessionLabel}
+              </p>
+            </div>
+          ) : null}
+        </div>
+        <div className="brand-banner__logo" aria-hidden="true">
+          <img src="/uam-logo.jpg" alt="" />
+        </div>
       </div>
-      <div className="brand-banner__logo" aria-hidden="true">
-        <img src="/uam-logo.jpg" alt="" />
-      </div>
-    </div>
+      {isAboutOpen ? <AboutDialog onClose={() => setIsAboutOpen( false )} /> : null}
+    </>
   )
 }
 
 export default AppBrand
-

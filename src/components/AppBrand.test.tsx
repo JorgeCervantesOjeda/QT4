@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react'
+// src/components/AppBrand.test.tsx: Verifies help and About affordances in the brand banner.
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import AppBrand from './AppBrand'
 
@@ -26,5 +27,18 @@ describe( 'AppBrand', () => {
     expect( helpLink.getAttribute( 'href' ) ).toBe(
       'https://notebooklm.google.com/notebook/a602cd8e-4c62-4baa-b559-53ae95facaef',
     )
+  } )
+
+  it( 'opens the About dialog with the synchronized project version', () => {
+    render( <AppBrand pageTitle="Dashboard" /> )
+
+    fireEvent.click( screen.getByRole( 'button', { name: 'About' } ) )
+
+    const aboutDialog = screen.getByRole( 'dialog' )
+
+    expect( within( aboutDialog ).getByRole( 'heading', { name: 'QualiTeam 4.0' } ) ).toBeTruthy()
+    expect( within( aboutDialog ).getByText( 'Product version' ) ).toBeTruthy()
+    expect( within( aboutDialog ).getByText( 'Technical version' ) ).toBeTruthy()
+    expect( within( aboutDialog ).getByText( '4.0.0' ) ).toBeTruthy()
   } )
 } )

@@ -1,7 +1,15 @@
 /// <reference types="vitest/config" />
+// vite.config.ts: Configures Vite, test execution, and injected build-time app metadata.
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+
+const appPackage = JSON.parse(
+  readFileSync( new URL( './package.json', import.meta.url ), 'utf8' ),
+) as {
+  version: string
+}
 
 const resolveManualChunk = (id: string): string | undefined => {
   if( !id.includes( 'node_modules' ) ) {
@@ -42,6 +50,9 @@ export default defineConfig( ( { mode } ) => {
 
   return {
     plugins: [react()],
+    define: {
+      __APP_VERSION__: JSON.stringify( appPackage.version ),
+    },
     resolve: {
       alias: isE2E
         ? [
