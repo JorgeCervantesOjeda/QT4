@@ -36,9 +36,8 @@ describe( 'AppBrand', () => {
 
     const aboutDialog = screen.getByRole( 'dialog' )
 
-    expect( within( aboutDialog ).getByRole( 'heading', { name: 'QualiTeam 4.0' } ) ).toBeTruthy()
-    expect( within( aboutDialog ).getByText( 'Product version' ) ).toBeTruthy()
-    expect( within( aboutDialog ).getByText( 'Technical version' ) ).toBeTruthy()
+    expect( within( aboutDialog ).getByRole( 'heading', { name: 'QualiTeam' } ) ).toBeTruthy()
+    expect( within( aboutDialog ).getByText( 'Version' ) ).toBeTruthy()
     expect( within( aboutDialog ).getByText( '4.0.0' ) ).toBeTruthy()
   } )
 } )

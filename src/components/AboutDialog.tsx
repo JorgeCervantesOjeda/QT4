@@ -1,4 +1,4 @@
-// src/components/AboutDialog.tsx: Shows app identity, support links, and technical metadata in a modal dialog.
+// src/components/AboutDialog.tsx: Shows app identity, support links, and concise product metadata in a modal dialog.
 import { APP_METADATA } from '../lib/appMetadata'
 import ModalDialog from './ModalDialog'
 
@@ -7,15 +7,11 @@ type AboutDialogProps = {
 }
 
 function AboutDialog( { onClose }: AboutDialogProps ) {
-  const buildLabel = import.meta.env.VITE_APP_BUILD?.trim() || 'Not set'
-
   return (
     <ModalDialog onClose={onClose}>
       <section className="about-card" aria-label="About QualiTeam">
         <p className="app-eyebrow">About this app</p>
-        <h3>
-          {APP_METADATA.productName} <span className="brand-version">{APP_METADATA.marketingVersion}</span>
-        </h3>
+        <h3>{APP_METADATA.productName}</h3>
         <p className="about-card__intro">
           {APP_METADATA.description}
         </p>
@@ -36,16 +32,8 @@ function AboutDialog( { onClose }: AboutDialogProps ) {
         </div>
         <dl className="about-card__meta">
           <div>
-            <dt>Product version</dt>
-            <dd>{APP_METADATA.marketingVersion}</dd>
-          </div>
-          <div>
-            <dt>Technical version</dt>
-            <dd>{APP_METADATA.technicalVersion}</dd>
-          </div>
-          <div>
-            <dt>Build</dt>
-            <dd>{buildLabel}</dd>
+            <dt>Version</dt>
+            <dd>{APP_METADATA.appVersion}</dd>
           </div>
           <div>
             <dt>Technology</dt>

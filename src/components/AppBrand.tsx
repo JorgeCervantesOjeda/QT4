@@ -55,7 +55,7 @@ function AppBrand( { pageTitle }: AppBrandProps ) {
               rel="noreferrer"
               className="brand-title-link"
             >
-              {APP_METADATA.productName} <span className="brand-version">{APP_METADATA.marketingVersion}</span>
+              {APP_METADATA.productName} <span className="brand-version">{APP_METADATA.appVersion}</span>
             </a>
           </h1>
           <p className="brand-page-title">{pageTitle}</p>
