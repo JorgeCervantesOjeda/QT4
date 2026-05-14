@@ -447,6 +447,7 @@ function VersionsPage() {
   const [emailNotifyMessage, setEmailNotifyMessage] = useState<string>( '' )
   const uploadInputRef = useRef<HTMLInputElement | null>( null )
   const [selectedFileRef, setSelectedFileRef] = useState<FileRefSummary | null>( null )
+  const localFileRefByIdRef = useRef<Map<string, FileRefSummary>>( new Map() )
   const [fileMetadataNotice, setFileMetadataNotice] = useState<string | null>( null )
   const [isErrorReportModalOpen, setIsErrorReportModalOpen] = useState( false )
   const [versionDecisionModal, setVersionDecisionModal] = useState<'accept' | 'reject' | null>( null )
@@ -2056,6 +2057,14 @@ function VersionsPage() {
         isActive = false
       }
     }
+    const localFileRef = localFileRefByIdRef.current.get( fileRefId )
+    if( localFileRef ) {
+      setSelectedFileRef( localFileRef )
+      setFileMetadataNotice( null )
+      return () => {
+        isActive = false
+      }
+    }
     const loadFileRef = async () => {
       try {
         const snapshot = await getDoc( doc( db, 'files', fileRefId ) )
@@ -2111,7 +2120,14 @@ function VersionsPage() {
     return () => {
       isActive = false
     }
-  }, [ selectedVersion?.fileRefId, reportVersionsError ] )
+  }, [
+    selectedVersion?.fileRefId,
+    selectedVersion?.id,
+    selectedVersion?.hasFile,
+    projectId,
+    docId,
+    reportVersionsError,
+  ] )
 
   useEffect( () => {
     const activeProjectId = documentData?.projectId ?? projectIdFromQuery
@@ -3242,7 +3258,27 @@ function VersionsPage() {
         updatedAt: serverTimestamp(),
         updatedBy: userId,
       } )
+      const localFileRef: FileRefSummary = {
+        id: fileRefDoc.id,
+        fileKey,
+        fileName: file.name,
+        contentType: file.type || 'application/octet-stream',
+        sizeBytes: Number( uploadResponse.sizeBytes ),
+        isPermanent: Boolean( uploadResponse.isPermanent ),
+        expireAfterDays:
+          typeof uploadResponse.expireAfterDays === 'number'
+            ? Number( uploadResponse.expireAfterDays )
+            : null,
+        storageProvider: uploadResponse.storageProvider,
+        createdBy: userId,
+        projectId,
+        docId,
+        versionId: selectedVersion.id,
+      }
+      localFileRefByIdRef.current.set( fileRefDoc.id, localFileRef )
       await batch.commit()
+      setSelectedFileRef( localFileRef )
+      setFileMetadataNotice( null )
       void logAudit( {
         actorId: userId,
         actorEmail: user?.email ?? null,
@@ -3280,6 +3316,11 @@ function VersionsPage() {
           // Ignore cleanup errors when rollback upload fails.
         }
       }
+      localFileRefByIdRef.current.forEach( ( fileRef, fileRefId ) => {
+        if( fileRef.fileKey === fileKey && fileRef.versionId === selectedVersion.id ) {
+          localFileRefByIdRef.current.delete( fileRefId )
+        }
+      } )
       const message = err instanceof Error ? err.message : 'Unexpected error'
       reportVersionsError( err, 'versions.uploadFile', 'storage', {
         versionId: selectedVersion.id,

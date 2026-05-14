@@ -397,6 +397,16 @@ service cloud.firestore {
         || isVersionReviewerById(versionId);
     }
 
+    function canReadReviewArtifacts(projectId, versionId) {
+      return (
+          projectId is string
+          && projectId.size() > 0
+          && isProjectMember(projectId)
+        )
+        || canReviewAccess(projectId, versionId)
+        || canReviewAccessByVersionId(versionId);
+    }
+
     function canReviewAccessByVersionId(versionId) {
       return isAdmin()
         || isProjectLeader(versionDoc(versionId).data.projectId)
@@ -435,6 +445,11 @@ service cloud.firestore {
           projectId is string
           && projectId.size() > 0
           && isProjectMember(projectId)
+        )
+        || (
+          fileData.versionId is string
+          && fileData.versionId.size() > 0
+          && isProjectMember(versionDoc(fileData.versionId).data.projectId)
         )
         || (
           fileData.versionId is string
@@ -724,8 +739,7 @@ service cloud.firestore {
     }
 
     match /threads/{threadId} {
-      allow read: if canReviewAccess(resource.data.projectId, resource.data.versionId)
-        || canReviewAccessByVersionId(resource.data.versionId);
+      allow read: if canReadReviewArtifacts(resource.data.projectId, resource.data.versionId);
       allow create: if canReviewContribute(request.resource.data.projectId, request.resource.data.versionId)
         && request.resource.data.status == 'open'
         && request.resource.data.title is string
@@ -764,8 +778,7 @@ service cloud.firestore {
     }
 
     match /comments/{commentId} {
-      allow read: if canReviewAccess(resource.data.projectId, resource.data.versionId)
-        || canReviewAccessByVersionId(resource.data.versionId)
+      allow read: if canReadReviewArtifacts(resource.data.projectId, resource.data.versionId)
         || (isSignedIn() && resource.data.createdBy == request.auth.uid)
         || (isSignedIn()
           && request.query != null
