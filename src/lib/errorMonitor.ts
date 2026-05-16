@@ -1,5 +1,9 @@
 import { auth } from './firebase'
 
+import { getRecentDiagnostics } from './diagnostics/clientDiagnostics'
+import { getRouteDiagnosticContext } from './diagnostics/routeContext'
+import { getActiveFirestoreListeners } from './diagnostics/firestoreListeners'    
+
 export type MonitorSource = 'firestore' | 'storage' | 'auth' | 'ui' | 'network' | 'unknown'
 type MonitorSeverity = 'low' | 'medium' | 'high'
 type MonitorCategory = 'permission' | 'runtime' | 'network' | 'auth' | 'firebase' | 'unknown'
@@ -9,6 +13,11 @@ type MonitorContext = {
   pageUrl?: string
   userId?: string
   userEmail?: string | null
+  projectId?: string
+  docId?: string
+  versionId?: string
+  threadId?: string
+  focus?: string
 }
 
 type ReportAbnormalErrorInput = {
@@ -28,6 +37,7 @@ type ReportAbnormalErrorInput = {
   pageUrl?: string
   userId?: string
   userEmail?: string | null
+  focus?: string
 }
 
 type ReportUserVisibleErrorInput = {
@@ -47,6 +57,7 @@ type ReportUserVisibleErrorInput = {
   pageUrl?: string
   userId?: string
   userEmail?: string | null
+  focus?: string
 }
 
 type NormalizedError = {
@@ -85,6 +96,11 @@ const monitorContext: Required<MonitorContext> = {
   pageUrl: '',
   userId: '',
   userEmail: '',
+  projectId: '',
+  docId: '',
+  versionId: '',
+  threadId: '',
+  focus: '',
 }
 
 const NORMAL_MESSAGE_PATTERNS = [
@@ -374,7 +390,7 @@ const buildPageUrl = (pageUrl?: string): string => {
 }
 
 const sendMonitorPayload = async (
-  payload: Record<string, string>,
+  payload: Record<string, unknown>,
 ): Promise<boolean> => {
   const user = auth.currentUser
   if( !user ) {
@@ -431,6 +447,11 @@ export const setErrorMonitorContext = (nextContext: MonitorContext): void => {
   monitorContext.pageUrl = nextContext.pageUrl ?? monitorContext.pageUrl
   monitorContext.userId = nextContext.userId ?? monitorContext.userId
   monitorContext.userEmail = nextContext.userEmail ?? monitorContext.userEmail
+  monitorContext.projectId = nextContext.projectId ?? monitorContext.projectId
+  monitorContext.docId = nextContext.docId ?? monitorContext.docId
+  monitorContext.versionId = nextContext.versionId ?? monitorContext.versionId
+  monitorContext.threadId = nextContext.threadId ?? monitorContext.threadId
+  monitorContext.focus = nextContext.focus ?? monitorContext.focus
 }
 
 export const reportAbnormalError = async (input: ReportAbnormalErrorInput): Promise<boolean> => {
@@ -450,6 +471,12 @@ export const reportAbnormalError = async (input: ReportAbnormalErrorInput): Prom
   }
 
   const route = buildRoute( input.route || monitorContext.route )
+  const routeContext = getRouteDiagnosticContext()
+  const resolvedProjectId = input.projectId || monitorContext.projectId || routeContext.urlProjectId
+  const resolvedDocId = input.docId || monitorContext.docId || routeContext.urlDocumentId
+  const resolvedVersionId = input.versionId || monitorContext.versionId || routeContext.urlVersionId
+  const resolvedThreadId = input.threadId || monitorContext.threadId || routeContext.urlThreadId
+  const resolvedFocus = input.focus || monitorContext.focus || routeContext.urlFocus
   const fingerprint = buildFingerprint( classified, route, action )
   if( shouldSkipLocalDuplicate( fingerprint ) ) {
     return false
@@ -471,10 +498,15 @@ export const reportAbnormalError = async (input: ReportAbnormalErrorInput): Prom
     action,
     actorId: input.userId ?? monitorContext.userId ?? user?.uid ?? '',
     actorEmail: input.userEmail ?? monitorContext.userEmail ?? user?.email ?? '',
-    projectId: input.projectId ?? '',
-    docId: input.docId ?? '',
-    versionId: input.versionId ?? '',
-    threadId: input.threadId ?? '',
+    projectId: resolvedProjectId,
+    docId: resolvedDocId,
+    versionId: resolvedVersionId,
+    threadId: resolvedThreadId,
+    focus: resolvedFocus,
+    online: routeContext.online,
+    visibilityState: routeContext.visibilityState,
+    activeFirestoreListeners: getActiveFirestoreListeners(),
+    recentDiagnostics: getRecentDiagnostics(),
     pageLabel: trimMultiline( input.pageLabel ?? '', 200 ),
     projectLabel: trimMultiline( input.projectLabel ?? '', 200 ),
     docLabel: trimMultiline( input.docLabel ?? '', 200 ),
@@ -496,6 +528,12 @@ export const reportUserVisibleError = async (input: ReportUserVisibleErrorInput)
   }
   const source = input.source ?? 'ui'
   const route = buildRoute( input.route || monitorContext.route )
+  const routeContext = getRouteDiagnosticContext()
+  const resolvedProjectId = input.projectId || monitorContext.projectId || routeContext.urlProjectId
+  const resolvedDocId = input.docId || monitorContext.docId || routeContext.urlDocumentId
+  const resolvedVersionId = input.versionId || monitorContext.versionId || routeContext.urlVersionId
+  const resolvedThreadId = input.threadId || monitorContext.threadId || routeContext.urlThreadId
+  const resolvedFocus = input.focus || monitorContext.focus || routeContext.urlFocus
   const user = auth.currentUser
   const messageRaw = trimMultiline( input.message || 'User-visible error reported', MAX_MESSAGE_LENGTH )
   const messageNormalized = normalizeMessageForFingerprint( messageRaw )
@@ -515,10 +553,15 @@ export const reportUserVisibleError = async (input: ReportUserVisibleErrorInput)
     action: trimAndCollapseWhitespace( input.action ?? 'ui.reportVisibleError', 120 ),
     actorId: input.userId ?? monitorContext.userId ?? user?.uid ?? '',
     actorEmail: input.userEmail ?? monitorContext.userEmail ?? user?.email ?? '',
-    projectId: input.projectId ?? '',
-    docId: input.docId ?? '',
-    versionId: input.versionId ?? '',
-    threadId: input.threadId ?? '',
+    projectId: resolvedProjectId,
+    docId: resolvedDocId,
+    versionId: resolvedVersionId,
+    threadId: resolvedThreadId,
+    focus: resolvedFocus,
+    online: routeContext.online,
+    visibilityState: routeContext.visibilityState,
+    activeFirestoreListeners: getActiveFirestoreListeners(),
+    recentDiagnostics: getRecentDiagnostics(),
     userAgent: trimAndCollapseWhitespace( window.navigator.userAgent ?? '', 400 ),
     appBuild: APP_BUILD,
     clientTimestamp: new Date().toISOString(),

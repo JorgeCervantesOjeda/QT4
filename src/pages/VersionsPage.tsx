@@ -34,6 +34,7 @@ import {
 import { GiphyInline } from '../giphy/GiphyProvider'
 import { logAudit } from '../lib/audit'
 import { reportAbnormalError } from '../lib/errorMonitor'
+import { trackFirestoreListener } from '../lib/diagnostics/firestoreListeners'
 import { buildVersionsErrorChecklist } from '../lib/errorChecklistBuilders'
 import {
   buildFileKey,
@@ -1672,9 +1673,20 @@ function VersionsPage() {
     if( !docId ) {
       return
     }
+    const listener = trackFirestoreListener( {
+      label: 'versions.document',
+      projectId: projectIdFromQuery,
+      documentId: docId,
+      queryDescription: `documents/${docId}`,
+    } )
     const unsubscribe = onSnapshot(
       doc( db, 'documents', docId ),
       ( snapshot ) => {
+        listener.recordSnapshot( {
+          exists: snapshot.exists(),
+          fromCache: snapshot.metadata.fromCache,
+          hasPendingWrites: snapshot.metadata.hasPendingWrites,
+        } )
         if( !snapshot.exists() ) {
           setDocumentData( null )
           setVersions( [] )
@@ -1723,11 +1735,13 @@ function VersionsPage() {
         }
       },
       ( err ) => {
+        listener.recordError( err )
         const message = err instanceof Error ? err.message : 'Unexpected error'
         setError( `Document failed to load: ${message}` )
       },
     )
     return () => {
+      listener.dispose()
       unsubscribe()
     }
   }, [ docId, projectIdFromQuery ] )
@@ -1737,17 +1751,29 @@ function VersionsPage() {
       setIsAdmin( false )
       return
     }
+    const listener = trackFirestoreListener( {
+      label: 'versions.userProfile',
+      documentId: docId ?? '',
+      queryDescription: `userProfiles/${userId}`,
+    } )
     const unsubscribe = onSnapshot(
       doc( db, 'userProfiles', userId ),
       ( snapshot ) => {
+        listener.recordSnapshot( {
+          exists: snapshot.exists(),
+          fromCache: snapshot.metadata.fromCache,
+          hasPendingWrites: snapshot.metadata.hasPendingWrites,
+        } )
         const data = snapshot.data()
         setIsAdmin( Boolean( data?.isAdmin ) )
       },
-      () => {
+      ( err ) => {
+        listener.recordError( err )
         setIsAdmin( false )
       },
     )
     return () => {
+      listener.dispose()
       unsubscribe()
     }
   }, [ userId ] )
@@ -1758,17 +1784,30 @@ function VersionsPage() {
       setIsLeader( false )
       return
     }
+    const listener = trackFirestoreListener( {
+      label: 'versions.projectMemberRole',
+      projectId: activeProjectId,
+      documentId: docId ?? '',
+      queryDescription: `projectMembers/${activeProjectId}_${userId}`,
+    } )
     const unsubscribe = onSnapshot(
       doc( db, 'projectMembers', `${activeProjectId}_${userId}` ),
       ( snapshot ) => {
+        listener.recordSnapshot( {
+          exists: snapshot.exists(),
+          fromCache: snapshot.metadata.fromCache,
+          hasPendingWrites: snapshot.metadata.hasPendingWrites,
+        } )
         const role = ( snapshot.data()?.role as string | undefined ) ?? ''
         setIsLeader( role === 'leader' )
       },
-      () => {
+      ( err ) => {
+        listener.recordError( err )
         setIsLeader( false )
       },
     )
     return () => {
+      listener.dispose()
       unsubscribe()
     }
   }, [ documentData?.projectId, projectIdFromQuery, userId ] )
@@ -1777,6 +1816,12 @@ function VersionsPage() {
     setUploadStatus( 'idle' )
     setUploadMessage( '' )
   }, [ selectedVersionId ] )
+
+  const reportVersionsErrorRef = useRef( reportVersionsError )
+
+  useEffect( () => {
+    reportVersionsErrorRef.current = reportVersionsError
+  }, [ reportVersionsError ] )
 
   useEffect( () => {
     if( !selectedVersion?.id ) {
@@ -1812,6 +1857,14 @@ function VersionsPage() {
       lastAppliedThreadQueryRef.current = null
     }
     setIsLoadingThreads( true )
+    const threadsListener = trackFirestoreListener( {
+      label: 'versions.threads',
+      projectId,
+      documentId: docId ?? '',
+      versionId: selectedVersion.id,
+      focus: 'issues',
+      queryDescription: `threads where projectId=${projectId} versionId=${selectedVersion.id}`,
+    } )
     const threadsUnsub = onSnapshot(
       query(
         collection( db, 'threads' ),
@@ -1819,6 +1872,11 @@ function VersionsPage() {
         where( 'versionId', '==', selectedVersion.id ),
       ),
       ( snapshot ) => {
+        threadsListener.recordSnapshot( {
+          size: snapshot.docs.length,
+          fromCache: snapshot.metadata.fromCache,
+          hasPendingWrites: snapshot.metadata.hasPendingWrites,
+        } )
         const nextThreads = snapshot.docs.map( ( threadSnapshot ) => {
           const data = threadSnapshot.data()
           return {
@@ -1840,12 +1898,22 @@ function VersionsPage() {
         setIsLoadingThreads( false )
       },
       ( err ) => {
+        threadsListener.recordError( err )
         const message = err instanceof Error ? err.message : 'Unexpected error'
-        reportVersionsError( err, 'versions.subscribeThreads', 'firestore' )
+        reportVersionsErrorRef.current( err, 'versions.subscribeThreads', 'firestore' )
         setError( `Issues failed to load: ${message}` )
         setIsLoadingThreads( false )
       },
     )
+
+    const commentsListener = trackFirestoreListener( {
+      label: 'versions.comments',
+      projectId,
+      documentId: docId ?? '',
+      versionId: selectedVersion.id,
+      focus: 'issues',
+      queryDescription: `comments where projectId=${projectId} versionId=${selectedVersion.id}`,
+    } )
     const commentsUnsub = onSnapshot(
       query(
         collection( db, 'comments' ),
@@ -1854,6 +1922,11 @@ function VersionsPage() {
         orderBy( 'createdAt', 'asc' ),
       ),
       ( snapshot ) => {
+        commentsListener.recordSnapshot( {
+          size: snapshot.docs.length,
+          fromCache: snapshot.metadata.fromCache,
+          hasPendingWrites: snapshot.metadata.hasPendingWrites,
+        } )
         const nextComments: Record<string, CommentSummary[]> = {}
         snapshot.docs.forEach( ( commentSnapshot ) => {
           const data = commentSnapshot.data()
@@ -1875,6 +1948,7 @@ function VersionsPage() {
         )
       },
       ( err ) => {
+        commentsListener.recordError( err )
         if( isIndexBuildingFirestoreError( err ) ) {
           setIsLoadingThreads( true )
           setError( null )
@@ -1888,11 +1962,13 @@ function VersionsPage() {
           return
         }
         const message = err instanceof Error ? err.message : 'Unexpected error'
-        reportVersionsError( err, 'versions.subscribeComments', 'firestore' )
+        reportVersionsErrorRef.current( err, 'versions.subscribeComments', 'firestore' )
         setError( `Comments failed to load: ${message}` )
       },
     )
     return () => {
+      threadsListener.dispose()
+      commentsListener.dispose()
       threadsUnsub()
       commentsUnsub()
       if( commentsRetryTimeoutRef.current !== null ) {
@@ -1900,8 +1976,8 @@ function VersionsPage() {
         commentsRetryTimeoutRef.current = null
       }
     }
-  }, [ selectedVersion?.id, threadIdFromQuery, reportVersionsError, commentsRetryToken ] )
-
+  }, [ selectedVersion?.id, projectId, docId, threadIdFromQuery, commentsRetryToken ] )
+  
   useEffect( () => {
     if( !threadIdFromQuery ) {
       lastAppliedThreadQueryRef.current = null
@@ -2104,14 +2180,14 @@ function VersionsPage() {
               docId: docId ?? null,
               hasFile: selectedVersion?.hasFile ?? false,
             } )
-            reportVersionsError( err, 'versions.loadFileMetadata', 'firestore' )
+            reportVersionsErrorRef.current( err, 'versions.loadFileMetadata', 'firestore' )
             setSelectedFileRef( null )
             setFileMetadataNotice( 'You do not have permission to read linked file metadata for this version.' )
             return
           }
           setFileMetadataNotice( null )
           const message = err instanceof Error ? err.message : 'Unexpected error'
-          reportVersionsError( err, 'versions.loadFileMetadata', 'firestore' )
+          reportVersionsErrorRef.current( err, 'versions.loadFileMetadata', 'firestore' )
           setError( `File metadata failed to load: ${message}` )
         }
       }
