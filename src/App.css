@@ -110,6 +110,22 @@
   font-weight: 600;
 }
 
+.brand-support-row {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.brand-support-copy {
+  margin: 0;
+  max-width: 34rem;
+  color: rgba(36, 19, 15, 0.9);
+  font-weight: 600;
+  text-shadow: 0 1px 6px rgba(255, 255, 255, 0.5);
+}
+
 .brand-session {
   margin: 8px 0 0;
   color: #ffffff;
@@ -144,6 +160,13 @@
 
 .brand-session-button:hover {
   box-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
+}
+
+.brand-help-button {
+  color: var(--qt-ink-strong);
+  background: rgba(255, 253, 249, 0.9);
+  border-color: rgba(36, 19, 15, 0.18);
+  text-shadow: none;
 }
 
 .back-stack {

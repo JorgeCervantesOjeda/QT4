@@ -3,6 +3,8 @@ import { doc, getDoc } from 'firebase/firestore'
 import { useAuth } from '../auth/useAuth'
 import { db } from '../lib/firebase'
 
+const NOTEBOOKLM_HELP_URL = 'https://notebooklm.google.com/notebook/a602cd8e-4c62-4baa-b559-53ae95facaef'
+
 type AppBrandProps = {
   pageTitle: string
 }
@@ -49,6 +51,20 @@ function AppBrand( { pageTitle }: AppBrandProps ) {
           </a>
         </h1>
         <p className="brand-page-title">{pageTitle}</p>
+        <div className="brand-support-row">
+          <a
+            href={NOTEBOOKLM_HELP_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="brand-session-button brand-help-button"
+            aria-label="Open the QualiTeam help assistant"
+          >
+            Help
+          </a>
+          <p className="brand-support-copy">
+            Ask questions about how to use QualiTeam.
+          </p>
+        </div>
         {sessionLabel ? (
           <div className="brand-session-row">
             <p className="brand-session">
