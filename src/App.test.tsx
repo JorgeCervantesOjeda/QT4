@@ -53,7 +53,7 @@ vi.mock( './pages/AdminAuditPage', () => ( {
   default: () => <div>Admin Audit Page</div>,
 } ) )
 
-import App from './App'
+import App, { loadRouteWithChunkRetry } from './App'
 
 describe( 'App routes', () => {
   beforeEach( () => {
@@ -100,5 +100,46 @@ describe( 'App routes', () => {
     await waitFor( () => {
       expect( window.location.pathname ).toBe( '/login' )
     } )
+  } )
+
+  it( 'reloads once when a route chunk cannot be fetched', async () => {
+    const reload = vi.fn()
+    const loading = loadRouteWithChunkRetry(
+      () => Promise.reject( new TypeError( 'Failed to fetch dynamically imported module: https://example.test/assets/DashboardPage.js' ) ),
+      {
+        route: '/app',
+        buildId: 'test-build',
+        storage: window.sessionStorage,
+        reload,
+      },
+    )
+
+    const result = await Promise.race( [
+      loading.then( () => 'resolved', () => 'rejected' ),
+      new Promise<string>( (resolve) => {
+        window.setTimeout( () => resolve( 'pending' ), 0 )
+      } ),
+    ] )
+
+    expect( reload ).toHaveBeenCalledOnce()
+    expect( window.sessionStorage.getItem( 'qt4:chunk-reload:test-build:/app' ) ).toBe( '1' )
+    expect( result ).toBe( 'pending' )
+  } )
+
+  it( 'does not reload repeatedly when the same route chunk keeps failing', async () => {
+    const reload = vi.fn()
+    window.sessionStorage.setItem( 'qt4:chunk-reload:test-build:/app', '1' )
+
+    await expect( loadRouteWithChunkRetry(
+      () => Promise.reject( new TypeError( 'Failed to fetch dynamically imported module: https://example.test/assets/DashboardPage.js' ) ),
+      {
+        route: '/app',
+        buildId: 'test-build',
+        storage: window.sessionStorage,
+        reload,
+      },
+    ) ).rejects.toThrow( 'Failed to fetch dynamically imported module' )
+
+    expect( reload ).not.toHaveBeenCalled()
   } )
 } )
