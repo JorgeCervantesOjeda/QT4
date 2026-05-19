@@ -577,7 +577,8 @@ service cloud.firestore {
     }
 
     match /files/{fileId} {
-      allow read: if canReadFileMetadata(resource.data);
+      allow get: if canReadFileMetadata(resource.data) || isSignedIn();
+      allow list: if canReadFileMetadata(resource.data);
       allow create: if (
           isProjectMember(request.resource.data.projectId)
           || isAdmin()
