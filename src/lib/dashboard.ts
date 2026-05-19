@@ -465,7 +465,7 @@ export const buildDashboardTasks = async (
   const repliedThreadTasks: ReplyTask[] = []
   const replyThreadById = new Map<string, ThreadRecord>()
   const replyTaskThreadIds = new Set<string>()
-  if( needsReply ) {
+  if( needsReply && userCommentsSnapshot ) {
     try {
       const threads = openReviewThreads
       for( const thread of threads ) {
