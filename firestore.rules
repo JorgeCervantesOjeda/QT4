@@ -724,7 +724,8 @@ service cloud.firestore {
     }
 
     match /threads/{threadId} {
-      allow read: if canReviewAccess(resource.data.projectId, resource.data.versionId)
+      allow read: if isProjectMember(resource.data.projectId)
+        || canReviewAccess(resource.data.projectId, resource.data.versionId)
         || canReviewAccessByVersionId(resource.data.versionId);
       allow create: if canReviewContribute(request.resource.data.projectId, request.resource.data.versionId)
         && request.resource.data.status == 'open'
@@ -764,7 +765,8 @@ service cloud.firestore {
     }
 
     match /comments/{commentId} {
-      allow read: if canReviewAccess(resource.data.projectId, resource.data.versionId)
+      allow read: if isProjectMember(resource.data.projectId)
+        || canReviewAccess(resource.data.projectId, resource.data.versionId)
         || canReviewAccessByVersionId(resource.data.versionId)
         || (isSignedIn() && resource.data.createdBy == request.auth.uid)
         || (isSignedIn()
