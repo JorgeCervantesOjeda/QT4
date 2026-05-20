@@ -50,6 +50,16 @@ type ProjectSummary = {
 
 type DocumentFilter = 'all' | 'mine'
 
+const FIRESTORE_IN_FILTER_LIMIT = 10
+
+const chunkValues = <T,>(values: T[], size: number): T[][] => {
+  const chunks: T[][] = []
+  for( let index = 0; index < values.length; index += size ) {
+    chunks.push( values.slice( index, index + size ) )
+  }
+  return chunks
+}
+
 const pickLatestDate = ( ...values: Array<Date | null | undefined> ): Date | null => {
   let latest: Date | null = null
   for( const value of values ) {
@@ -387,8 +397,14 @@ function ProjectDocumentsPage() {
       } )
 
       step = 'latest-versions'
-      const versionsSnapshot = await getDocs(
-        query( collection( db, 'versions' ), where( 'projectId', '==', projectId ) ),
+      const documentIdChunks = chunkValues(
+        baseDocuments.map( ( documentItem ) => documentItem.id ).filter( Boolean ),
+        FIRESTORE_IN_FILTER_LIMIT,
+      )
+      const versionSnapshots = await Promise.all(
+        documentIdChunks.map( ( documentIdChunk ) =>
+          getDocs( query( collection( db, 'versions' ), where( 'docId', 'in', documentIdChunk ) ) ),
+        ),
       )
       const versionSummaryByDocId = new Map<string, {
         latestNumber: number
@@ -400,39 +416,41 @@ function ProjectDocumentsPage() {
         latestReviewerIds: string[]
         earliestVersionCreatedAt: Date | null
       }>()
-      versionsSnapshot.docs.forEach( ( versionSnapshot ) => {
-        const versionData = versionSnapshot.data()
-        const versionDocId = ( versionData.docId as string | undefined ) ?? ''
-        if( !versionDocId ) {
-          return
-        }
-        const versionNumber = Number( versionData.number ?? 0 )
-        const versionCreatedAt = toSnapshotDate( versionData.createdAt )
-        const versionActivityAt = resolveVersionDocumentActivityAt( versionData )
-        const current = versionSummaryByDocId.get( versionDocId )
+      versionSnapshots.forEach( ( versionsSnapshot ) => {
+        versionsSnapshot.docs.forEach( ( versionSnapshot ) => {
+          const versionData = versionSnapshot.data()
+          const versionDocId = ( versionData.docId as string | undefined ) ?? ''
+          if( !versionDocId ) {
+            return
+          }
+          const versionNumber = Number( versionData.number ?? 0 )
+          const versionCreatedAt = toSnapshotDate( versionData.createdAt )
+          const versionActivityAt = resolveVersionDocumentActivityAt( versionData )
+          const current = versionSummaryByDocId.get( versionDocId )
 
-        if( !current || versionNumber >= current.latestNumber ) {
-          versionSummaryByDocId.set( versionDocId, {
-            latestNumber: versionNumber,
-            latestStatus: ( versionData.status as string | undefined ) ?? 'In Creation',
-            latestReviewEndAt: toSnapshotDate( versionData.reviewEndAt ),
-            latestVersionCreatedAt: versionCreatedAt,
-            latestVersionActivityAt: versionActivityAt,
-            latestCreatedBy: ( versionData.createdBy as string | undefined ) ?? '',
-            latestReviewerIds: ( versionData.reviewerIds as string[] | undefined ) ?? [],
-            earliestVersionCreatedAt:
-              current?.earliestVersionCreatedAt && versionCreatedAt
-                ? new Date( Math.min( current.earliestVersionCreatedAt.getTime(), versionCreatedAt.getTime() ) )
-                : current?.earliestVersionCreatedAt ?? versionCreatedAt,
-          } )
-          return
-        }
+          if( !current || versionNumber >= current.latestNumber ) {
+            versionSummaryByDocId.set( versionDocId, {
+              latestNumber: versionNumber,
+              latestStatus: ( versionData.status as string | undefined ) ?? 'In Creation',
+              latestReviewEndAt: toSnapshotDate( versionData.reviewEndAt ),
+              latestVersionCreatedAt: versionCreatedAt,
+              latestVersionActivityAt: versionActivityAt,
+              latestCreatedBy: ( versionData.createdBy as string | undefined ) ?? '',
+              latestReviewerIds: ( versionData.reviewerIds as string[] | undefined ) ?? [],
+              earliestVersionCreatedAt:
+                current?.earliestVersionCreatedAt && versionCreatedAt
+                  ? new Date( Math.min( current.earliestVersionCreatedAt.getTime(), versionCreatedAt.getTime() ) )
+                  : current?.earliestVersionCreatedAt ?? versionCreatedAt,
+            } )
+            return
+          }
 
-        if( versionCreatedAt ) {
-          current.earliestVersionCreatedAt = current.earliestVersionCreatedAt
-            ? new Date( Math.min( current.earliestVersionCreatedAt.getTime(), versionCreatedAt.getTime() ) )
-            : versionCreatedAt
-        }
+          if( versionCreatedAt ) {
+            current.earliestVersionCreatedAt = current.earliestVersionCreatedAt
+              ? new Date( Math.min( current.earliestVersionCreatedAt.getTime(), versionCreatedAt.getTime() ) )
+              : versionCreatedAt
+          }
+        } )
       } )
 
       const latestVersions = baseDocuments.map( ( documentItem ) => {

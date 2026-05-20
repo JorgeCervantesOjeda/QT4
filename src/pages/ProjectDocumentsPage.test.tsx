@@ -188,7 +188,8 @@ const primeDocumentMocks = () => {
 
   getDocsMock.mockImplementation( async ( queryArg: unknown ) => {
     const collectionName = getCollectionName( queryArg )
-    if( collectionName === 'versions' && getWhereValue( queryArg, 'projectId' ) === 'project-1' ) {
+    const requestedDocIds = getWhereValue( queryArg, 'docId' )
+    if( collectionName === 'versions' && Array.isArray( requestedDocIds ) && requestedDocIds.includes( 'document-1' ) ) {
       return createQuerySnapshot( [
         {
           id: 'version-1',
