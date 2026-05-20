@@ -1899,7 +1899,7 @@ function VersionsPage() {
         commentsRetryTimeoutRef.current = null
       }
     }
-  }, [ selectedVersion?.id, threadIdFromQuery, reportVersionsError, commentsRetryToken ] )
+  }, [ selectedVersion?.id, projectId, threadIdFromQuery, reportVersionsError, commentsRetryToken ] )
 
   useEffect( () => {
     if( !threadIdFromQuery ) {
@@ -2111,7 +2111,14 @@ function VersionsPage() {
     return () => {
       isActive = false
     }
-  }, [ selectedVersion?.fileRefId, reportVersionsError ] )
+  }, [
+    selectedVersion?.fileRefId,
+    selectedVersion?.id,
+    selectedVersion?.hasFile,
+    projectId,
+    docId,
+    reportVersionsError,
+  ] )
 
   useEffect( () => {
     const activeProjectId = documentData?.projectId ?? projectIdFromQuery

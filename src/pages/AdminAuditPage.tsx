@@ -234,6 +234,30 @@ function AdminAuditPage() {
     networkAvailable: typeof navigator !== 'undefined' ? navigator.onLine : true,
   } ), [ error, userId, isAdmin, selectedUserId, startDate, endDate ] )
 
+  const formatActorLabelByIdentity = useCallback( (actorId?: string, actorEmail?: string | null) => {
+    if( !actorId && !actorEmail ) {
+      return 'Unknown user'
+    }
+    const entry = actorId ? userDirectoryById[actorId] : undefined
+    const displayName = entry?.displayName ?? ''
+    const email = entry?.email ?? actorEmail ?? ''
+    if( displayName && email ) {
+      return `${displayName} (${email})`
+    }
+    if( displayName ) {
+      return displayName
+    }
+    if( email ) {
+      return email
+    }
+    return 'Unknown user'
+  }, [ userDirectoryById ] )
+
+  const formatActorLabel = useCallback(
+    (log: AuditLogEntry) => formatActorLabelByIdentity( log.actorId, log.actorEmail ),
+    [ formatActorLabelByIdentity ],
+  )
+
   const logTableRows = useMemo(
     () =>
       logs.map( ( log ) => ( {
@@ -241,7 +265,7 @@ function AdminAuditPage() {
         createdAtMs: log.createdAt ? log.createdAt.getTime() : 0,
         actorLabel: formatActorLabel( log ),
       } ) ),
-    [ logs, userDirectoryById ],
+    [ logs, formatActorLabel ],
   )
 
   const calendarEvents = useMemo<AuditCalendarEvent[]>(
@@ -261,7 +285,7 @@ function AdminAuditPage() {
             resource: log,
           }
         } ),
-    [ logs, userDirectoryById, isAllUsersSelected ],
+    [ logs, formatActorLabel, isAllUsersSelected ],
   )
 
   const visibleCalendarEvents = useMemo<AuditCalendarEvent[]>( () => {
@@ -417,7 +441,7 @@ function AdminAuditPage() {
         completedAtMs: entry.completedAt ? entry.completedAt.getTime() : 0,
         actorLabel: formatActorLabelByIdentity( entry.actorId, entry.actorEmail ),
       } ) ),
-    [ taskDurations, userDirectoryById ],
+    [ taskDurations, formatActorLabelByIdentity ],
   )
 
   const taskColumns = useMemo<ColumnDef<TaskDurationEntry & { appearedAtMs: number; completedAtMs: number; actorLabel: string }>[]>( 
@@ -539,29 +563,6 @@ function AdminAuditPage() {
       return `Comment: ${trimmed}`
     }
     return `Comment: ${trimmed.slice( 0, 80 )}...`
-  }
-
-  function formatActorLabelByIdentity( actorId?: string, actorEmail?: string | null ) {
-    if( !actorId && !actorEmail ) {
-      return 'Unknown user'
-    }
-    const entry = actorId ? userDirectoryById[actorId] : undefined
-    const displayName = entry?.displayName ?? ''
-    const email = entry?.email ?? actorEmail ?? ''
-    if( displayName && email ) {
-      return `${displayName} (${email})`
-    }
-    if( displayName ) {
-      return displayName
-    }
-    if( email ) {
-      return email
-    }
-    return 'Unknown user'
-  }
-
-  function formatActorLabel( log: AuditLogEntry ) {
-    return formatActorLabelByIdentity( log.actorId, log.actorEmail )
   }
 
   const formatCalendarLogSummary = (log: AuditLogEntry) => {
