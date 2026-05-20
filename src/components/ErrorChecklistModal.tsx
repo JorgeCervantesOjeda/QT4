@@ -120,6 +120,16 @@ const buildChecklistSummary = (checklist: ChecklistItem[]): string[] => checklis
   return []
 } )
 
+const isReportableUserVisibleError = (error: string, requestedAction: string | null): boolean => {
+  if( requestedAction === 'create_issue' ) {
+    return ![
+      'Select a version to create an issue.',
+      'To create an issue, the version must be in active review time or grace, you must be the author, leader, or reviewer, and the title cannot be empty.',
+    ].includes( error )
+  }
+  return true
+}
+
 const resolveFallbackReportContext = (requestedAction: string | null): ResolvedReportContext => {
   if( typeof window === 'undefined' ) {
     return {
@@ -161,11 +171,12 @@ const resolveFallbackReportContext = (requestedAction: string | null): ResolvedR
 
 function ErrorChecklistModal( { title = 'Action blocked', error, checklist, onClose, reportContext = null }: ErrorChecklistModalProps ) {
   const requestedAction = resolveRequestedAction( error )
+  const canReportError = isReportableUserVisibleError( error, requestedAction )
   const [isReporting, setIsReporting] = useState( false )
   const [reportFeedback, setReportFeedback] = useState<string | null>( null )
   const [reportSent, setReportSent] = useState( false )
   const handleReport = async () => {
-    if( isReporting || reportSent ) {
+    if( !canReportError || isReporting || reportSent ) {
       return
     }
     setIsReporting( true )
@@ -217,9 +228,11 @@ function ErrorChecklistModal( { title = 'Action blocked', error, checklist, onCl
             <GiphyInline reason="dislike_rejected_nope" mode="inline" showLabel={false} />
             {requestedAction ? <p className="muted">Requested action: {requestedAction}</p> : null}
             <p className="error">{error}</p>
-            <div className="stack">
-              <p className="muted">Do you want to report this message to admin?</p>
-            </div>
+            {canReportError ? (
+              <div className="stack">
+                <p className="muted">Do you want to report this message to admin?</p>
+              </div>
+            ) : null}
             <ul className="checklist-list">
               {checklist.map( ( item, index ) => {
                 const showAnd = index < checklist.length - 1
@@ -275,15 +288,19 @@ function ErrorChecklistModal( { title = 'Action blocked', error, checklist, onCl
             <h4>{title}</h4>
             <GiphyInline reason="dislike_rejected_nope" mode="inline" showLabel={false} />
             <p className="error">{error}</p>
-            <div className="stack">
-              <p className="muted">Do you want to report this message to admin?</p>
-            </div>
+            {canReportError ? (
+              <div className="stack">
+                <p className="muted">Do you want to report this message to admin?</p>
+              </div>
+            ) : null}
           </section>
         )}
         <div className="actions">
-          <button type="button" className="ghost" onClick={() => void handleReport()} disabled={isReporting || reportSent}>
-            {isReporting ? 'Reporting...' : reportSent ? 'Reported' : 'Report to admin'}
-          </button>
+          {canReportError ? (
+            <button type="button" className="ghost" onClick={() => void handleReport()} disabled={isReporting || reportSent}>
+              {isReporting ? 'Reporting...' : reportSent ? 'Reported' : 'Report to admin'}
+            </button>
+          ) : null}
           <button type="button" onClick={onClose}>
             Close
           </button>
