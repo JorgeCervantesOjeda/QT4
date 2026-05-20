@@ -400,7 +400,13 @@ function ProjectDocumentsPage() {
       const versionSnapshotResults = await Promise.allSettled(
         baseDocuments.map( async ( documentItem ) => ( {
           documentId: documentItem.id,
-          snapshot: await getDocs( query( collection( db, 'versions' ), where( 'docId', '==', documentItem.id ) ) ),
+          snapshot: await getDocs(
+            query(
+              collection( db, 'versions' ),
+              where( 'projectId', '==', projectId ),
+              where( 'docId', '==', documentItem.id ),
+            ),
+          ),
         } ) ),
       )
       const versionSummaryByDocId = new Map<string, {
