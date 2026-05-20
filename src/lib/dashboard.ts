@@ -15,6 +15,7 @@ import {
 import type { DocumentData, DocumentSnapshot, QueryConstraint, QuerySnapshot } from 'firebase/firestore'
 import { versionNumberToString } from '../domain/types'
 import { logAudit } from './audit'
+import { reportAbnormalError } from './errorMonitor'
 import { db } from './firebase'
 import { canAddCommentInWindow } from './reviewWindow'
 import { consumeInjectedTestFault } from './testFaults'
@@ -44,6 +45,14 @@ type BuildDashboardTasksOptions = {
 type RefreshDashboardOptions = {
   types?: DashboardTaskType[]
   onProgress?: (progress: DashboardBuildProgress) => void
+}
+
+type DashboardReadFallbackContext = {
+  action: string
+  impact: string
+  path?: string
+  queryLabel?: string
+  projectId?: string
 }
 
 export type DashboardBuildProgress = {
@@ -123,8 +132,29 @@ const pruneUndefinedFields = <T extends Record<string, unknown>>(value: T): T =>
     Object.entries( value ).filter( ( [ , entryValue ] ) => entryValue !== undefined ),
   ) as T
 
+const reportDashboardReadFallback = (
+  error: unknown,
+  context: DashboardReadFallbackContext,
+): void => {
+  console.warn( 'Dashboard read fallback:', {
+    action: context.action,
+    path: context.path ?? '',
+    queryLabel: context.queryLabel ?? '',
+    projectId: context.projectId ?? '',
+    impact: context.impact,
+    reason: error,
+  } )
+  void reportAbnormalError( {
+    error,
+    source: 'firestore',
+    action: context.action,
+    projectId: context.projectId,
+  } )
+}
+
 const safeGetDoc = async (
   path: string,
+  context: DashboardReadFallbackContext,
 ): Promise<DocumentSnapshot<DocumentData> | null> => {
   try {
     const [ collectionId, documentId, ...rest ] = path.split( '/' ).filter( Boolean )
@@ -132,17 +162,20 @@ const safeGetDoc = async (
       return null
     }
     return await getDoc( doc( db, collectionId, documentId, ...rest ) )
-  } catch {
+  } catch( err ) {
+    reportDashboardReadFallback( err, { ...context, path } )
     return null
   }
 }
 
 const safeGetDocs = async (
   loader: () => Promise<QuerySnapshot<DocumentData>>,
+  context: DashboardReadFallbackContext,
 ): Promise<QuerySnapshot<DocumentData> | null> => {
   try {
     return await loader()
-  } catch {
+  } catch( err ) {
+    reportDashboardReadFallback( err, context )
     return null
   }
 }
@@ -291,7 +324,14 @@ export const buildDashboardTasks = async (
   const projectIds = Object.keys( projectRoleById )
   const uniqueProjectIds = Array.from( new Set( projectIds ) )
   const projectDocs = await Promise.all(
-    uniqueProjectIds.map( ( projectId ) => safeGetDoc( `projects/${projectId}` ) ),
+    uniqueProjectIds.map( ( projectId ) => safeGetDoc(
+      `projects/${projectId}`,
+      {
+        action: 'dashboard.loadProjectLabel',
+        projectId,
+        impact: 'The dashboard task may show a generic project label.',
+      },
+    ) ),
   )
   const projectNameById = projectDocs.reduce<Record<string, string>>( ( acc, snapshot ) => {
     if( snapshot?.exists() ) {
@@ -355,6 +395,11 @@ export const buildDashboardTasks = async (
           where( 'createdBy', '==', userId ),
         ),
       ),
+    {
+      action: 'dashboard.loadUserComments',
+      queryLabel: 'comments by current user',
+      impact: 'Reply and reviewer task detection may be incomplete.',
+    },
     )
     : null
 
@@ -446,6 +491,11 @@ export const buildDashboardTasks = async (
                 where( 'status', '==', 'open' ),
               ),
             ),
+          {
+            action: 'dashboard.loadReviewThreads',
+            queryLabel: `open threads for ${chunk.length} version(s)`,
+            impact: 'Reviewer and reply tasks may be incomplete.',
+          },
           ),
         ),
       )
@@ -535,8 +585,11 @@ export const buildDashboardTasks = async (
           }
         }
       }
-    } catch {
-      // Ignore reply-needed tasks if permission errors occur.
+    } catch( err ) {
+      reportDashboardReadFallback( err, {
+        action: 'dashboard.buildReplyTasks',
+        impact: 'Reply-needed tasks were skipped for this dashboard refresh.',
+      } )
     }
   }
   const versionById: Record<string, VersionRecord> = {}
@@ -677,7 +730,14 @@ export const buildDashboardTasks = async (
 
   reportProgress( 5, 'Loading document labels...' )
   const documentSnapshots = await Promise.all(
-    Array.from( documentIds ).map( ( docId ) => safeGetDoc( `documents/${docId}` ) ),
+    Array.from( documentIds ).map( ( docId ) => safeGetDoc(
+      `documents/${docId}`,
+      {
+        action: 'dashboard.loadDocumentLabel',
+        path: `documents/${docId}`,
+        impact: 'The dashboard task may show an unknown document label.',
+      },
+    ) ),
   )
   const documentById = documentSnapshots.reduce<Record<string, { title: string; shortId: number | null }>>(
     ( acc, snapshot ) => {

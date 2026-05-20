@@ -53,7 +53,8 @@ vi.mock( './pages/AdminAuditPage', () => ( {
   default: () => <div>Admin Audit Page</div>,
 } ) )
 
-import App, { loadRouteWithChunkRetry } from './App'
+import App from './App'
+import { loadRouteWithChunkRetry } from './lib/routeChunkRetry'
 
 describe( 'App routes', () => {
   beforeEach( () => {
