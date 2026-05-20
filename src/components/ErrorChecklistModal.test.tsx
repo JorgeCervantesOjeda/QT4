@@ -27,6 +27,22 @@ describe( 'ErrorChecklistModal', () => {
     expect( screen.getByRole( 'button', { name: 'Close' } ) ).toBeTruthy()
   } )
 
+  it( 'hides the admin report button for normal create error report validation', () => {
+    render(
+      <ErrorChecklistModal
+        error="You can create an error report only when the latest version is Accepted."
+        checklist={[
+          { label: '(a latest version exists)', ok: true },
+          { label: "(latest version status = 'Accepted')", ok: false },
+        ]}
+        onClose={() => undefined}
+      />,
+    )
+
+    expect( screen.queryByRole( 'button', { name: 'Report to admin' } ) ).toBeNull()
+    expect( screen.getByRole( 'button', { name: 'Close' } ) ).toBeTruthy()
+  } )
+
   it( 'keeps the admin report button for real visible failures', () => {
     render(
       <ErrorChecklistModal

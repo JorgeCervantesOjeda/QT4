@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { reportUserVisibleError, type MonitorSource } from '../lib/errorMonitor'
+import { isReportableUserVisibleError } from '../lib/userVisibleErrorReportability'
 import { GiphyInline } from '../giphy/GiphyProvider'
 import ModalDialog from './ModalDialog'
 
@@ -120,16 +121,6 @@ const buildChecklistSummary = (checklist: ChecklistItem[]): string[] => checklis
   return []
 } )
 
-const isReportableUserVisibleError = (error: string, requestedAction: string | null): boolean => {
-  if( requestedAction === 'create_issue' ) {
-    return ![
-      'Select a version to create an issue.',
-      'To create an issue, the version must be in active review time or grace, you must be the author, leader, or reviewer, and the title cannot be empty.',
-    ].includes( error )
-  }
-  return true
-}
-
 const resolveFallbackReportContext = (requestedAction: string | null): ResolvedReportContext => {
   if( typeof window === 'undefined' ) {
     return {
@@ -171,7 +162,7 @@ const resolveFallbackReportContext = (requestedAction: string | null): ResolvedR
 
 function ErrorChecklistModal( { title = 'Action blocked', error, checklist, onClose, reportContext = null }: ErrorChecklistModalProps ) {
   const requestedAction = resolveRequestedAction( error )
-  const canReportError = isReportableUserVisibleError( error, requestedAction )
+  const canReportError = isReportableUserVisibleError( error )
   const [isReporting, setIsReporting] = useState( false )
   const [reportFeedback, setReportFeedback] = useState<string | null>( null )
   const [reportSent, setReportSent] = useState( false )
