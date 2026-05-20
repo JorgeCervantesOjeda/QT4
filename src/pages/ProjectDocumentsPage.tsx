@@ -397,14 +397,11 @@ function ProjectDocumentsPage() {
       } )
 
       step = 'latest-versions'
-      const documentIdChunks = chunkValues(
-        baseDocuments.map( ( documentItem ) => documentItem.id ).filter( Boolean ),
-        FIRESTORE_IN_FILTER_LIMIT,
-      )
-      const versionSnapshots = await Promise.all(
-        documentIdChunks.map( ( documentIdChunk ) =>
-          getDocs( query( collection( db, 'versions' ), where( 'docId', 'in', documentIdChunk ) ) ),
-        ),
+      const versionSnapshotResults = await Promise.allSettled(
+        baseDocuments.map( async ( documentItem ) => ( {
+          documentId: documentItem.id,
+          snapshot: await getDocs( query( collection( db, 'versions' ), where( 'docId', '==', documentItem.id ) ) ),
+        } ) ),
       )
       const versionSummaryByDocId = new Map<string, {
         latestNumber: number
@@ -416,8 +413,16 @@ function ProjectDocumentsPage() {
         latestReviewerIds: string[]
         earliestVersionCreatedAt: Date | null
       }>()
-      versionSnapshots.forEach( ( versionsSnapshot ) => {
-        versionsSnapshot.docs.forEach( ( versionSnapshot ) => {
+      versionSnapshotResults.forEach( ( result, index ) => {
+        if( result.status === 'rejected' ) {
+          console.warn( 'Project document version lookup skipped:', {
+            projectId,
+            docId: baseDocuments[index]?.id ?? '',
+            reason: result.reason,
+          } )
+          return
+        }
+        result.value.snapshot.docs.forEach( ( versionSnapshot ) => {
           const versionData = versionSnapshot.data()
           const versionDocId = ( versionData.docId as string | undefined ) ?? ''
           if( !versionDocId ) {
@@ -504,10 +509,7 @@ function ProjectDocumentsPage() {
       const creatorIds = Array.from(
         new Set( baseDocuments.map( ( docItem ) => docItem.createdBy ).filter( Boolean ) ),
       )
-      const chunks: string[][] = []
-      for( let index = 0; index < creatorIds.length; index += 10 ) {
-        chunks.push( creatorIds.slice( index, index + 10 ) )
-      }
+      const chunks = chunkValues( creatorIds, FIRESTORE_IN_FILTER_LIMIT )
       const directorySnapshots = await Promise.all(
         chunks.map( ( chunk ) =>
           getDocs( query( collection( db, 'userDirectory' ), where( 'userId', 'in', chunk ) ) ),

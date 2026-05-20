@@ -188,8 +188,8 @@ const primeDocumentMocks = () => {
 
   getDocsMock.mockImplementation( async ( queryArg: unknown ) => {
     const collectionName = getCollectionName( queryArg )
-    const requestedDocIds = getWhereValue( queryArg, 'docId' )
-    if( collectionName === 'versions' && Array.isArray( requestedDocIds ) && requestedDocIds.includes( 'document-1' ) ) {
+    const requestedDocId = getWhereValue( queryArg, 'docId' )
+    if( collectionName === 'versions' && requestedDocId === 'document-1' ) {
       return createQuerySnapshot( [
         {
           id: 'version-1',
@@ -254,9 +254,36 @@ describe( 'pages/ProjectDocumentsPage', () => {
     render( <ProjectDocumentsPage /> )
 
     await waitFor( () => {
-      expect(
-        screen.getByText( 'Project documents failed to load: Documents snapshot failed for testing.' ),
+    expect(
+      screen.getByText( 'Project documents failed to load: Documents snapshot failed for testing.' ),
       ).toBeTruthy()
     } )
+  }, 15000 )
+
+  it( 'keeps readable documents visible when a version lookup is denied', async () => {
+    getDocsMock.mockImplementation( async ( queryArg: unknown ) => {
+      const collectionName = getCollectionName( queryArg )
+      if( collectionName === 'versions' && getWhereValue( queryArg, 'docId' ) === 'document-1' ) {
+        throw Object.assign( new Error( 'Missing or insufficient permissions.' ), { code: 'permission-denied' } )
+      }
+      if( collectionName === 'userDirectory' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'user-reviewer-1',
+            data: {
+              userId: 'user-reviewer-1',
+              email: 'reviewer@example.com',
+            },
+          },
+        ] )
+      }
+      return createQuerySnapshot( [] )
+    } )
+
+    render( <ProjectDocumentsPage /> )
+
+    expect( await screen.findByRole( 'heading', { name: '17 - Controlled Document' }, { timeout: 10000 } ) ).toBeTruthy()
+    expect( screen.getByText( 'No versions yet' ) ).toBeTruthy()
+    expect( screen.queryByRole( 'dialog' ) ).toBeNull()
   }, 15000 )
 } )
