@@ -275,14 +275,22 @@ describe( 'pages/ProjectDocumentsPage', () => {
     expect( screen.getByText( 'Version 0.01 - In Review' ) ).toBeTruthy()
     expect( screen.getByText( 'Creator: Review Lead' ) ).toBeTruthy()
     expect( screen.getByRole( 'heading', { name: 'Project members' } ) ).toBeTruthy()
+    expect( screen.getByRole( 'heading', { name: 'Project members' } ).compareDocumentPosition(
+      screen.getByRole( 'heading', { name: 'Create document' } ),
+    ) & Node.DOCUMENT_POSITION_FOLLOWING ).toBeTruthy()
+    expect( screen.getByRole( 'button', { name: 'Expand' } ).getAttribute( 'aria-expanded' ) ).toBe( 'false' )
+    expect( screen.queryByLabelText( 'Add member (email)' ) ).toBeNull()
+    fireEvent.click( screen.getByRole( 'button', { name: 'Expand' } ) )
     expect( screen.getByText( 'Member User' ) ).toBeTruthy()
     expect( screen.getByText( 'Review Lead' ) ).toBeTruthy()
+    expect( screen.getByRole( 'button', { name: 'Collapse' } ).getAttribute( 'aria-expanded' ) ).toBe( 'true' )
   }, 15000 )
 
   it( 'validates invalid member email locally on the documents page', async () => {
     render( <ProjectDocumentsPage /> )
 
     expect( await screen.findByRole( 'heading', { name: 'Project members' }, { timeout: 10000 } ) ).toBeTruthy()
+    fireEvent.click( screen.getByRole( 'button', { name: 'Expand' } ) )
 
     getDocMock.mockClear()
     getDocsMock.mockClear()
@@ -299,6 +307,7 @@ describe( 'pages/ProjectDocumentsPage', () => {
     render( <ProjectDocumentsPage /> )
 
     expect( await screen.findByRole( 'heading', { name: 'Project members' }, { timeout: 10000 } ) ).toBeTruthy()
+    fireEvent.click( screen.getByRole( 'button', { name: 'Expand' } ) )
 
     fireEvent.change( screen.getByLabelText( 'Add member (email)' ), { target: { value: 'newmember@example.com' } } )
     fireEvent.click( screen.getByRole( 'button', { name: 'Add member' } ) )

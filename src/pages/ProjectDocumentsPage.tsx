@@ -141,6 +141,7 @@ function ProjectDocumentsPage() {
   const [memberEmail, setMemberEmail] = useState( '' )
   const [memberError, setMemberError] = useState<string | null>( null )
   const [isAddingMember, setIsAddingMember] = useState( false )
+  const [isMembersPanelExpanded, setIsMembersPanelExpanded] = useState( false )
   const [isBusy, setIsBusy] = useState( false )
   const [isLoadingDocuments, setIsLoadingDocuments] = useState( true )
   const { error, errorChecklist, openError, clearError } = useErrorChecklistModal()
@@ -968,6 +969,59 @@ function ProjectDocumentsPage() {
 
       <main className="app-main">
         <section className="panel stack">
+          <div className="panel-header">
+            <h2>Project members</h2>
+            <div className="actions">
+              <button
+                type="button"
+                aria-expanded={isMembersPanelExpanded}
+                aria-controls="project-members-panel-content"
+                onClick={() => setIsMembersPanelExpanded( ( previous ) => !previous )}
+              >
+                {isMembersPanelExpanded ? 'Collapse' : 'Expand'}
+              </button>
+            </div>
+          </div>
+          {isMembersPanelExpanded ? (
+            <div id="project-members-panel-content" className="stack">
+              {sortedProjectMembers.length === 0 ? (
+                <p className="muted">No members loaded for this project.</p>
+              ) : (
+                <ul className="member-list">
+                  {sortedProjectMembers.map( ( member ) => (
+                    <li key={`${member.projectId}-${member.userId}`}>
+                      <span>{formatUserLabel( member.userId )}</span>
+                      <span className="muted">({member.role})</span>
+                    </li>
+                  ) )}
+                </ul>
+              )}
+              {isProjectLeader ? (
+                <form className="form" onSubmit={handleAddMember}>
+                  <div className="actions actions--capture-row">
+                    <label className="field">
+                      <span>Add member (email)</span>
+                      <input
+                        ref={memberInputRef}
+                        type="text"
+                        value={memberEmail}
+                        onChange={( event ) => setMemberEmail( event.target.value )}
+                        placeholder="user@example.com"
+                        disabled={isAddingMember || isBusy}
+                      />
+                    </label>
+                    <button type="submit" disabled={isAddingMember || isBusy}>
+                      Add member
+                    </button>
+                  </div>
+                  {memberError ? <p className="error">{memberError}</p> : null}
+                </form>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
+
+        <section className="panel stack">
           {!isBusy ? <h2>Create document</h2> : null}
           <form className="form" onSubmit={handleCreateDocument}>
             <label className="field">
@@ -987,45 +1041,6 @@ function ProjectDocumentsPage() {
               </button>
             </div>
           </form>
-        </section>
-
-        <section className="panel stack">
-          <div className="panel-header">
-            <h2>Project members</h2>
-          </div>
-          {sortedProjectMembers.length === 0 ? (
-            <p className="muted">No members loaded for this project.</p>
-          ) : (
-            <ul className="member-list">
-              {sortedProjectMembers.map( ( member ) => (
-                <li key={`${member.projectId}-${member.userId}`}>
-                  <span>{formatUserLabel( member.userId )}</span>
-                  <span className="muted">({member.role})</span>
-                </li>
-              ) )}
-            </ul>
-          )}
-          {isProjectLeader ? (
-            <form className="form" onSubmit={handleAddMember}>
-              <div className="actions actions--capture-row">
-                <label className="field">
-                  <span>Add member (email)</span>
-                  <input
-                    ref={memberInputRef}
-                    type="text"
-                    value={memberEmail}
-                    onChange={( event ) => setMemberEmail( event.target.value )}
-                    placeholder="user@example.com"
-                    disabled={isAddingMember || isBusy}
-                  />
-                </label>
-                <button type="submit" disabled={isAddingMember || isBusy}>
-                  Add member
-                </button>
-              </div>
-              {memberError ? <p className="error">{memberError}</p> : null}
-            </form>
-          ) : null}
         </section>
 
         {isLoadingDocuments && documents.length === 0 ? (
