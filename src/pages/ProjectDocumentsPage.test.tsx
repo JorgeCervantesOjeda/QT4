@@ -329,6 +329,14 @@ describe( 'pages/ProjectDocumentsPage', () => {
     expect( await screen.findByText( 'Member added successfully.' ) ).toBeTruthy()
   }, 15000 )
 
+  it( 'does not use future review deadlines as last activity while a document is in review', async () => {
+    render( <ProjectDocumentsPage /> )
+
+    expect( await screen.findByRole( 'heading', { name: '17 - Controlled Document' }, { timeout: 10000 } ) ).toBeTruthy()
+    expect( screen.queryByText( /in .*Apr 3, 2026, 3:00 AM/ ) ).toBeNull()
+    expect( screen.getByText( /Last activity: .*Apr 2, 2026, 6:00 AM/ ) ).toBeTruthy()
+  }, 15000 )
+
   it( 'shows a visible error when the documents subscription fails', async () => {
     onSnapshotMock.mockImplementation( (
       _query: unknown,

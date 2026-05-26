@@ -109,7 +109,7 @@ const resolveVersionDocumentActivityAt = (versionData: Record<string, unknown>):
     return pickLatestDate( reviewEndAt, fileUploadedAt, reviewStartAt, createdAt )
   }
 
-  return pickLatestDate( fileUploadedAt, reviewStartAt, createdAt )
+  return pickLatestDate( fileUploadedAt, reviewStartAt, updatedAt, createdAt )
 }
 
 const isOfflineFirestoreError = (error: unknown): boolean => {
