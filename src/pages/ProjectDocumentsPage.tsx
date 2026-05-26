@@ -42,6 +42,7 @@ type DocumentSummary = {
   createdAt?: Date | null
   updatedAt?: Date | null
   lastActivityAt?: Date | null
+  hasFutureActivityAnomaly?: boolean
 }
 
 type ProjectSummary = {
@@ -75,6 +76,28 @@ const pickLatestDate = ( ...values: Array<Date | null | undefined> ): Date | nul
   return latest
 }
 
+const resolvePastActivityDate = (
+  values: Array<Date | null | undefined>,
+  nowMs = Date.now(),
+): { activityAt: Date | null; hasFutureActivityAnomaly: boolean } => {
+  const pastValues: Date[] = []
+  let hasFutureActivityAnomaly = false
+  values.forEach( ( value ) => {
+    if( !value ) {
+      return
+    }
+    if( value.getTime() > nowMs ) {
+      hasFutureActivityAnomaly = true
+      return
+    }
+    pastValues.push( value )
+  } )
+  return {
+    activityAt: pickLatestDate( ...pastValues ),
+    hasFutureActivityAnomaly,
+  }
+}
+
 const toSnapshotDate = (value: unknown): Date | null => {
   if( !value ) {
     return null
@@ -88,7 +111,10 @@ const toSnapshotDate = (value: unknown): Date | null => {
   return null
 }
 
-const resolveVersionDocumentActivityAt = (versionData: Record<string, unknown>): Date | null => {
+const resolveVersionDocumentActivity = (
+  versionData: Record<string, unknown>,
+  nowMs = Date.now(),
+): { activityAt: Date | null; hasFutureActivityAnomaly: boolean } => {
   const status = typeof versionData.status === 'string' ? versionData.status : null
   const createdAt = toSnapshotDate( versionData.createdAt )
   const updatedAt = toSnapshotDate( versionData.updatedAt )
@@ -97,19 +123,28 @@ const resolveVersionDocumentActivityAt = (versionData: Record<string, unknown>):
   const reviewStartAt = toSnapshotDate( versionData.reviewStartAt )
   const reviewEndAt = toSnapshotDate( versionData.reviewEndAt )
 
-  if( activityAt ) {
-    return pickLatestDate( activityAt, fileUploadedAt, reviewStartAt, reviewEndAt, createdAt )
-  }
-
   if( status === 'Accepted' || status === 'Rejected' || status === 'Replaced' ) {
-    return pickLatestDate( updatedAt, fileUploadedAt, reviewStartAt, reviewEndAt, createdAt )
+    return resolvePastActivityDate(
+      [ activityAt, updatedAt, reviewEndAt, fileUploadedAt, reviewStartAt, createdAt ],
+      nowMs,
+    )
   }
 
   if( status === 'Reviewed' ) {
-    return pickLatestDate( reviewEndAt, fileUploadedAt, reviewStartAt, createdAt )
+    return resolvePastActivityDate(
+      [ activityAt, reviewEndAt, updatedAt, fileUploadedAt, reviewStartAt, createdAt ],
+      nowMs,
+    )
   }
 
-  return pickLatestDate( fileUploadedAt, reviewStartAt, updatedAt, createdAt )
+  if( status === 'In Creation' ) {
+    return resolvePastActivityDate( [ activityAt, fileUploadedAt, updatedAt, createdAt ], nowMs )
+  }
+
+  return resolvePastActivityDate(
+    [ activityAt, fileUploadedAt, reviewStartAt, updatedAt, createdAt ],
+    nowMs,
+  )
 }
 
 const isOfflineFirestoreError = (error: unknown): boolean => {
@@ -280,7 +315,10 @@ function ProjectDocumentsPage() {
       {
         header: 'Last activity',
         accessorKey: 'updatedAtMs',
-        cell: ( info ) => formatTimeAgoWithTimestamp( info.row.original.lastActivityAt ),
+        cell: ( info ) =>
+          `${formatTimeAgoWithTimestamp( info.row.original.lastActivityAt )}${
+            info.row.original.hasFutureActivityAnomaly ? ' ?' : ''
+          }`,
       },
     ],
     [ baseDocumentById ],
@@ -406,6 +444,7 @@ function ProjectDocumentsPage() {
         const data = docSnapshot.data()
         const createdAt = toSnapshotDate( data.createdAt )
         const updatedAt = toSnapshotDate( data.updatedAt )
+        const activity = resolvePastActivityDate( [ updatedAt, createdAt ] )
         return {
           id: docSnapshot.id,
           title: ( data.title as string ) ?? '',
@@ -417,7 +456,8 @@ function ProjectDocumentsPage() {
           latestStatus: null,
           createdAt,
           updatedAt,
-          lastActivityAt: pickLatestDate( updatedAt, createdAt ),
+          lastActivityAt: activity.activityAt,
+          hasFutureActivityAnomaly: activity.hasFutureActivityAnomaly,
           latestReviewEndAt: null,
         }
       } )
@@ -443,6 +483,7 @@ function ProjectDocumentsPage() {
         latestReviewEndAt: Date | null
         latestVersionCreatedAt: Date | null
         latestVersionActivityAt: Date | null
+        latestVersionHasFutureActivityAnomaly: boolean
         latestCreatedBy: string
         latestReviewerIds: string[]
         earliestVersionCreatedAt: Date | null
@@ -455,7 +496,7 @@ function ProjectDocumentsPage() {
         }
         const versionNumber = Number( versionData.number ?? 0 )
         const versionCreatedAt = toSnapshotDate( versionData.createdAt )
-        const versionActivityAt = resolveVersionDocumentActivityAt( versionData )
+        const versionActivity = resolveVersionDocumentActivity( versionData )
         const current = versionSummaryByDocId.get( versionDocId )
 
         if( !current || versionNumber >= current.latestNumber ) {
@@ -464,7 +505,8 @@ function ProjectDocumentsPage() {
             latestStatus: ( versionData.status as string | undefined ) ?? 'In Creation',
             latestReviewEndAt: toSnapshotDate( versionData.reviewEndAt ),
             latestVersionCreatedAt: versionCreatedAt,
-            latestVersionActivityAt: versionActivityAt,
+            latestVersionActivityAt: versionActivity.activityAt,
+            latestVersionHasFutureActivityAnomaly: versionActivity.hasFutureActivityAnomaly,
             latestCreatedBy: ( versionData.createdBy as string | undefined ) ?? '',
             latestReviewerIds: ( versionData.reviewerIds as string[] | undefined ) ?? [],
             earliestVersionCreatedAt:
@@ -501,6 +543,12 @@ function ProjectDocumentsPage() {
           versionSummary.earliestVersionCreatedAt ??
           documentItem.updatedAt ??
           null
+        const resolvedActivity = resolvePastActivityDate( [
+          documentItem.updatedAt,
+          resolvedCreatedAt,
+          versionSummary.latestVersionActivityAt,
+          versionSummary.latestVersionCreatedAt,
+        ] )
         return {
           documentItem: {
             ...documentItem,
@@ -508,12 +556,11 @@ function ProjectDocumentsPage() {
             latestVersionNumber: versionSummary.latestNumber,
             latestStatus: versionSummary.latestStatus,
             latestReviewEndAt: versionSummary.latestReviewEndAt,
-            lastActivityAt: pickLatestDate(
-              documentItem.updatedAt,
-              resolvedCreatedAt,
-              versionSummary.latestVersionActivityAt,
-              versionSummary.latestVersionCreatedAt,
-            ),
+            lastActivityAt: resolvedActivity.activityAt,
+            hasFutureActivityAnomaly:
+              documentItem.hasFutureActivityAnomaly ||
+              versionSummary.latestVersionHasFutureActivityAnomaly ||
+              resolvedActivity.hasFutureActivityAnomaly,
           },
           isMine,
         }
@@ -1182,7 +1229,10 @@ function ProjectDocumentsPage() {
                     </p>
                     <p className="muted">Creator: {formatUserLabel( documentItem.createdBy )}</p>
                     <p className="muted">Created: {formatTimeAgoWithTimestamp( documentItem.createdAt )}</p>
-                    <p className="muted">Last activity: {formatTimeAgoWithTimestamp( documentItem.lastActivityAt )}</p>
+                    <p className="muted">
+                      Last activity: {formatTimeAgoWithTimestamp( documentItem.lastActivityAt )}
+                      {documentItem.hasFutureActivityAnomaly ? ' ?' : ''}
+                    </p>
                   </article>
                 ) )}
               </div>

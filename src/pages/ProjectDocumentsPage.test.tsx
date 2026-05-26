@@ -146,7 +146,24 @@ const getWhereValue = ( queryArg: unknown, field: string ) => {
   return queryRecord.constraints?.find( ( constraint ) => constraint.type === 'where' && constraint.field === field )?.value
 }
 
+let versionRecords: FakeDocRecord[] = []
+
 const primeDocumentMocks = () => {
+  versionRecords = [
+    {
+      id: 'version-1',
+      data: {
+        projectId: 'project-1',
+        docId: 'document-1',
+        number: 1,
+        status: 'In Review',
+        createdBy: 'user-reviewer-1',
+        reviewerIds: [ 'user-member-1' ],
+        createdAt: new Date( '2026-04-01T10:00:00.000Z' ),
+        reviewEndAt: new Date( '2099-04-03T09:00:00.000Z' ),
+      },
+    },
+  ]
   onSnapshotMock.mockImplementation( (
     _query: unknown,
     onNext: (snapshot: ReturnType<typeof createQuerySnapshot>) => void,
@@ -203,21 +220,7 @@ const primeDocumentMocks = () => {
   getDocsMock.mockImplementation( async ( queryArg: unknown ) => {
     const collectionName = getCollectionName( queryArg )
     if( collectionName === 'versions' && getWhereValue( queryArg, 'projectId' ) === 'project-1' ) {
-      return createQuerySnapshot( [
-        {
-          id: 'version-1',
-          data: {
-            projectId: 'project-1',
-            docId: 'document-1',
-            number: 1,
-            status: 'In Review',
-            createdBy: 'user-reviewer-1',
-            reviewerIds: [ 'user-member-1' ],
-            createdAt: new Date( '2026-04-01T10:00:00.000Z' ),
-            reviewEndAt: new Date( '2026-04-03T09:00:00.000Z' ),
-          },
-        },
-      ] )
+      return createQuerySnapshot( versionRecords )
     }
     if( collectionName === 'projectMembers' && getWhereValue( queryArg, 'projectId' ) === 'project-1' ) {
       return createQuerySnapshot( [
@@ -333,8 +336,57 @@ describe( 'pages/ProjectDocumentsPage', () => {
     render( <ProjectDocumentsPage /> )
 
     expect( await screen.findByRole( 'heading', { name: '17 - Controlled Document' }, { timeout: 10000 } ) ).toBeTruthy()
-    expect( screen.queryByText( /in .*Apr 3, 2026, 3:00 AM/ ) ).toBeNull()
-    expect( screen.getByText( /Last activity: .*Apr 2, 2026, 6:00 AM/ ) ).toBeTruthy()
+    expect( screen.queryByText( /2099/ ) ).toBeNull()
+    expect( screen.getByText( /Last activity: .*Apr 2, 2026, 6:00 AM\)$/ ) ).toBeTruthy()
+  }, 15000 )
+
+  it( 'uses past review completion as last activity for reviewed documents', async () => {
+    versionRecords = [
+      {
+        id: 'version-reviewed',
+        data: {
+          projectId: 'project-1',
+          docId: 'document-1',
+          number: 1,
+          status: 'Reviewed',
+          createdBy: 'user-reviewer-1',
+          reviewerIds: [ 'user-member-1' ],
+          createdAt: new Date( '2026-04-01T10:00:00.000Z' ),
+          updatedAt: new Date( '2026-04-02T12:00:00.000Z' ),
+          reviewEndAt: new Date( '2026-04-03T09:00:00.000Z' ),
+        },
+      },
+    ]
+
+    render( <ProjectDocumentsPage /> )
+
+    expect( await screen.findByRole( 'heading', { name: '17 - Controlled Document' }, { timeout: 10000 } ) ).toBeTruthy()
+    expect( screen.getByText( /Last activity: .*Apr 3, 2026, 3:00 AM\)$/ ) ).toBeTruthy()
+  }, 15000 )
+
+  it( 'ignores impossible future activity candidates and marks the row', async () => {
+    versionRecords = [
+      {
+        id: 'version-future-activity',
+        data: {
+          projectId: 'project-1',
+          docId: 'document-1',
+          number: 1,
+          status: 'Reviewed',
+          createdBy: 'user-reviewer-1',
+          reviewerIds: [ 'user-member-1' ],
+          createdAt: new Date( '2026-04-01T10:00:00.000Z' ),
+          updatedAt: new Date( '2026-04-02T12:00:00.000Z' ),
+          activityAt: new Date( '2099-04-04T12:00:00.000Z' ),
+          reviewEndAt: new Date( '2099-04-03T09:00:00.000Z' ),
+        },
+      },
+    ]
+
+    render( <ProjectDocumentsPage /> )
+
+    expect( await screen.findByRole( 'heading', { name: '17 - Controlled Document' }, { timeout: 10000 } ) ).toBeTruthy()
+    expect( screen.getByText( /Last activity: .*Apr 2, 2026, 6:00 AM\) \?/ ) ).toBeTruthy()
   }, 15000 )
 
   it( 'shows a visible error when the documents subscription fails', async () => {
