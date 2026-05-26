@@ -51,6 +51,14 @@ const triggerUrlDownload = (downloadUrl: string, suggestedName?: string, fileKey
   link.remove()
 }
 
+const openUrlInNewTab = (downloadUrl: string, suggestedName?: string, fileKey?: string) => {
+  const openedWindow = window.open( downloadUrl, '_blank', 'noopener,noreferrer' )
+  if( openedWindow ) {
+    return
+  }
+  triggerUrlDownload( downloadUrl, suggestedName, fileKey )
+}
+
 const describeError = (err: unknown): string => {
   if( err instanceof Error ) {
     return err.message
@@ -120,7 +128,7 @@ const downloadFileWithFirebaseStorage = async (
       elapsedMs: Date.now() - startedAt,
       urlHost: new URL( downloadUrl ).host,
     } )
-    triggerUrlDownload( downloadUrl, suggestedName, fileKey )
+    openUrlInNewTab( downloadUrl, suggestedName, fileKey )
     console.info( `${DOWNLOAD_LOG_PREFIX}[firebase][triggered]`, {
       fileKey,
       totalElapsedMs: Date.now() - startedAt,

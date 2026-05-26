@@ -111,6 +111,78 @@ describe( 'lib/filesApi', () => {
     await expect( downloadFile( 'qt4/project/doc/version/missing.txt' ) ).rejects.toThrow( 'File not found.' )
   } )
 
+  it( 'opens downloaded Files API blobs in a new tab', async () => {
+    authMock.currentUser = {
+      getIdToken: vi.fn().mockResolvedValue( 'token-123' ),
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response( 'draft content', {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/plain',
+          },
+        } ),
+      ),
+    )
+    const blobUrl = 'blob:test-download'
+    const createObjectURLMock = vi.fn().mockReturnValue( blobUrl )
+    const revokeObjectURLMock = vi.fn()
+    vi.stubGlobal( 'URL', {
+      ...URL,
+      createObjectURL: createObjectURLMock,
+      revokeObjectURL: revokeObjectURLMock,
+    } )
+    const openMock = vi.fn().mockReturnValue( {} )
+    vi.stubGlobal( 'open', openMock )
+
+    await downloadFile( 'qt4/project/doc/version/spec.txt', 'spec.txt' )
+
+    expect( createObjectURLMock ).toHaveBeenCalledTimes( 1 )
+    expect( openMock ).toHaveBeenCalledWith( blobUrl, '_blank', 'noopener,noreferrer' )
+    expect( revokeObjectURLMock ).not.toHaveBeenCalled()
+  } )
+
+  it( 'falls back to an anchor download when opening Files API blobs is blocked', async () => {
+    authMock.currentUser = {
+      getIdToken: vi.fn().mockResolvedValue( 'token-123' ),
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response( 'draft content', {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/plain',
+          },
+        } ),
+      ),
+    )
+    const blobUrl = 'blob:test-download'
+    const createObjectURLMock = vi.fn().mockReturnValue( blobUrl )
+    const revokeObjectURLMock = vi.fn()
+    vi.stubGlobal( 'URL', {
+      ...URL,
+      createObjectURL: createObjectURLMock,
+      revokeObjectURL: revokeObjectURLMock,
+    } )
+    vi.stubGlobal( 'open', vi.fn().mockReturnValue( null ) )
+    const clickSpy = vi
+      .spyOn( HTMLAnchorElement.prototype, 'click' )
+      .mockImplementation( function clickMock( this: HTMLAnchorElement ) {
+        void this
+      } )
+
+    await downloadFile( 'qt4/project/doc/version/spec.txt', 'spec.txt' )
+
+    expect( clickSpy ).toHaveBeenCalledTimes( 1 )
+    const anchor = clickSpy.mock.instances[0] as HTMLAnchorElement
+    expect( anchor.href ).toBe( 'blob:test-download' )
+    expect( anchor.download ).toBe( 'spec.txt' )
+    expect( revokeObjectURLMock ).toHaveBeenCalledWith( blobUrl )
+  } )
+
   it( 'propagates network failures while deleting files', async () => {
     authMock.currentUser = {
       getIdToken: vi.fn().mockResolvedValue( 'token-123' ),

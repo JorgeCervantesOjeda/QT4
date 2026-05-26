@@ -64,8 +64,24 @@ describe( 'lib/fileStorage', () => {
     } )
   } )
 
-  it( 'triggers an anchor download for Firebase Storage URLs', async () => {
+  it( 'opens Firebase Storage URLs in a new tab', async () => {
     getDownloadURLMock.mockResolvedValue( 'https://example.com/download/draft.txt' )
+    const openMock = vi.fn().mockReturnValue( {} )
+    vi.stubGlobal( 'open', openMock )
+
+    await downloadFileByProvider( 'qt4/test/file.txt', 'draft.txt', 'firebase-storage' )
+
+    expect( getDownloadURLMock ).toHaveBeenCalledTimes( 1 )
+    expect( openMock ).toHaveBeenCalledWith(
+      'https://example.com/download/draft.txt',
+      '_blank',
+      'noopener,noreferrer',
+    )
+  } )
+
+  it( 'falls back to an anchor download when opening Firebase Storage URLs is blocked', async () => {
+    getDownloadURLMock.mockResolvedValue( 'https://example.com/download/draft.txt' )
+    vi.stubGlobal( 'open', vi.fn().mockReturnValue( null ) )
     const clickSpy = vi
       .spyOn( HTMLAnchorElement.prototype, 'click' )
       .mockImplementation( function clickMock( this: HTMLAnchorElement ) {
@@ -74,7 +90,6 @@ describe( 'lib/fileStorage', () => {
 
     await downloadFileByProvider( 'qt4/test/file.txt', 'draft.txt', 'firebase-storage' )
 
-    expect( getDownloadURLMock ).toHaveBeenCalledTimes( 1 )
     expect( clickSpy ).toHaveBeenCalledTimes( 1 )
     const anchor = clickSpy.mock.instances[0] as HTMLAnchorElement
     expect( anchor.download ).toBe( 'draft.txt' )
