@@ -2,7 +2,7 @@
   "name": "qt4-functions",
   "private": true,
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "index.js",
   "scripts": {
@@ -10,9 +10,11 @@
     "serve": "firebase emulators:start --only functions"
   },
   "dependencies": {
-    "firebase-admin": "^12.7.0",
-    "firebase-functions": "^5.1.1",
-    "nodemailer": "^6.9.16",
-    "qt4": "file:.."
+    "firebase-admin": "^13.10.0",
+    "firebase-functions": "^7.2.5",
+    "nodemailer": "^8.0.9"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
   }
 }
