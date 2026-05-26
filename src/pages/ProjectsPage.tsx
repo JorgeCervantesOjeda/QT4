@@ -5,13 +5,11 @@ import {
   doc,
   getDoc,
   getDocs,
-  limit,
   onSnapshot,
   query,
   QuerySnapshot,
   runTransaction,
   serverTimestamp,
-  setDoc,
   where,
 } from 'firebase/firestore'
 import { useNavigate } from 'react-router-dom'
@@ -41,7 +39,6 @@ type ProjectMember = {
   email?: string | null
 }
 
-const isLikelyEmail = (value: string) => /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test( value )
 const isOfflineFirestoreError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String( error ?? '' )
   const loweredMessage = message.toLowerCase()
@@ -69,16 +66,11 @@ function ProjectsPage() {
     return storedView === 'table' || storedView === 'card' ? storedView : 'card'
   } )
   const [sorting, setSorting] = useState<SortingState>( [ { id: 'shortId', desc: false } ] )
-  const [memberEmails, setMemberEmails] = useState<Record<string, string>>( {} )
-  const [memberErrors, setMemberErrors] = useState<Record<string, string | null>>( {} )
-  const [memberBusyProjectId, setMemberBusyProjectId] = useState<string | null>( null )
-  const [selectedLeaderProjectId, setSelectedLeaderProjectId] = useState<string>( '' )
   const [membersByProject, setMembersByProject] = useState<Record<string, ProjectMember[]>>( {} )
   const [userDirectoryById, setUserDirectoryById] = useState<Record<string, { email?: string | null; displayName?: string | null }>>( {} )
   const successOkButtonRef = useRef<HTMLButtonElement | null>( null )
   const projectNameInputRef = useRef<HTMLInputElement | null>( null )
-  const memberInputRefs = useRef<Record<string, HTMLInputElement | null>>( {} )
-  const pendingSuccessFocusRef = useRef<{ type: 'projectName' | 'member'; projectId?: string } | null>( null )
+  const pendingSuccessFocusRef = useRef<{ type: 'projectName' } | null>( null )
 
   const userId = user?.uid ?? ''
   const userEmail = user?.email ?? null
@@ -183,11 +175,6 @@ function ProjectsPage() {
     return desc ? sorted.reverse() : sorted
   }, [ projectTableRows, sorting ] )
 
-  const leaderProjectOptions = useMemo(
-    () => projectTableRows.filter( ( project ) => project.leaderId === userId ),
-    [ projectTableRows, userId ],
-  )
-
   useEffect( () => {
     const storedSorting = window.localStorage.getItem( 'qt4_projects_sorting' )
     if( storedSorting ) {
@@ -216,28 +203,12 @@ function ProjectsPage() {
     }
   }, [ successMessage ] )
 
-  useEffect( () => {
-    if( leaderProjectOptions.length === 0 ) {
-      if( selectedLeaderProjectId ) {
-        setSelectedLeaderProjectId( '' )
-      }
-      return
-    }
-    const exists = leaderProjectOptions.some( ( option ) => option.id === selectedLeaderProjectId )
-    if( !exists ) {
-      setSelectedLeaderProjectId( leaderProjectOptions[0]?.id ?? '' )
-    }
-  }, [ leaderProjectOptions, selectedLeaderProjectId ] )
-
   const handleCloseSuccessMessage = () => {
     const target = pendingSuccessFocusRef.current
     setSuccessMessage( null )
     window.setTimeout( () => {
       if( target?.type === 'projectName' ) {
         projectNameInputRef.current?.focus()
-      }
-      if( target?.type === 'member' && target.projectId ) {
-        memberInputRefs.current[target.projectId]?.focus()
       }
       pendingSuccessFocusRef.current = null
     }, 0 )
@@ -518,165 +489,6 @@ function ProjectsPage() {
     }
   }
 
-  const handleAddMember = async ( projectId: string ) => {
-    if( !userId ) {
-      setMemberErrors( ( prev ) => ( {
-        ...prev,
-        [projectId]: 'Sign in before adding a member.',
-      } ) )
-      return
-    }
-    const rawEmail = memberEmails[projectId] ?? ''
-    const memberEmailInput = rawEmail.trim()
-    const memberEmailLower = memberEmailInput.toLowerCase()
-    if( !memberEmailLower ) {
-      setMemberErrors( ( prev ) => ( { ...prev, [projectId]: 'Provide an email address.' } ) )
-      return
-    }
-    if( !isLikelyEmail( memberEmailInput ) ) {
-      setMemberErrors( ( prev ) => ( { ...prev, [projectId]: 'Provide a valid email address.' } ) )
-      return
-    }
-    let directorySnapshot
-    try {
-      directorySnapshot = await getDoc( doc( db, 'userDirectory', memberEmailInput ) )
-      if( !directorySnapshot.exists() && memberEmailInput !== memberEmailLower ) {
-        directorySnapshot = await getDoc( doc( db, 'userDirectory', memberEmailLower ) )
-      }
-      if( !directorySnapshot.exists() ) {
-        const directoryQuery = query(
-          collection( db, 'userDirectory' ),
-          where( 'emailLower', '==', memberEmailLower ),
-          limit( 1 ),
-        )
-        const directoryMatches = await getDocs( directoryQuery )
-        if( directoryMatches.docs.length > 0 ) {
-          directorySnapshot = directoryMatches.docs[0]
-        }
-      }
-    } catch( err ) {
-      const message = err instanceof Error ? err.message : 'Unexpected error'
-      void reportAbnormalError( {
-        error: err,
-        source: 'firestore',
-        action: 'projects.lookupMember',
-        projectId,
-      } )
-      setMemberErrors( ( prev ) => ( {
-        ...prev,
-        [projectId]: `Member lookup failed: ${message}`,
-      } ) )
-      return
-    }
-    if( !directorySnapshot.exists() ) {
-      setMemberErrors( ( prev ) => ( {
-        ...prev,
-        [projectId]: 'No user found for that email address.',
-      } ) )
-      return
-    }
-    const directoryData = directorySnapshot.data()
-    const memberUserId = ( directoryData.userId as string | undefined ) ?? ''
-    const memberEmail = ( directoryData.email as string | undefined ) ?? memberEmailInput
-    if( !memberUserId ) {
-      setMemberErrors( ( prev ) => ( {
-        ...prev,
-        [projectId]: 'Member lookup returned an invalid user.',
-      } ) )
-      return
-    }
-    const currentMembers = membersByProject[projectId] ?? []
-    if( currentMembers.some( ( member ) => member.userId === memberUserId ) ) {
-      setMemberErrors( ( prev ) => ( {
-        ...prev,
-        [projectId]: 'That user is already a project member.',
-      } ) )
-      return
-    }
-    if( memberUserId === userId ) {
-      setMemberErrors( ( prev ) => ( {
-        ...prev,
-        [projectId]: 'You are already the project leader.',
-      } ) )
-      return
-    }
-    setSuccessMessage( null )
-    setMemberErrors( ( prev ) => ( { ...prev, [projectId]: null } ) )
-    setMemberBusyProjectId( projectId )
-    const previousMembers = membersByProject[projectId] ?? []
-    const optimisticMember: ProjectMember = {
-      projectId,
-      userId: memberUserId,
-      role: 'member',
-      email: memberEmail,
-    }
-    setMembersByProject( ( prev ) => ( {
-      ...prev,
-      [projectId]: [ ...previousMembers, optimisticMember ],
-    } ) )
-    setUserDirectoryById( ( prev ) => ( {
-      ...prev,
-      [memberUserId]: {
-        email: memberEmail,
-        displayName: prev[memberUserId]?.displayName ?? null,
-      },
-    } ) )
-    try {
-      await setDoc(
-        doc( db, 'projectMembers', `${projectId}_${memberUserId}` ),
-        {
-          projectId,
-          userId: memberUserId,
-          role: 'member',
-          email: memberEmail,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      )
-      setMemberEmails( ( prev ) => ( { ...prev, [projectId]: '' } ) )
-      pendingSuccessFocusRef.current = { type: 'member', projectId }
-      setSuccessMessage( 'Member added successfully.' )
-      void ( async () => {
-        try {
-          await logAudit( {
-            actorId: userId,
-            actorEmail: userEmail,
-            action: 'addProjectMember',
-            entityType: 'projectMember',
-            entityId: `${projectId}_${memberUserId}`,
-            projectId,
-            targetUserId: memberUserId,
-            metadata: {
-              role: 'member',
-            },
-          } )
-        } catch( err ) {
-          console.warn( 'Audit log failed (add member):', err )
-        }
-      } )()
-    } catch( err ) {
-      const message = err instanceof Error ? err.message : 'Unexpected error'
-      void reportAbnormalError( {
-        error: err,
-        source: 'firestore',
-        action: 'projects.addMember',
-        projectId,
-      } )
-      setMemberErrors( ( prev ) => ( {
-        ...prev,
-        [projectId]: `Member add failed: ${message}`,
-      } ) )
-      setMembersByProject( ( prev ) => ( {
-        ...prev,
-        [projectId]: previousMembers,
-      } ) )
-    } finally {
-      setMemberBusyProjectId( null )
-    }
-  }
-
-
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -764,67 +576,6 @@ function ProjectsPage() {
                 </div>
               </label>
             </div>
-            {leaderProjectOptions.length > 0 ? (
-              <form
-                className="form"
-                onSubmit={( event ) => {
-                  event.preventDefault()
-                  if( selectedLeaderProjectId ) {
-                    void handleAddMember( selectedLeaderProjectId )
-                  }
-                }}
-              >
-                <div className="actions actions--capture-row">
-                  <label className="field">
-                    <span>Project</span>
-                    <select
-                      value={selectedLeaderProjectId}
-                      onChange={( event ) => setSelectedLeaderProjectId( event.target.value )}
-                      disabled={isBusy}
-                    >
-                      {leaderProjectOptions.map( ( project ) => (
-                        <option key={project.id} value={project.id}>
-                          {`${project.shortId ?? 'Unassigned'} - ${project.name}`}
-                        </option>
-                      ) )}
-                    </select>
-                  </label>
-                  <label className="field">
-                    <span>Add member (email)</span>
-                    <input
-                      ref={( element ) => {
-                        if( selectedLeaderProjectId ) {
-                          memberInputRefs.current[selectedLeaderProjectId] = element
-                        }
-                      }}
-                      type="text"
-                      value={selectedLeaderProjectId ? ( memberEmails[selectedLeaderProjectId] ?? '' ) : ''}
-                      onChange={( event ) => {
-                        const targetProjectId = selectedLeaderProjectId
-                        if( !targetProjectId ) {
-                          return
-                        }
-                        setMemberEmails( ( prev ) => ( {
-                          ...prev,
-                          [targetProjectId]: event.target.value,
-                        } ) )
-                      }}
-                      placeholder="user@example.com"
-                      disabled={isBusy}
-                    />
-                  </label>
-                  <button
-                    type="submit"
-                    disabled={!selectedLeaderProjectId || memberBusyProjectId === selectedLeaderProjectId || isBusy}
-                  >
-                    Add member
-                  </button>
-                </div>
-                {selectedLeaderProjectId && memberErrors[selectedLeaderProjectId] ? (
-                  <p className="error">{memberErrors[selectedLeaderProjectId]}</p>
-                ) : null}
-              </form>
-            ) : null}
             {!isLoadingProjects && projectTableRows.length === 0 ? (
               <p className="muted">You do not have any assigned projects yet.</p>
             ) : viewMode === 'table' ? (
@@ -857,70 +608,6 @@ function ProjectsPage() {
                   >
                   <h3>{`${project.shortId ?? 'Unassigned'} - ${project.name}`}</h3>
                     <p className="muted">Leader: {resolveProjectLeader( project.id, project.leaderId )}</p>
-                    <div className="project-members">
-                      <p className="muted">Members</p>
-                      <ul className="member-list">
-                        {( membersByProject[project.id] ?? [] ).map( ( member ) => (
-                          <li key={`${project.id}-${member.userId}`}>
-                            <span>{formatUserLabel( member.userId, member.email ?? null )}</span>
-                            <span className="muted">({member.role})</span>
-                          </li>
-                        ) )}
-                      </ul>
-                    </div>
-                    {project.leaderId === userId ? (
-                      <form
-                        className="form"
-                        onClick={( event ) => event.stopPropagation()}
-                        onKeyDown={( event ) => event.stopPropagation()}
-                        onSubmit={( event ) => {
-                          event.preventDefault()
-                          void handleAddMember( project.id )
-                        }}
-                      >
-                        <label className="field">
-                          <span>Add member (email)</span>
-                          <input
-                            ref={( element ) => {
-                              memberInputRefs.current[project.id] = element
-                            }}
-                            type="text"
-                            name={`member-${project.id}`}
-                            value={memberEmails[project.id] ?? ''}
-                            onChange={( event ) =>
-                              setMemberEmails( ( prev ) => ( {
-                                ...prev,
-                                [project.id]: event.target.value,
-                              } ) )
-                            }
-                            placeholder="user@example.com"
-                            onClick={( event ) => event.stopPropagation()}
-                            onKeyDown={( event ) => {
-                              if( event.key === 'Enter' || event.key === ' ' ) {
-                                event.stopPropagation()
-                              }
-                            }}
-                          />
-                        </label>
-                        {memberErrors[project.id] ? (
-                          <p className="error">{memberErrors[project.id]}</p>
-                        ) : null}
-                        <div className="actions">
-                          <button
-                            type="submit"
-                            disabled={memberBusyProjectId === project.id || isBusy}
-                            onClick={( event ) => event.stopPropagation()}
-                            onKeyDown={( event ) => {
-                              if( event.key === 'Enter' || event.key === ' ' ) {
-                                event.stopPropagation()
-                              }
-                            }}
-                          >
-                            Add member
-                          </button>
-                        </div>
-                      </form>
-                    ) : null}
                   </article>
                 ) )}
               </div>

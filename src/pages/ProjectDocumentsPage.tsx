@@ -5,11 +5,13 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
   onSnapshot,
   query,
   QuerySnapshot,
   runTransaction,
   serverTimestamp,
+  setDoc,
   where,
 } from 'firebase/firestore'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -46,9 +48,19 @@ type ProjectSummary = {
   id: string
   name: string
   shortId: number | null
+  leaderId: string
+}
+
+type ProjectMember = {
+  projectId: string
+  userId: string
+  role: 'leader' | 'member'
+  email?: string | null
 }
 
 type DocumentFilter = 'all' | 'mine'
+
+const isLikelyEmail = (value: string) => /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test( value )
 
 const pickLatestDate = ( ...values: Array<Date | null | undefined> ): Date | null => {
   let latest: Date | null = null
@@ -123,8 +135,12 @@ function ProjectDocumentsPage() {
 
   const [project, setProject] = useState<ProjectSummary | null>( null )
   const [documents, setDocuments] = useState<DocumentSummary[]>([] )
+  const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([] )
   const [filter, setFilter] = useState<DocumentFilter>( 'all' )
   const [title, setTitle] = useState( '' )
+  const [memberEmail, setMemberEmail] = useState( '' )
+  const [memberError, setMemberError] = useState<string | null>( null )
+  const [isAddingMember, setIsAddingMember] = useState( false )
   const [isBusy, setIsBusy] = useState( false )
   const [isLoadingDocuments, setIsLoadingDocuments] = useState( true )
   const { error, errorChecklist, openError, clearError } = useErrorChecklistModal()
@@ -137,7 +153,9 @@ function ProjectDocumentsPage() {
   const lastErrorRef = useRef<string | null>( null )
   const successOkButtonRef = useRef<HTMLButtonElement | null>( null )
   const titleInputRef = useRef<HTMLInputElement | null>( null )
+  const memberInputRef = useRef<HTMLInputElement | null>( null )
   const shouldRestoreTitleFocusRef = useRef( false )
+  const shouldRestoreMemberFocusRef = useRef( false )
   const [userDirectoryById, setUserDirectoryById] = useState<Record<string, { email?: string | null; displayName?: string | null }>>( {} )
   const [nowMs, setNowMs] = useState( () => Date.now() )
 
@@ -158,6 +176,22 @@ function ProjectDocumentsPage() {
     }
     return 'Unknown user'
   }, [ userDirectoryById ] )
+
+  const isProjectLeader = useMemo(
+    () => Boolean( project?.leaderId && project.leaderId === userId ),
+    [ project?.leaderId, userId ],
+  )
+
+  const sortedProjectMembers = useMemo(
+    () =>
+      [ ...projectMembers ].sort( ( a, b ) => {
+        if( a.role !== b.role ) {
+          return a.role === 'leader' ? -1 : 1
+        }
+        return formatUserLabel( a.userId ).localeCompare( formatUserLabel( b.userId ) )
+      } ),
+    [ projectMembers, formatUserLabel ],
+  )
 
   const documentTableRows = useMemo(
     () =>
@@ -349,6 +383,7 @@ function ProjectDocumentsPage() {
         id: projectSnapshot.id,
         name: ( data.name as string ) ?? 'Untitled project',
         shortId: Number.isFinite( data.shortId ) ? Number( data.shortId ) : null,
+        leaderId: ( data.leaderId as string | undefined ) ?? '',
       } )
     } catch {
       setProject( null )
@@ -387,9 +422,20 @@ function ProjectDocumentsPage() {
       } )
 
       step = 'latest-versions'
-      const versionsSnapshot = await getDocs(
-        query( collection( db, 'versions' ), where( 'projectId', '==', projectId ) ),
-      )
+      const [ versionsSnapshot, membersSnapshot ] = await Promise.all( [
+        getDocs( query( collection( db, 'versions' ), where( 'projectId', '==', projectId ) ) ),
+        getDocs( query( collection( db, 'projectMembers' ), where( 'projectId', '==', projectId ) ) ),
+      ] )
+      const members = membersSnapshot.docs.map( ( memberSnapshot ) => {
+        const data = memberSnapshot.data()
+        return {
+          projectId,
+          userId: ( data.userId as string | undefined ) ?? '',
+          role: ( data.role as 'leader' | 'member' | undefined ) ?? 'member',
+          email: ( data.email as string | null | undefined ) ?? null,
+        }
+      } )
+      setProjectMembers( members )
       const versionSummaryByDocId = new Map<string, {
         latestNumber: number
         latestStatus: string
@@ -484,7 +530,10 @@ function ProjectDocumentsPage() {
 
       step = 'user-directory'
       const creatorIds = Array.from(
-        new Set( baseDocuments.map( ( docItem ) => docItem.createdBy ).filter( Boolean ) ),
+        new Set( [
+          ...baseDocuments.map( ( docItem ) => docItem.createdBy ).filter( Boolean ),
+          ...members.map( ( member ) => member.userId ).filter( Boolean ),
+        ] ),
       )
       const chunks: string[][] = []
       for( let index = 0; index < creatorIds.length; index += 10 ) {
@@ -496,6 +545,14 @@ function ProjectDocumentsPage() {
         ),
       )
       const nextDirectoryById: Record<string, { email?: string | null; displayName?: string | null }> = {}
+      members.forEach( ( member ) => {
+        if( member.userId && member.email ) {
+          nextDirectoryById[member.userId] = {
+            email: member.email,
+            displayName: null,
+          }
+        }
+      } )
       directorySnapshots.forEach( ( snapshot ) => {
         snapshot.docs.forEach( ( directoryDoc ) => {
           const data = directoryDoc.data()
@@ -602,13 +659,154 @@ function ProjectDocumentsPage() {
 
   const handleCloseSuccessMessage = () => {
     const shouldRestoreFocus = shouldRestoreTitleFocusRef.current
+    const shouldRestoreMemberFocus = shouldRestoreMemberFocusRef.current
     setSuccessMessage( null )
     if( shouldRestoreFocus ) {
       window.setTimeout( () => {
         titleInputRef.current?.focus()
       }, 0 )
     }
+    if( shouldRestoreMemberFocus ) {
+      window.setTimeout( () => {
+        memberInputRef.current?.focus()
+      }, 0 )
+    }
     shouldRestoreTitleFocusRef.current = false
+    shouldRestoreMemberFocusRef.current = false
+  }
+
+  const handleAddMember = async ( event: React.FormEvent<HTMLFormElement> ) => {
+    event.preventDefault()
+    if( !projectId || !project || !userId ) {
+      setMemberError( 'Sign in and select an existing project before adding members.' )
+      return
+    }
+    if( !isProjectLeader ) {
+      setMemberError( 'Only the project leader can add members.' )
+      return
+    }
+    const memberEmailInput = memberEmail.trim()
+    const memberEmailLower = memberEmailInput.toLowerCase()
+    if( !memberEmailLower ) {
+      setMemberError( 'Provide an email address.' )
+      return
+    }
+    if( !isLikelyEmail( memberEmailInput ) ) {
+      setMemberError( 'Provide a valid email address.' )
+      return
+    }
+    let directorySnapshot
+    try {
+      directorySnapshot = await getDoc( doc( db, 'userDirectory', memberEmailInput ) )
+      if( !directorySnapshot.exists() && memberEmailInput !== memberEmailLower ) {
+        directorySnapshot = await getDoc( doc( db, 'userDirectory', memberEmailLower ) )
+      }
+      if( !directorySnapshot.exists() ) {
+        const directoryQuery = query(
+          collection( db, 'userDirectory' ),
+          where( 'emailLower', '==', memberEmailLower ),
+          limit( 1 ),
+        )
+        const directoryMatches = await getDocs( directoryQuery )
+        if( directoryMatches.docs.length > 0 ) {
+          directorySnapshot = directoryMatches.docs[0]
+        }
+      }
+    } catch( err ) {
+      const message = err instanceof Error ? err.message : 'Unexpected error'
+      void reportAbnormalError( {
+        error: err,
+        source: 'firestore',
+        action: 'projectDocuments.lookupMember',
+        projectId,
+      } )
+      setMemberError( `Member lookup failed: ${message}` )
+      return
+    }
+    if( !directorySnapshot.exists() ) {
+      setMemberError( 'No user found for that email address.' )
+      return
+    }
+    const directoryData = directorySnapshot.data()
+    const memberUserId = ( directoryData.userId as string | undefined ) ?? ''
+    const resolvedMemberEmail = ( directoryData.email as string | undefined ) ?? memberEmailInput
+    if( !memberUserId ) {
+      setMemberError( 'Member lookup returned an invalid user.' )
+      return
+    }
+    if( projectMembers.some( ( member ) => member.userId === memberUserId ) ) {
+      setMemberError( 'That user is already a project member.' )
+      return
+    }
+    if( memberUserId === userId ) {
+      setMemberError( 'You are already the project leader.' )
+      return
+    }
+    setMemberError( null )
+    setSuccessMessage( null )
+    setIsAddingMember( true )
+    const previousMembers = projectMembers
+    const optimisticMember: ProjectMember = {
+      projectId,
+      userId: memberUserId,
+      role: 'member',
+      email: resolvedMemberEmail,
+    }
+    setProjectMembers( [ ...previousMembers, optimisticMember ] )
+    setUserDirectoryById( ( previous ) => ( {
+      ...previous,
+      [memberUserId]: {
+        email: resolvedMemberEmail,
+        displayName: previous[memberUserId]?.displayName ?? null,
+      },
+    } ) )
+    try {
+      await setDoc(
+        doc( db, 'projectMembers', `${projectId}_${memberUserId}` ),
+        {
+          projectId,
+          userId: memberUserId,
+          role: 'member',
+          email: resolvedMemberEmail,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      )
+      setMemberEmail( '' )
+      shouldRestoreMemberFocusRef.current = true
+      setSuccessMessage( 'Member added successfully.' )
+      void ( async () => {
+        try {
+          await logAudit( {
+            actorId: userId,
+            actorEmail: user?.email ?? null,
+            action: 'addProjectMember',
+            entityType: 'projectMember',
+            entityId: `${projectId}_${memberUserId}`,
+            projectId,
+            targetUserId: memberUserId,
+            metadata: {
+              role: 'member',
+            },
+          } )
+        } catch( err ) {
+          console.warn( 'Audit log failed (add member):', err )
+        }
+      } )()
+    } catch( err ) {
+      const message = err instanceof Error ? err.message : 'Unexpected error'
+      void reportAbnormalError( {
+        error: err,
+        source: 'firestore',
+        action: 'projectDocuments.addMember',
+        projectId,
+      } )
+      setMemberError( `Member add failed: ${message}` )
+      setProjectMembers( previousMembers )
+    } finally {
+      setIsAddingMember( false )
+    }
   }
 
   const handleCreateDocument = async ( event: React.FormEvent<HTMLFormElement> ) => {
@@ -789,6 +987,45 @@ function ProjectDocumentsPage() {
               </button>
             </div>
           </form>
+        </section>
+
+        <section className="panel stack">
+          <div className="panel-header">
+            <h2>Project members</h2>
+          </div>
+          {sortedProjectMembers.length === 0 ? (
+            <p className="muted">No members loaded for this project.</p>
+          ) : (
+            <ul className="member-list">
+              {sortedProjectMembers.map( ( member ) => (
+                <li key={`${member.projectId}-${member.userId}`}>
+                  <span>{formatUserLabel( member.userId )}</span>
+                  <span className="muted">({member.role})</span>
+                </li>
+              ) )}
+            </ul>
+          )}
+          {isProjectLeader ? (
+            <form className="form" onSubmit={handleAddMember}>
+              <div className="actions actions--capture-row">
+                <label className="field">
+                  <span>Add member (email)</span>
+                  <input
+                    ref={memberInputRef}
+                    type="text"
+                    value={memberEmail}
+                    onChange={( event ) => setMemberEmail( event.target.value )}
+                    placeholder="user@example.com"
+                    disabled={isAddingMember || isBusy}
+                  />
+                </label>
+                <button type="submit" disabled={isAddingMember || isBusy}>
+                  Add member
+                </button>
+              </div>
+              {memberError ? <p className="error">{memberError}</p> : null}
+            </form>
+          ) : null}
         </section>
 
         {isLoadingDocuments && documents.length === 0 ? (

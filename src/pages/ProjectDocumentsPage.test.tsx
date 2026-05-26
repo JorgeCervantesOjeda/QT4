@@ -1,10 +1,11 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
   onSnapshotMock,
   getDocMock,
   getDocsMock,
+  setDocMock,
   navigateMock,
   reportAbnormalErrorMock,
   logAuditMock,
@@ -12,6 +13,7 @@ const {
   onSnapshotMock: vi.fn(),
   getDocMock: vi.fn(),
   getDocsMock: vi.fn(),
+  setDocMock: vi.fn(),
   navigateMock: vi.fn(),
   reportAbnormalErrorMock: vi.fn(),
   logAuditMock: vi.fn(),
@@ -30,10 +32,12 @@ vi.mock( 'firebase/firestore', () => ( {
   },
   getDoc: (...args: unknown[]) => getDocMock( ...args ),
   getDocs: (...args: unknown[]) => getDocsMock( ...args ),
+  limit: ( value: number ) => ( { type: 'limit', value } ),
   onSnapshot: (...args: unknown[]) => onSnapshotMock( ...args ),
   query: ( base: unknown, ...constraints: unknown[] ) => ( { kind: 'query', base, constraints } ),
   runTransaction: vi.fn(),
   serverTimestamp: vi.fn( () => 'server-timestamp' ),
+  setDoc: (...args: unknown[]) => setDocMock( ...args ),
   where: ( field: string, op: string, value: unknown ) => ( { type: 'where', field, op, value } ),
 } ) )
 
@@ -172,6 +176,7 @@ const primeDocumentMocks = () => {
         data: {
           shortId: 42,
           name: 'Alpha Project',
+          leaderId: 'user-member-1',
         },
       } )
     }
@@ -180,6 +185,15 @@ const primeDocumentMocks = () => {
         id: 'user-reviewer-1',
         data: {
           displayName: 'Review Lead',
+        },
+      } )
+    }
+    if( docRef.collection === 'userDirectory' && docRef.id === 'newmember@example.com' ) {
+      return createDocSnapshot( {
+        id: 'newmember@example.com',
+        data: {
+          userId: 'user-new-member',
+          email: 'newmember@example.com',
         },
       } )
     }
@@ -201,6 +215,28 @@ const primeDocumentMocks = () => {
             reviewerIds: [ 'user-member-1' ],
             createdAt: new Date( '2026-04-01T10:00:00.000Z' ),
             reviewEndAt: new Date( '2026-04-03T09:00:00.000Z' ),
+          },
+        },
+      ] )
+    }
+    if( collectionName === 'projectMembers' && getWhereValue( queryArg, 'projectId' ) === 'project-1' ) {
+      return createQuerySnapshot( [
+        {
+          id: 'project-1_user-member-1',
+          data: {
+            projectId: 'project-1',
+            userId: 'user-member-1',
+            role: 'leader',
+            email: 'member@example.com',
+          },
+        },
+        {
+          id: 'project-1_user-reviewer-1',
+          data: {
+            projectId: 'project-1',
+            userId: 'user-reviewer-1',
+            role: 'member',
+            email: 'reviewer@example.com',
           },
         },
       ] )
@@ -238,6 +274,50 @@ describe( 'pages/ProjectDocumentsPage', () => {
     expect( await screen.findByRole( 'heading', { name: '17 - Controlled Document' }, { timeout: 10000 } ) ).toBeTruthy()
     expect( screen.getByText( 'Version 0.01 - In Review' ) ).toBeTruthy()
     expect( screen.getByText( 'Creator: Review Lead' ) ).toBeTruthy()
+    expect( screen.getByRole( 'heading', { name: 'Project members' } ) ).toBeTruthy()
+    expect( screen.getByText( 'Member User' ) ).toBeTruthy()
+    expect( screen.getByText( 'Review Lead' ) ).toBeTruthy()
+  }, 15000 )
+
+  it( 'validates invalid member email locally on the documents page', async () => {
+    render( <ProjectDocumentsPage /> )
+
+    expect( await screen.findByRole( 'heading', { name: 'Project members' }, { timeout: 10000 } ) ).toBeTruthy()
+
+    getDocMock.mockClear()
+    getDocsMock.mockClear()
+
+    fireEvent.change( screen.getByLabelText( 'Add member (email)' ), { target: { value: 'not-an-email' } } )
+    fireEvent.click( screen.getByRole( 'button', { name: 'Add member' } ) )
+
+    expect( await screen.findByText( 'Provide a valid email address.' ) ).toBeTruthy()
+    expect( getDocMock ).not.toHaveBeenCalled()
+    expect( getDocsMock ).not.toHaveBeenCalled()
+  }, 15000 )
+
+  it( 'adds members from the documents page when the user is project leader', async () => {
+    render( <ProjectDocumentsPage /> )
+
+    expect( await screen.findByRole( 'heading', { name: 'Project members' }, { timeout: 10000 } ) ).toBeTruthy()
+
+    fireEvent.change( screen.getByLabelText( 'Add member (email)' ), { target: { value: 'newmember@example.com' } } )
+    fireEvent.click( screen.getByRole( 'button', { name: 'Add member' } ) )
+
+    await waitFor( () => {
+      expect( setDocMock ).toHaveBeenCalled()
+    } )
+    expect( setDocMock.mock.calls[0][0] ).toEqual( {
+      kind: 'doc',
+      collection: 'projectMembers',
+      id: 'project-1_user-new-member',
+    } )
+    expect( setDocMock.mock.calls[0][1] ).toMatchObject( {
+      projectId: 'project-1',
+      userId: 'user-new-member',
+      role: 'member',
+      email: 'newmember@example.com',
+    } )
+    expect( await screen.findByText( 'Member added successfully.' ) ).toBeTruthy()
   }, 15000 )
 
   it( 'shows a visible error when the documents subscription fails', async () => {

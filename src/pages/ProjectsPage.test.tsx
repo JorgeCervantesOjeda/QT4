@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
@@ -30,12 +30,10 @@ vi.mock( 'firebase/firestore', () => ( {
   },
   getDoc: (...args: unknown[]) => getDocMock( ...args ),
   getDocs: (...args: unknown[]) => getDocsMock( ...args ),
-  limit: ( value: number ) => ( { type: 'limit', value } ),
   onSnapshot: (...args: unknown[]) => onSnapshotMock( ...args ),
   query: ( base: unknown, ...constraints: unknown[] ) => ( { kind: 'query', base, constraints } ),
   runTransaction: vi.fn(),
   serverTimestamp: vi.fn( () => 'server-timestamp' ),
-  setDoc: vi.fn(),
   where: ( field: string, op: string, value: unknown ) => ( { type: 'where', field, op, value } ),
 } ) )
 
@@ -237,39 +235,22 @@ describe( 'pages/ProjectsPage', () => {
     vi.clearAllMocks()
   } )
 
-  it( 'renders loaded projects with resolved leader and member labels', async () => {
+  it( 'renders loaded projects with resolved leader labels without member lists in cards', async () => {
     render( <ProjectsPage /> )
 
     expect( await screen.findByRole( 'heading', { name: 'Projects' }, { timeout: 10000 } ) ).toBeTruthy()
     expect( await screen.findByRole( 'heading', { name: '42 - Alpha Project' }, { timeout: 10000 } ) ).toBeTruthy()
     expect( screen.getByText( 'Leader: Member User (member@example.com)' ) ).toBeTruthy()
-    expect( screen.getByText( 'Review Lead (reviewer@example.com)' ) ).toBeTruthy()
-    expect( screen.getByText( '(member)' ) ).toBeTruthy()
+    expect( screen.queryByText( 'Review Lead (reviewer@example.com)' ) ).toBeNull()
+    expect( screen.queryByText( '(member)' ) ).toBeNull()
   }, 15000 )
 
-  it( 'validates invalid member email locally without querying Firestore', async () => {
+  it( 'does not render member editing controls on project cards', async () => {
     render( <ProjectsPage /> )
 
-    const projectCard = await screen.findByRole( 'heading', { name: '42 - Alpha Project' }, { timeout: 10000 } )
-    const projectArticle = projectCard.closest( 'article' )
-    expect( projectArticle ).toBeTruthy()
-
-    getDocMock.mockClear()
-    getDocsMock.mockClear()
-
-    fireEvent.change(
-      within( projectArticle as HTMLElement ).getByLabelText( 'Add member (email)' ),
-      { target: { value: 'not-an-email' } },
-    )
-    fireEvent.click( within( projectArticle as HTMLElement ).getByRole( 'button', { name: 'Add member' } ) )
-
-    await waitFor( () => {
-      expect(
-        within( projectArticle as HTMLElement ).getByText( 'Provide a valid email address.' ),
-      ).toBeTruthy()
-    } )
-    expect( getDocMock ).not.toHaveBeenCalled()
-    expect( getDocsMock ).not.toHaveBeenCalled()
+    expect( await screen.findByRole( 'heading', { name: '42 - Alpha Project' }, { timeout: 10000 } ) ).toBeTruthy()
+    expect( screen.queryByLabelText( 'Add member (email)' ) ).toBeNull()
+    expect( screen.queryByRole( 'button', { name: 'Add member' } ) ).toBeNull()
   }, 15000 )
 
   it( 'does not report offline project loads as abnormal errors', async () => {
