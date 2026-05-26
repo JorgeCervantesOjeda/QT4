@@ -29,8 +29,20 @@ describe( 'lib/time', () => {
       new Intl.DateTimeFormat( 'en', {
         dateStyle: 'medium',
         timeStyle: 'short',
+        timeZone: 'America/Mexico_City',
       } ).format( value ),
     )
+  } )
+
+  it( 'uses the app timezone instead of the client local timezone', () => {
+    const value = new Date( '2026-04-04T12:00:00.000Z' )
+    const appTimezoneLabel = new Intl.DateTimeFormat( 'en', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: 'America/Mexico_City',
+    } ).format( value )
+
+    expect( formatTimestamp( value ) ).toBe( appTimezoneLabel )
   } )
 
   it( 'combines relative time with the exact timestamp', () => {

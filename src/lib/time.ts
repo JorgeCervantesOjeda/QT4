@@ -29,6 +29,7 @@ export const formatTimestamp = (value?: Date | null) => {
   return new Intl.DateTimeFormat( 'en', {
     dateStyle: 'medium',
     timeStyle: 'short',
+    timeZone: 'America/Mexico_City',
   } ).format( value )
 }
 
