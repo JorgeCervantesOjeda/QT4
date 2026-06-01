@@ -1,5 +1,7 @@
 // Pure helpers for timestamp normalization, issue statistics, labels, and Firestore error classification.
 import type { FileStorageProviderKind } from "../../domain/types";
+import { formatApproxCountdown } from "../../lib/reviewWindow";
+import { formatTimestamp } from "../../lib/time";
 import type {
   CommentSummary,
   DashboardFocusTarget,
@@ -77,6 +79,20 @@ const formatStorageProviderLabel = (
     return "Files API";
   }
   return "Unknown";
+};
+
+const formatReviewPeriodLabel = (
+  version: Pick<VersionSummary, "reviewEndAt">,
+  clockNowMs: number,
+) => {
+  if (!version.reviewEndAt) {
+    return "No expiration";
+  }
+  const remainingMs = version.reviewEndAt.getTime() - clockNowMs;
+  if (remainingMs <= 0) {
+    return `Ended (${formatTimestamp(version.reviewEndAt)})`;
+  }
+  return `${formatApproxCountdown(remainingMs)} (${formatTimestamp(version.reviewEndAt)})`;
 };
 
 const parseDashboardFocusTarget = (
@@ -372,6 +388,7 @@ export {
   buildThreadStatsMismatchMessage,
   formatEmailRecipientsLine,
   formatFileSize,
+  formatReviewPeriodLabel,
   formatStorageProviderLabel,
   getThreadStatsFromLoadedData,
   hasLinkedFileMetadata,

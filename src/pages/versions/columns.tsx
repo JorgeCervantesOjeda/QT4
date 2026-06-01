@@ -2,11 +2,13 @@
 import { useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { versionNumberToString } from "../../domain/types";
-import { formatTimeAgoWithTimestamp, formatTimestamp } from "../../lib/time";
-import { formatApproxCountdown } from "../../lib/reviewWindow";
+import { formatTimeAgoWithTimestamp } from "../../lib/time";
 import type { CommentSummary, ThreadSummary, VersionSummary } from "./types";
 import type { MemberAssignmentRow } from "./AuthorReviewerAssignmentPanel";
-import { formatStorageProviderLabel } from "./utils";
+import {
+  formatReviewPeriodLabel,
+  formatStorageProviderLabel,
+} from "./utils";
 
 type VersionColumnsParams = {
   formatUserLabel: (userId: string) => string;
@@ -81,17 +83,7 @@ const useVersionColumns = (params: VersionColumnsParams) =>
         id: "reviewPeriod",
         cell: (info) => {
           const version = info.row.original;
-          if (version.status !== "In Review") {
-            return "-";
-          }
-          if (!version.reviewEndAt) {
-            return "No expiration";
-          }
-          const remainingMs = version.reviewEndAt.getTime() - params.clockNowMs;
-          if (remainingMs <= 0) {
-            return `Main window ended (${formatTimestamp(version.reviewEndAt)})`;
-          }
-          return `${formatApproxCountdown(remainingMs)} (${formatTimestamp(version.reviewEndAt)})`;
+          return formatReviewPeriodLabel(version, params.clockNowMs);
         },
       },
     ],

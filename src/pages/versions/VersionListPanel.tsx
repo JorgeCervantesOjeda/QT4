@@ -5,10 +5,10 @@ import {
   versionNumberToString,
   type FileStorageProviderKind,
 } from '../../domain/types'
-import { formatApproxCountdown } from '../../lib/reviewWindow'
-import { formatTimeAgoWithTimestamp, formatTimestamp } from '../../lib/time'
+import { formatTimeAgoWithTimestamp } from '../../lib/time'
 import type { VersionSummary } from './types'
 import {
+  formatReviewPeriodLabel,
   formatStorageProviderLabel,
   hasLinkedFileMetadata,
 } from './utils'
@@ -105,14 +105,7 @@ function VersionListPanel( {
               Uploaded: {!version.hasFile ? 'No' : version.fileRefId ? 'Yes' : 'Missing metadata'}
             </p>
             <p className="muted">
-              Review period:{' '}
-              {version.status !== 'In Review'
-                ? '-'
-                : !version.reviewEndAt
-                  ? 'No expiration'
-                  : version.reviewEndAt.getTime() <= clockNowMs
-                    ? `Main window ended (${formatTimestamp( version.reviewEndAt )})`
-                    : `${formatApproxCountdown( version.reviewEndAt.getTime() - clockNowMs )} (${formatTimestamp( version.reviewEndAt )})`}
+              Review period: {formatReviewPeriodLabel( version, clockNowMs )}
             </p>
             {hasLinkedFileMetadata( version ) ? (
               <div className="actions">
