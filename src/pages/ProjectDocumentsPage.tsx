@@ -61,7 +61,17 @@ type ProjectMember = {
 
 type DocumentFilter = 'all' | 'mine'
 
+const FIRESTORE_IN_FILTER_LIMIT = 10
+
 const isLikelyEmail = (value: string) => /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test( value )
+
+const chunkValues = <T,>(values: T[], size: number): T[][] => {
+  const chunks: T[][] = []
+  for( let index = 0; index < values.length; index += size ) {
+    chunks.push( values.slice( index, index + size ) )
+  }
+  return chunks
+}
 
 const pickLatestDate = ( ...values: Array<Date | null | undefined> ): Date | null => {
   let latest: Date | null = null
@@ -160,6 +170,61 @@ const isOfflineFirestoreError = (error: unknown): boolean => {
     code.includes( 'unavailable' ) ||
     code.includes( 'deadline-exceeded' )
   )
+}
+
+const isPermissionDeniedFirestoreError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String( error ?? '' )
+  const loweredMessage = message.toLowerCase()
+  const code = error && typeof error === 'object' && 'code' in error
+    ? String( ( error as { code?: unknown } ).code ?? '' ).toLowerCase()
+    : ''
+  return (
+    loweredMessage.includes( 'permission-denied' ) ||
+    loweredMessage.includes( 'missing or insufficient permissions' ) ||
+    code.includes( 'permission-denied' )
+  )
+}
+
+const loadVersionSnapshotsForProjectDocuments = async (
+  projectId: string,
+  documentIds: string[],
+): Promise<QuerySnapshot[]> => {
+  try {
+    return [
+      await getDocs( query( collection( db, 'versions' ), where( 'projectId', '==', projectId ) ) ),
+    ]
+  } catch( err ) {
+    if( !isPermissionDeniedFirestoreError( err ) ) {
+      throw err
+    }
+  }
+
+  const documentIdChunks = chunkValues(
+    documentIds.filter( Boolean ),
+    FIRESTORE_IN_FILTER_LIMIT,
+  )
+  const fallbackResults = await Promise.allSettled(
+    documentIdChunks.map( ( documentIdChunk ) =>
+      getDocs(
+        query(
+          collection( db, 'versions' ),
+          where( 'projectId', '==', projectId ),
+          where( 'docId', 'in', documentIdChunk ),
+        ),
+      ),
+    ),
+  )
+  return fallbackResults.flatMap( ( result, index ) => {
+    if( result.status === 'fulfilled' ) {
+      return [ result.value ]
+    }
+    console.warn( 'Project document version chunk lookup skipped:', {
+      projectId,
+      docIds: documentIdChunks[index] ?? [],
+      reason: result.reason,
+    } )
+    return []
+  } )
 }
 
 function ProjectDocumentsPage() {
@@ -463,8 +528,11 @@ function ProjectDocumentsPage() {
       } )
 
       step = 'latest-versions'
-      const [ versionsSnapshot, membersSnapshot ] = await Promise.all( [
-        getDocs( query( collection( db, 'versions' ), where( 'projectId', '==', projectId ) ) ),
+      const [ versionSnapshots, membersSnapshot ] = await Promise.all( [
+        loadVersionSnapshotsForProjectDocuments(
+          projectId,
+          baseDocuments.map( ( documentItem ) => documentItem.id ),
+        ),
         getDocs( query( collection( db, 'projectMembers' ), where( 'projectId', '==', projectId ) ) ),
       ] )
       const members = membersSnapshot.docs.map( ( memberSnapshot ) => {
@@ -488,40 +556,42 @@ function ProjectDocumentsPage() {
         latestReviewerIds: string[]
         earliestVersionCreatedAt: Date | null
       }>()
-      versionsSnapshot.docs.forEach( ( versionSnapshot ) => {
-        const versionData = versionSnapshot.data()
-        const versionDocId = ( versionData.docId as string | undefined ) ?? ''
-        if( !versionDocId ) {
-          return
-        }
-        const versionNumber = Number( versionData.number ?? 0 )
-        const versionCreatedAt = toSnapshotDate( versionData.createdAt )
-        const versionActivity = resolveVersionDocumentActivity( versionData )
-        const current = versionSummaryByDocId.get( versionDocId )
+      versionSnapshots.forEach( ( versionsSnapshot ) => {
+        versionsSnapshot.docs.forEach( ( versionSnapshot ) => {
+          const versionData = versionSnapshot.data()
+          const versionDocId = ( versionData.docId as string | undefined ) ?? ''
+          if( !versionDocId ) {
+            return
+          }
+          const versionNumber = Number( versionData.number ?? 0 )
+          const versionCreatedAt = toSnapshotDate( versionData.createdAt )
+          const versionActivity = resolveVersionDocumentActivity( versionData )
+          const current = versionSummaryByDocId.get( versionDocId )
 
-        if( !current || versionNumber >= current.latestNumber ) {
-          versionSummaryByDocId.set( versionDocId, {
-            latestNumber: versionNumber,
-            latestStatus: ( versionData.status as string | undefined ) ?? 'In Creation',
-            latestReviewEndAt: toSnapshotDate( versionData.reviewEndAt ),
-            latestVersionCreatedAt: versionCreatedAt,
-            latestVersionActivityAt: versionActivity.activityAt,
-            latestVersionHasFutureActivityAnomaly: versionActivity.hasFutureActivityAnomaly,
-            latestCreatedBy: ( versionData.createdBy as string | undefined ) ?? '',
-            latestReviewerIds: ( versionData.reviewerIds as string[] | undefined ) ?? [],
-            earliestVersionCreatedAt:
-              current?.earliestVersionCreatedAt && versionCreatedAt
-                ? new Date( Math.min( current.earliestVersionCreatedAt.getTime(), versionCreatedAt.getTime() ) )
-                : current?.earliestVersionCreatedAt ?? versionCreatedAt,
-          } )
-          return
-        }
+          if( !current || versionNumber >= current.latestNumber ) {
+            versionSummaryByDocId.set( versionDocId, {
+              latestNumber: versionNumber,
+              latestStatus: ( versionData.status as string | undefined ) ?? 'In Creation',
+              latestReviewEndAt: toSnapshotDate( versionData.reviewEndAt ),
+              latestVersionCreatedAt: versionCreatedAt,
+              latestVersionActivityAt: versionActivity.activityAt,
+              latestVersionHasFutureActivityAnomaly: versionActivity.hasFutureActivityAnomaly,
+              latestCreatedBy: ( versionData.createdBy as string | undefined ) ?? '',
+              latestReviewerIds: ( versionData.reviewerIds as string[] | undefined ) ?? [],
+              earliestVersionCreatedAt:
+                current?.earliestVersionCreatedAt && versionCreatedAt
+                  ? new Date( Math.min( current.earliestVersionCreatedAt.getTime(), versionCreatedAt.getTime() ) )
+                  : current?.earliestVersionCreatedAt ?? versionCreatedAt,
+            } )
+            return
+          }
 
-        if( versionCreatedAt ) {
-          current.earliestVersionCreatedAt = current.earliestVersionCreatedAt
-            ? new Date( Math.min( current.earliestVersionCreatedAt.getTime(), versionCreatedAt.getTime() ) )
-            : versionCreatedAt
-        }
+          if( versionCreatedAt ) {
+            current.earliestVersionCreatedAt = current.earliestVersionCreatedAt
+              ? new Date( Math.min( current.earliestVersionCreatedAt.getTime(), versionCreatedAt.getTime() ) )
+              : versionCreatedAt
+          }
+        } )
       } )
 
       const latestVersions = baseDocuments.map( ( documentItem ) => {

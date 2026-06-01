@@ -407,4 +407,58 @@ describe( 'pages/ProjectDocumentsPage', () => {
       ).toBeTruthy()
     } )
   }, 15000 )
+
+  it( 'keeps documents visible when the project-wide version lookup is denied', async () => {
+    getDocsMock.mockImplementation( async ( queryArg: unknown ) => {
+      const collectionName = getCollectionName( queryArg )
+      const requestedProjectId = getWhereValue( queryArg, 'projectId' )
+      const requestedDocId = getWhereValue( queryArg, 'docId' )
+      if( collectionName === 'versions' && requestedProjectId === 'project-1' && requestedDocId === undefined ) {
+        throw Object.assign( new Error( 'Missing or insufficient permissions.' ), { code: 'permission-denied' } )
+      }
+      if( collectionName === 'versions' && requestedProjectId === 'project-1' && Array.isArray( requestedDocId ) ) {
+        return createQuerySnapshot( [] )
+      }
+      if( collectionName === 'projectMembers' && requestedProjectId === 'project-1' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'project-1_user-member-1',
+            data: {
+              projectId: 'project-1',
+              userId: 'user-member-1',
+              role: 'leader',
+              email: 'member@example.com',
+            },
+          },
+          {
+            id: 'project-1_user-reviewer-1',
+            data: {
+              projectId: 'project-1',
+              userId: 'user-reviewer-1',
+              role: 'member',
+              email: 'reviewer@example.com',
+            },
+          },
+        ] )
+      }
+      if( collectionName === 'userDirectory' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'user-reviewer-1',
+            data: {
+              userId: 'user-reviewer-1',
+              email: 'reviewer@example.com',
+            },
+          },
+        ] )
+      }
+      return createQuerySnapshot( [] )
+    } )
+
+    render( <ProjectDocumentsPage /> )
+
+    expect( await screen.findByRole( 'heading', { name: '17 - Controlled Document' }, { timeout: 10000 } ) ).toBeTruthy()
+    expect( screen.getByText( 'No versions yet' ) ).toBeTruthy()
+    expect( screen.queryByRole( 'dialog' ) ).toBeNull()
+  }, 15000 )
 } )
