@@ -149,6 +149,36 @@ const calendarLocalizer = dateFnsLocalizer( {
 
 const DATA_MODEL_UPDATE_VERSION = 2
 const ALL_USERS_FILTER = '__all_users__'
+const AUDIT_CSV_HEADERS = [
+  'when',
+  'actor',
+  'actorEmail',
+  'action',
+  'entityType',
+  'project',
+  'document',
+  'version',
+  'threadOrComment',
+  'targetUser',
+  'entityId',
+  'metadata',
+]
+
+const formatCsvValue = (value: unknown): string => {
+  const text = value === null || value === undefined ? '' : String( value )
+  if( /[",\r\n]/.test( text ) ) {
+    return `"${text.replace( /"/g, '""' )}"`
+  }
+  return text
+}
+
+const buildCsvText = (headers: string[], rows: unknown[][]): string =>
+  [ headers, ...rows ].map( ( row ) => row.map( formatCsvValue ).join( ',' ) ).join( '\r\n' )
+
+const safeCsvFileSegment = (value: string): string => {
+  const normalized = value.trim().replace( /[^a-z0-9_-]+/gi, '-' ).replace( /-+/g, '-' )
+  return normalized.replace( /^-|-$/g, '' ) || 'audit'
+}
 
 function AdminAuditPage() {
   const { user } = useAuth()
@@ -571,6 +601,47 @@ function AdminAuditPage() {
     const version = log.versionId ? formatVersionLabel( log.versionId ) : '-'
     const targetUser = log.targetUserId ? formatUserLabel( log.targetUserId ) : '-'
     return { actor, project, document, version, targetUser }
+  }
+
+  const downloadAuditCsv = () => {
+    if( logs.length === 0 ) {
+      return
+    }
+    const rows = logs.map( ( log ) => {
+      const summary = formatCalendarLogSummary( log )
+      const threadOrComment = log.commentId
+        ? formatCommentLabel( log.commentId )
+        : log.threadId
+          ? formatThreadLabel( log.threadId )
+          : '-'
+      return [
+        log.createdAt?.toISOString() ?? '',
+        summary.actor,
+        log.actorEmail ?? userDirectoryById[log.actorId]?.email ?? '',
+        log.action,
+        log.entityType,
+        summary.project,
+        summary.document,
+        summary.version,
+        threadOrComment,
+        summary.targetUser,
+        log.entityId,
+        log.metadata ? JSON.stringify( log.metadata ) : '',
+      ]
+    } )
+    const csvText = buildCsvText( AUDIT_CSV_HEADERS, rows )
+    const blob = new Blob( [ csvText ], { type: 'text/csv;charset=utf-8' } )
+    const url = URL.createObjectURL( blob )
+    const link = document.createElement( 'a' )
+    const userSegment = isAllUsersSelected ? 'all-users' : safeCsvFileSegment( reportUserId || 'current-user' )
+    const startSegment = safeCsvFileSegment( startDate || 'last-30-days' )
+    const endSegment = safeCsvFileSegment( endDate || 'now' )
+    link.href = url
+    link.download = `qt4-audit-${userSegment}-${startSegment}-${endSegment}.csv`
+    document.body.appendChild( link )
+    link.click()
+    link.remove()
+    URL.revokeObjectURL( url )
   }
 
   useEffect( () => {
@@ -2232,6 +2303,9 @@ function AdminAuditPage() {
               <h2>Activity log</h2>
               <div className="actions actions--inline">
                 <p className="muted">{logs.length} entries</p>
+                <button type="button" onClick={downloadAuditCsv} disabled={logs.length === 0}>
+                  Download CSV
+                </button>
                 <div className="view-toggle">
                   <button
                     type="button"

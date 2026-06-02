@@ -870,4 +870,142 @@ describe( 'pages/AdminAuditPage', () => {
       versionId: 'version-jorge-1',
     } ) )
   }, 15000 )
+
+  it( 'downloads the loaded audit report as CSV', async () => {
+    currentUserState.user = {
+      uid: 'user-admin-1',
+      email: 'admin@example.com',
+      displayName: 'Admin User',
+      getIdToken: vi.fn().mockResolvedValue( 'admin-token' ),
+    }
+    const exportedBlobs: Blob[] = []
+    const createObjectURLMock = vi.fn( ( blob: Blob ) => {
+      exportedBlobs.push( blob )
+      return 'blob:audit-csv'
+    } )
+    const revokeObjectURLMock = vi.fn()
+    Object.defineProperty( URL, 'createObjectURL', {
+      configurable: true,
+      value: createObjectURLMock,
+    } )
+    Object.defineProperty( URL, 'revokeObjectURL', {
+      configurable: true,
+      value: revokeObjectURLMock,
+    } )
+    const anchorClickSpy = vi.spyOn( HTMLAnchorElement.prototype, 'click' ).mockImplementation( () => undefined )
+    getDocMock.mockImplementation( async ( docRef: { collection: string; id: string } ) => {
+      if( docRef.collection === 'userProfiles' && docRef.id === 'user-admin-1' ) {
+        return createDocSnapshot( {
+          id: 'user-admin-1',
+          data: {
+            isAdmin: true,
+          },
+        } )
+      }
+      if( docRef.collection === 'projects' && docRef.id === 'project-jorge-1' ) {
+        return createDocSnapshot( {
+          id: 'project-jorge-1',
+          data: {
+            name: 'Quality Project',
+          },
+        } )
+      }
+      if( docRef.collection === 'documents' && docRef.id === 'document-jorge-1' ) {
+        return createDocSnapshot( {
+          id: 'document-jorge-1',
+          data: {
+            shortId: 12,
+            title: 'Audit Document',
+            type: 'document',
+          },
+        } )
+      }
+      if( docRef.collection === 'versions' && docRef.id === 'version-jorge-1' ) {
+        return createDocSnapshot( {
+          id: 'version-jorge-1',
+          data: {
+            number: 1,
+          },
+        } )
+      }
+      return createMissingSnapshot( docRef.id )
+    } )
+    getDocsMock.mockImplementation( async ( queryArg: unknown ) => {
+      const collectionName = getCollectionName( queryArg )
+      if( collectionName === 'userDirectory' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'user-admin-1',
+            data: {
+              userId: 'user-admin-1',
+              email: 'admin@example.com',
+              displayName: 'Admin User',
+            },
+          },
+          {
+            id: 'user-jorge-1',
+            data: {
+              userId: 'user-jorge-1',
+              email: 'jorge.cervantes.ojeda@gmail.com',
+              displayName: 'Jorge Cervantes Ojeda',
+            },
+          },
+        ] )
+      }
+      if( collectionName === 'auditLogs' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'audit-log-jorge-1',
+            data: {
+              actorId: 'user-jorge-1',
+              actorEmail: 'jorge.cervantes.ojeda@gmail.com',
+              targetUserId: 'user-admin-1',
+              action: 'updateVersion',
+              entityType: 'version',
+              entityId: 'version-jorge-1',
+              projectId: 'project-jorge-1',
+              docId: 'document-jorge-1',
+              versionId: 'version-jorge-1',
+              metadata: {
+                note: 'Moved, approved',
+              },
+              createdAt: { toDate: () => new Date( '2026-02-15T10:00:00.000Z' ) },
+            },
+          },
+        ] )
+      }
+      return createQuerySnapshot( [] )
+    } )
+
+    render( <AdminAuditPage /> )
+
+    expect( await screen.findByRole( 'heading', { name: 'Admin Audit' }, { timeout: 10000 } ) ).toBeTruthy()
+    await waitFor( () => {
+      expect( ( screen.getByLabelText( 'User' ) as HTMLSelectElement ).value ).toBe( 'user-admin-1' )
+    } )
+    fireEvent.change( screen.getByLabelText( 'User' ), {
+      target: { value: 'user-jorge-1' },
+    } )
+    fireEvent.change( screen.getByLabelText( 'Start date' ), {
+      target: { value: '2026-02-01' },
+    } )
+    fireEvent.change( screen.getByLabelText( 'End date' ), {
+      target: { value: '2026-02-28' },
+    } )
+    fireEvent.click( screen.getByRole( 'button', { name: 'Run report' } ) )
+
+    await waitFor( () => {
+      expect( screen.getByTestId( 'audit-table' ).textContent ).toBe( '1 rows' )
+    } )
+    fireEvent.click( screen.getByRole( 'button', { name: 'Download CSV' } ) )
+
+    expect( createObjectURLMock ).toHaveBeenCalled()
+    expect( anchorClickSpy ).toHaveBeenCalled()
+    expect( revokeObjectURLMock ).toHaveBeenCalledWith( 'blob:audit-csv' )
+    expect( exportedBlobs ).toHaveLength( 1 )
+    const csvText = await exportedBlobs[0].text()
+    expect( csvText ).toContain( 'when,actor,actorEmail,action,entityType,project,document,version,threadOrComment,targetUser,entityId,metadata' )
+    expect( csvText ).toContain( '2026-02-15T10:00:00.000Z,Jorge Cervantes Ojeda (jorge.cervantes.ojeda@gmail.com),jorge.cervantes.ojeda@gmail.com,updateVersion,version,Quality Project,12 - Audit Document,0.01,-,Admin User (admin@example.com),version-jorge-1' )
+    expect( csvText ).toContain( '""Moved, approved""' )
+  }, 15000 )
 } )
