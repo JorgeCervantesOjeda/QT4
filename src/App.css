@@ -9,6 +9,7 @@
   --qt-border: #c4c0b9;
   --qt-interaction-border: #3f9b45;
   --qt-hover-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
+  --qt-card-table-hover-shadow: 0 0 0 2px rgba( 63, 155, 69, 0.35 ), 0 0 34px rgba( 63, 155, 69, 0.7 ), 0 0 72px rgba( 63, 155, 69, 0.32 );
   --qt-selected-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
 }
 
@@ -565,7 +566,7 @@
 }
 
 .data-table tr[role="button"]:not(.data-table-row--selected):hover td {
-  box-shadow: var(--qt-hover-shadow);
+  box-shadow: var(--qt-card-table-hover-shadow);
 }
 
 .data-table tr.data-table-row--selected td {
@@ -1062,7 +1063,7 @@
 
 .project-card[role="button"]:hover:not(.version-card),
 .project-card:hover:not(.version-card) {
-  box-shadow: var(--qt-hover-shadow);
+  box-shadow: var(--qt-card-table-hover-shadow);
 }
 
 .project-card--selected {
@@ -1693,7 +1694,7 @@
 
 .version-card[role="button"]:hover:not(.project-card--selected),
 .version-card:hover:not(.project-card--selected) {
-  box-shadow: var(--qt-hover-shadow);
+  box-shadow: var(--qt-card-table-hover-shadow);
 }
 
 .version-card.project-card--selected[role="button"]:hover,
@@ -1702,15 +1703,15 @@
 }
 
 .data-table--versions tr[role="button"]:not(.data-table-row--selected):hover td {
-  box-shadow: var(--qt-hover-shadow);
+  box-shadow: var(--qt-card-table-hover-shadow);
 }
 
 .project-card[role="button"]:hover:not(.project-card--selected):not(.project-card--thread-selected):not(.version-card) {
-  box-shadow: var(--qt-hover-shadow);
+  box-shadow: var(--qt-card-table-hover-shadow);
 }
 
 .data-table tr[role="button"]:not(.data-table-row--selected):hover td {
-  box-shadow: var(--qt-hover-shadow);
+  box-shadow: var(--qt-card-table-hover-shadow);
 }
 
 .project-members {
