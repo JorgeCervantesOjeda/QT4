@@ -8,8 +8,8 @@
   --qt-accent-strong: #d66915;
   --qt-border: #c4c0b9;
   --qt-interaction-border: #3f9b45;
-  --qt-hover-shadow: 0 0 0 1px rgba(63, 155, 69, 0.18), 0 6px 14px rgba(36, 19, 15, 0.08);
-  --qt-selected-shadow: 0 0 0 2px rgba(63, 155, 69, 0.28), 0 8px 18px rgba(36, 19, 15, 0.1);
+  --qt-hover-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
+  --qt-selected-shadow: 0 0 40px rgba( 63, 155, 69, 0.45 );
 }
 
 .app-shell {
