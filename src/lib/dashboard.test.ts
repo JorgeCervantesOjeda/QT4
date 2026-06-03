@@ -10,10 +10,14 @@ vi.mock( './firebase', async () => {
 vi.mock( './audit', () => ( {
   logAudit: vi.fn( async () => undefined ),
 } ) )
+vi.mock( './errorMonitor', () => ( {
+  reportAbnormalError: vi.fn( async () => true ),
+} ) )
 
 import { buildDashboardTasks, refreshDashboard } from './dashboard'
 import * as firestoreModule from 'firebase/firestore'
 import { logAudit } from './audit'
+import { reportAbnormalError } from './errorMonitor'
 import { FakeTimestamp, getCollectionDocs, getDocData, resetState, setDocData } from '../test/e2e/fakes/state'
 
 const timestamp = (value: string) => FakeTimestamp.fromDate( new Date( value ) )
@@ -40,6 +44,7 @@ const seedProject = (projectId: string, name: string, userId: string) => {
 
 describe( 'lib/dashboard', () => {
   beforeEach( () => {
+    vi.clearAllMocks()
     resetState()
     vi.useFakeTimers()
     vi.setSystemTime( new Date( '2026-04-03T10:45:00.000Z' ) )
@@ -489,6 +494,10 @@ describe( 'lib/dashboard', () => {
         title: '807 - Permission Authoring Document',
       } ),
     ] )
+    expect( reportAbnormalError ).toHaveBeenCalledWith( expect.objectContaining( {
+      action: 'dashboard.loadUserComments',
+      source: 'firestore',
+    } ) )
   } )
 
   it( 'completes dashboard refresh even when audit logging fails', async () => {
