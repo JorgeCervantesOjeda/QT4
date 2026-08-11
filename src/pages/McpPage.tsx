@@ -1,6 +1,5 @@
 // src/pages/McpPage.tsx: Shows QT4 MCP connection details and user pending MCP confirmations.
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import {
   collection,
   doc,
@@ -149,7 +148,7 @@ function McpPage() {
 
   return (
     <div className="app-shell">
-      <BackStack links={[ { to: '/app', label: 'Dashboard' } ]} />
+      <BackStack links={[]} />
       <header className="app-header">
         <AppBrand pageTitle="QT4 MCP" />
       </header>
@@ -157,7 +156,6 @@ function McpPage() {
         <section className="panel stack">
           <div className="panel-header">
             <h2>QT4 MCP</h2>
-            <Link className="link" to="/app">Back to dashboard</Link>
           </div>
           <p className="muted">Use this endpoint from a compatible chatbot that supports remote MCP servers with Bearer tokens.</p>
           <div className="mcp-connection-grid">
