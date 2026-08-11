@@ -3,6 +3,8 @@ const { logger } = require( "firebase-functions" )
 const admin = require( "firebase-admin" )
 const nodemailer = require( "nodemailer" )
 const crypto = require( "node:crypto" )
+const { handleMcpMessage } = require( "./mcpCore" )
+const { createMcpToolHandlers } = require( "./mcpDomain" )
 
 if( admin.apps.length === 0 ) {
   admin.initializeApp()
@@ -524,5 +526,94 @@ exports.reportClientMonitorEvent = onRequest( { cors: false, maxInstances: 10, i
     const message = err instanceof Error ? err.message : "Unexpected error"
     logger.error( "reportClientMonitorEvent failed", { message } )
     res.status( 500 ).json( { error: "Internal server error", detail: message } )
+  }
+} )
+
+exports.mcp = onRequest( { cors: false, maxInstances: 20, invoker: "public" }, async (req, res) => {
+  setCorsHeaders( req, res, [ "MCP_ALLOWED_ORIGINS", "NOTIFY_ALLOWED_ORIGINS" ] )
+  res.set( "MCP-Protocol-Version", req.headers[ "mcp-protocol-version" ] || "2025-06-18" )
+
+  if( req.method === "OPTIONS" ) {
+    res.status( 204 ).send( "" )
+    return
+  }
+
+  if( req.method === "GET" ) {
+    res.status( 200 ).type( "text/plain" ).send(
+      [
+        "QT4 MCP endpoint.",
+        "Use POST JSON-RPC 2.0 messages with Authorization: Bearer <Firebase ID token> for tool calls.",
+        "Public methods: initialize, tools/list, resources/list, resources/read.",
+      ].join( "\n" ),
+    )
+    return
+  }
+
+  if( req.method !== "POST" ) {
+    res.status( 405 ).json( { error: "Method not allowed" } )
+    return
+  }
+
+  const requestBody = req.body && typeof req.body === "object" ? req.body : null
+  if( !requestBody ) {
+    res.status( 400 ).json( {
+      jsonrpc: "2.0",
+      id: null,
+      error: {
+        code: -32700,
+        message: "JSON body is required.",
+      },
+    } )
+    return
+  }
+
+  let decoded = null
+  try {
+    decoded = await verifyBearerToken( req )
+  } catch( err ) {
+    logger.warn( "MCP token verification failed", {
+      reason: err instanceof Error ? err.message : String( err ),
+    } )
+  }
+
+  const auth = decoded
+    ? {
+      uid: decoded.uid,
+      email: decoded.email || "",
+    }
+    : null
+  const domainHandlers = createMcpToolHandlers( { admin, logger } )
+  const handlers = Object.fromEntries(
+    Object.entries( domainHandlers ).map( ( [ name, handler ] ) => [
+      name,
+      (args) => handler( args, auth ),
+    ] ),
+  )
+
+  try {
+    const response = await handleMcpMessage( requestBody, {
+      auth,
+      handlers,
+    } )
+    if( response === null ) {
+      res.status( 204 ).send( "" )
+      return
+    }
+    const isUnauthenticatedToolCall = !auth
+      && requestBody.method === "tools/call"
+      && response.error
+      && response.error.code === -32001
+    res.status( isUnauthenticatedToolCall ? 401 : 200 ).json( response )
+  } catch( err ) {
+    const message = err instanceof Error ? err.message : "Unexpected MCP endpoint error"
+    logger.error( "MCP endpoint failed", { message } )
+    res.status( 500 ).json( {
+      jsonrpc: "2.0",
+      id: requestBody.id ?? null,
+      error: {
+        code: -32603,
+        message: "Internal MCP server error.",
+      },
+    } )
   }
 } )
