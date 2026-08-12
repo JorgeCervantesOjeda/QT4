@@ -529,6 +529,6 @@ exports.reportClientMonitorEvent = onRequest( { cors: false, maxInstances: 10, i
 } )
 
 exports.aiAssist = onRequest(
-  { cors: false, maxInstances: 10, invoker: "public" },
+  { cors: false, maxInstances: 10, invoker: "public", secrets: [ "GEMINI_API_KEY" ] },
   createAiAssistHandler( { admin, logger, verifyBearerToken, setCorsHeaders } ),
 )
