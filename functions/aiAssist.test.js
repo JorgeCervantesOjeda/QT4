@@ -60,6 +60,27 @@ const createMappedFirestore = (docsByPath) => ( {
   },
 } )
 
+const createIndexFailingCommentsFirestore = (docsByPath) => ( {
+  collection(collectionName) {
+    if( collectionName !== "comments" ) {
+      return createCollectionRef( docsByPath, collectionName )
+    }
+    return {
+      where(fieldName, operator, value) {
+        return {
+          orderBy() {
+            throw new Error( "9 FAILED_PRECONDITION: The query requires an index." )
+          },
+          limit() {
+            return this
+          },
+          get: async () => createQueryRef( docsByPath, collectionName, [ { fieldName, operator, value } ] ).get(),
+        }
+      },
+    }
+  },
+} )
+
 const createCollectionRef = (docsByPath, collectionPath) => ( {
   doc(docId) {
     return {
@@ -97,6 +118,10 @@ const createDocSnapshot = (id, data) => ( {
   id,
   exists: Boolean( data ),
   data: () => data,
+} )
+
+const timestamp = (value) => ( {
+  toDate: () => new Date( value ),
 } )
 
 test( "normalizes only supported AI assist modes", () => {
@@ -331,6 +356,78 @@ test( "handler explains a thread whose project id is only on the version", async
   }
   assert.equal( response.statusCode, 200 )
   assert.equal( response.body.result, "La persona revisora pide aclarar un valor." )
+} )
+
+test( "handler explains a thread without requiring a comments order index", async () => {
+  const previousApiKey = process.env.GEMINI_API_KEY
+  process.env.GEMINI_API_KEY = "test-key"
+  const firestore = () => createIndexFailingCommentsFirestore( {
+    "threads/thread-1": {
+      title: "Missing value",
+      status: "open",
+      projectId: "project-1",
+      docId: "doc-1",
+      versionId: "version-1",
+      commentCount: 2,
+    },
+    "comments/newer-comment": {
+      threadId: "thread-1",
+      body: "Second comment.",
+      createdAt: timestamp( "2026-08-12T10:00:00.000Z" ),
+    },
+    "comments/older-comment": {
+      threadId: "thread-1",
+      body: "First comment.",
+      createdAt: timestamp( "2026-08-12T09:00:00.000Z" ),
+    },
+    "versions/version-1": {
+      projectId: "project-1",
+      docId: "doc-1",
+      number: 1,
+      status: "In Review",
+    },
+    "documents/doc-1": {
+      projectId: "project-1",
+      title: "Readable Draft",
+      shortId: 801,
+    },
+    "projects/project-1": {
+      name: "Readable Project",
+    },
+    "projectMembers/project-1_user-1": {
+      role: "member",
+    },
+  } )
+  let providerPrompt = ""
+  const handler = createAiAssistHandler( {
+    admin: { firestore },
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+    verifyBearerToken: async () => ( { uid: "user-1" } ),
+    setCorsHeaders: () => {},
+    fetchImpl: async (_url, request) => {
+      const body = JSON.parse( request.body )
+      providerPrompt = body.contents[0].parts[0].text
+      return {
+        ok: true,
+        json: async () => ( {
+          candidates: [
+            { content: { parts: [ { text: "El issue pide aclarar un valor." } ] } },
+          ],
+        } ),
+      }
+    },
+  } )
+  const response = createResponse()
+
+  await handler( { method: "POST", body: { mode: "explain_thread", threadId: "thread-1" }, headers: {} }, response )
+
+  if( previousApiKey === undefined ) {
+    delete process.env.GEMINI_API_KEY
+  } else {
+    process.env.GEMINI_API_KEY = previousApiKey
+  }
+  assert.equal( response.statusCode, 200 )
+  assert.match( providerPrompt, /First comment.[\s\S]*Second comment/u )
 } )
 
 test( "callGemini uses the supported lite model contract", async () => {

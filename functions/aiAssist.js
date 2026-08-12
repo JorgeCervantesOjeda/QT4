@@ -153,6 +153,12 @@ const summarizeComment = (comment) => ( {
   createdAt: toDateIso( comment.createdAt ),
 } )
 
+const compareCommentsByCreatedAt = (commentA, commentB) => {
+  const createdAtA = commentA.createdAt ? new Date( commentA.createdAt ).getTime() : 0
+  const createdAtB = commentB.createdAt ? new Date( commentB.createdAt ).getTime() : 0
+  return createdAtA - createdAtB
+}
+
 const summarizeThread = (thread) => ( {
   id: thread.id,
   title: thread.title || "",
@@ -239,12 +245,14 @@ const loadThreadContext = async (firestore, auth, threadId) => {
   const commentsSnapshot = await firestore
     .collection( "comments" )
     .where( "threadId", "==", threadId )
-    .orderBy( "createdAt", "asc" )
-    .limit( MAX_THREAD_COMMENTS )
     .get()
+  const comments = commentsSnapshot.docs
+    .map( (snapshot) => summarizeComment( { id: snapshot.id, ...snapshot.data() } ) )
+    .sort( compareCommentsByCreatedAt )
+    .slice( 0, MAX_THREAD_COMMENTS )
   return {
     thread: summarizeThread( thread ),
-    comments: commentsSnapshot.docs.map( (snapshot) => summarizeComment( { id: snapshot.id, ...snapshot.data() } ) ),
+    comments,
     document: bundle.document ? summarizeDocument( bundle.document ) : null,
     version: bundle.version ? summarizeVersion( bundle.version ) : null,
     project: bundle.project ? { id: bundle.project.id, name: bundle.project.name || "" } : null,
