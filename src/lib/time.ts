@@ -1,3 +1,9 @@
+// src/lib/time.ts: Shared date and elapsed-time formatting helpers.
+const MILLISECONDS_PER_SECOND = 1000
+const SECONDS_PER_MINUTE = 60
+const MINUTES_PER_HOUR = 60
+const HOURS_PER_DAY = 24
+
 export const formatTimeAgo = (value?: Date | null) => {
   if( !value ) {
     return 'Unknown'
@@ -20,6 +26,22 @@ export const formatTimeAgo = (value?: Date | null) => {
     }
   }
   return formatter.format( 0, 'second' )
+}
+
+export const formatElapsedWithDays = (value?: Date | null, nowMs = Date.now()) => {
+  if( !value ) {
+    return '--:--:--'
+  }
+  const secondsOfElapsed = Math.max( 0, Math.floor( ( nowMs - value.getTime() ) / MILLISECONDS_PER_SECOND ) )
+  const days = Math.floor( secondsOfElapsed / ( SECONDS_PER_MINUTE * MINUTES_PER_HOUR * HOURS_PER_DAY ) )
+  const hours = Math.floor( ( secondsOfElapsed % ( SECONDS_PER_MINUTE * MINUTES_PER_HOUR * HOURS_PER_DAY ) ) / ( SECONDS_PER_MINUTE * MINUTES_PER_HOUR ) )
+  const minutes = Math.floor( ( secondsOfElapsed % ( SECONDS_PER_MINUTE * MINUTES_PER_HOUR ) ) / SECONDS_PER_MINUTE )
+  const seconds = secondsOfElapsed % SECONDS_PER_MINUTE
+  const clock = `${String( hours ).padStart( 2, '0' )}:${String( minutes ).padStart( 2, '0' )}:${String( seconds ).padStart( 2, '0' )}`
+  if( days === 0 ) {
+    return clock
+  }
+  return `${days} ${days === 1 ? 'day' : 'days'}, ${clock}`
 }
 
 export const formatTimestamp = (value?: Date | null) => {

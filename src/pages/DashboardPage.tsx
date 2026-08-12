@@ -26,7 +26,7 @@ import {
   type DashboardTaskType,
 } from '../lib/dashboard'
 import { consumeInjectedTestFault } from '../lib/testFaults'
-import { formatTimeAgoWithTimestamp } from '../lib/time'
+import { formatElapsedWithDays, formatTimeAgoWithTimestamp } from '../lib/time'
 
 type DashboardSectionKey = DashboardTaskType | 'expired' | 'activeTable'
 const DASHBOARD_COLLAPSE_STORAGE_KEY = 'qt4_dashboard_collapsed_sections_v2'
@@ -443,14 +443,7 @@ function DashboardPage() {
   }
 
   const formatElapsed = (value: Date | null) => {
-    if( !value ) {
-      return '--:--:--'
-    }
-    const deltaSeconds = Math.max( 0, Math.floor( ( nowMs - value.getTime() ) / 1000 ) )
-    const hours = Math.floor( deltaSeconds / 3600 )
-    const minutes = Math.floor( ( deltaSeconds % 3600 ) / 60 )
-    const seconds = deltaSeconds % 60
-    return `${String( hours ).padStart( 2, '0' )}:${String( minutes ).padStart( 2, '0' )}:${String( seconds ).padStart( 2, '0' )}`
+    return formatElapsedWithDays( value, nowMs )
   }
 
   const resolveTaskStatusClassName = (task: Pick<DashboardTask, 'type' | 'reviewEndAt' | 'reviewPeriodState' | 'lifecycleState'>) => {

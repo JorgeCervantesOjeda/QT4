@@ -137,6 +137,81 @@ test( "handler returns a provider error when Gemini fails", async () => {
   assert.doesNotMatch( JSON.stringify( loggerCalls ), /test-key/u )
 } )
 
+test( "handler sends document references to Gemini without internal task ids", async () => {
+  const previousApiKey = process.env.GEMINI_API_KEY
+  process.env.GEMINI_API_KEY = "test-key"
+  let providerPrompt = ""
+  const firestore = () => ( {
+    collection(collectionName) {
+      assert.equal( collectionName, "dashboard" )
+      return {
+        doc(uid) {
+          assert.equal( uid, "user-1" )
+          return {
+            get: async () => ( {
+              exists: true,
+              data: () => ( {
+                taskCount: 1,
+                expiredTaskCount: 0,
+              } ),
+            } ),
+            collection(childCollectionName) {
+              assert.equal( childCollectionName, "tasks" )
+              return {
+                get: async () => ( {
+                  docs: [
+                    {
+                      id: "authoring-internal-task-id",
+                      data: () => ( {
+                        type: "authoring",
+                        title: "801 - Readable Draft",
+                        documentShortId: 801,
+                        documentTitle: "Readable Draft",
+                        lifecycleState: "active",
+                      } ),
+                    },
+                  ],
+                } ),
+              }
+            },
+          }
+        },
+      }
+    },
+  } )
+  const handler = createAiAssistHandler( {
+    admin: { firestore },
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+    verifyBearerToken: async () => ( { uid: "user-1" } ),
+    setCorsHeaders: () => {},
+    fetchImpl: async (_url, request) => {
+      const body = JSON.parse( request.body )
+      providerPrompt = body.contents[0].parts[0].text
+      return {
+        ok: true,
+        json: async () => ( {
+          candidates: [
+            { content: { parts: [ { text: "Yo empezaría por 801 - Readable Draft." } ] } },
+          ],
+        } ),
+      }
+    },
+  } )
+  const response = createResponse()
+
+  await handler( { method: "POST", body: { mode: "summarize_pending" }, headers: {} }, response )
+
+  if( previousApiKey === undefined ) {
+    delete process.env.GEMINI_API_KEY
+  } else {
+    process.env.GEMINI_API_KEY = previousApiKey
+  }
+  assert.equal( response.statusCode, 200 )
+  assert.match( providerPrompt, /"documentShortId": 801/u )
+  assert.match( providerPrompt, /"documentTitle": "Readable Draft"/u )
+  assert.doesNotMatch( providerPrompt, /authoring-internal-task-id/u )
+} )
+
 test( "callGemini uses the supported lite model contract", async () => {
   let requestedUrl = ""
   await assert.rejects(
@@ -211,8 +286,8 @@ test( "groups pending tasks without letting historical expired tasks dominate", 
   assert.equal( grouped.counts.active, 1 )
   assert.equal( grouped.counts.recentExpired, 1 )
   assert.equal( grouped.counts.historicalExpired, 20 )
-  assert.deepEqual( grouped.activeTasks.map( (task) => task.id ), [ "active-1" ] )
-  assert.deepEqual( grouped.recentExpiredTasks.map( (task) => task.id ), [ "expired-recent" ] )
+  assert.deepEqual( grouped.activeTasks.map( (task) => task.type ), [ "authoring" ] )
+  assert.deepEqual( grouped.recentExpiredTasks.map( (task) => task.type ), [ "reply" ] )
   assert.equal( grouped.historicalExpiredSummary.countsByType.reviewer, 10 )
   assert.equal( grouped.historicalExpiredSummary.countsByType.reply, 10 )
 } )

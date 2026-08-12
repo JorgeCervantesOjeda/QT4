@@ -252,6 +252,8 @@ const summarizeTask = (task) => ( {
   id: task.id,
   type: task.type || "",
   title: task.title || "",
+  documentShortId: task.documentShortId ?? task.shortId ?? null,
+  documentTitle: task.documentTitle || "",
   detail: task.detail || "",
   lifecycleState: task.lifecycleState || "active",
   visualState: task.visualState || "",
@@ -301,7 +303,7 @@ const skillText = (mode) => {
   if( mode === "improve_text" ) {
     return "Mejora claridad, precisión y tono del texto del usuario. Conserva la intención. No agregues argumentos nuevos."
   }
-  return "Clasifica pendientes por urgencia usando fechas, estado, vencimiento y tipo. Prioriza primero tareas activas accionables. Considera vencidos recientes como posibles urgencias. Resume vencidos históricos por separado y no los coloques por encima del trabajo actual sólo por volumen. Explica la razón de cada prioridad."
+  return "Da una recomendación humana sobre qué atender primero. Evita tono de reporte técnico. No menciones nombres de campos, políticas internas, JSON ni identificadores internos. Prioriza primero tareas activas accionables; considera vencidos recientes como posibles urgencias; resume vencidos históricos por separado y no los pongas por encima del trabajo actual sólo por volumen. Si hay muy pocos documentos concretos, menciona su número corto y título. Si hay varios, menciona sólo números cortos. Si hay muchos, agrupa sin listar todos. Explica la razón en lenguaje natural."
 }
 
 const buildAiPrompt = ({ mode, language, context }) => {
@@ -318,7 +320,7 @@ const buildAiPrompt = ({ mode, language, context }) => {
     "Separa hechos observables de inferencias cuando aplique.",
     "No agregues argumentos nuevos al texto del usuario.",
     "Conserva la intención del usuario.",
-    "Devuelve una respuesta breve y accionable.",
+    "Devuelve una respuesta breve, humana y accionable.",
     "",
     "Contexto permitido:",
     JSON.stringify( context, null, 2 ),

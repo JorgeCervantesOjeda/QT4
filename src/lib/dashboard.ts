@@ -26,6 +26,9 @@ export type DashboardTask = {
   lifecycleState?: 'active' | 'expired'
   visualState?: 'neutral' | 'inCreation' | 'reviewActive' | 'reviewGrace' | 'reviewExpired' | 'accepted'
   title: string
+  docId?: string
+  documentShortId?: number | null
+  documentTitle?: string
   detail: string
   projectId: string
   link: string
@@ -190,6 +193,9 @@ export const deserializeDashboardTask = (
     lifecycleState: data.lifecycleState as DashboardTask['lifecycleState'] | undefined,
     visualState: data.visualState as DashboardTask['visualState'] | undefined,
     title: ( data.title as string | undefined ) ?? 'Untitled task',
+    docId: ( data.docId as string | undefined ) ?? undefined,
+    documentShortId: Number.isFinite( data.documentShortId ) ? Number( data.documentShortId ) : undefined,
+    documentTitle: ( data.documentTitle as string | undefined ) ?? undefined,
     detail: ( data.detail as string | undefined ) ?? '',
     projectId: ( data.projectId as string | undefined ) ?? '',
     link: ( data.link as string | undefined ) ?? '',
@@ -764,6 +770,15 @@ export const buildDashboardTasks = async (
     return `${shortId} - ${title}`
   }
 
+  const getDocumentMetadata = (docId: string) => {
+    const entry = documentById[docId]
+    return {
+      docId,
+      documentShortId: entry?.shortId ?? null,
+      documentTitle: entry?.title ?? 'Unknown document',
+    }
+  }
+
   const nextTasks: DashboardTask[] = []
   reportProgress( 6, 'Building dashboard tasks...' )
 
@@ -782,6 +797,7 @@ export const buildDashboardTasks = async (
         type: 'authoring',
         visualState: 'inCreation',
         title: formatDocumentLabel( docId ),
+        ...getDocumentMetadata( docId ),
         detail: `${projectNameById[projectId] ?? 'Project'} - ${fileNote} (Version ${versionNumberToString( version.number )})`,
         projectId,
         link: appendQueryParam(
@@ -834,6 +850,7 @@ export const buildDashboardTasks = async (
               ? 'reviewGrace'
               : 'reviewActive',
         title: formatDocumentLabel( docId ),
+        ...getDocumentMetadata( docId ),
         detail:
           lifecycleState === 'expired'
             ? `${projectNameById[projectId] ?? 'Project'} - Review period closed before your first comment (Version ${versionNumberToString( version.number )})`
@@ -877,6 +894,7 @@ export const buildDashboardTasks = async (
               ? 'reviewGrace'
               : 'reviewActive',
         title: formatDocumentLabel( docId ),
+        ...getDocumentMetadata( docId ),
         detail:
           threadTask.lifecycleState === 'expired'
             ? `${projectNameById[projectId] ?? 'Project'} - Reply window closed before your response`
@@ -916,6 +934,7 @@ export const buildDashboardTasks = async (
         type: 'acceptedReport',
         visualState: 'accepted',
         title: formatDocumentLabel( docId ),
+        ...getDocumentMetadata( docId ),
         detail: `${projectNameById[projectId] ?? 'Project'} - Review accepted error reports (Version ${versionNumberToString( version.number )})`,
         projectId,
         link: docId

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { formatTimeAgo, formatTimeAgoWithTimestamp, formatTimestamp } from './time'
+import { formatElapsedWithDays, formatTimeAgo, formatTimeAgoWithTimestamp, formatTimestamp } from './time'
 
 describe( 'lib/time', () => {
   beforeEach( () => {
@@ -51,5 +51,11 @@ describe( 'lib/time', () => {
     expect( formatTimeAgoWithTimestamp( value ) ).toBe(
       `${formatTimeAgo( value )} (${formatTimestamp( value )})`,
     )
+  } )
+
+  it( 'includes elapsed days when formatting long dashboard refresh age', () => {
+    const value = new Date( '2026-04-02T10:30:00.000Z' )
+
+    expect( formatElapsedWithDays( value ) ).toBe( '2 days, 01:30:00' )
   } )
 } )

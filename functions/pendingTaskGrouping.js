@@ -9,6 +9,7 @@ const TASK_TYPE_PRIORITY = {
   authoring: 3,
   acceptedReport: 4,
 }
+const DOCUMENT_REFERENCE_TITLE_PATTERN = /^\s*(\d+)\s+-\s+(.+?)\s*$/u
 
 const parseDate = (value) => {
   if( !value ) {
@@ -37,6 +38,44 @@ const countTasksByType = (tasks) => tasks.reduce( (counts, task) => {
 const getTaskPriority = (task) => TASK_TYPE_PRIORITY[task.type] || 99
 
 const getTaskDate = (task) => parseDate( task.reviewEndAt ) || parseDate( task.createdAt )
+
+const getDocumentReference = (task) => {
+  const shortId = task.documentShortId ?? task.shortId ?? null
+  const title = task.documentTitle || ""
+  if( shortId !== null && shortId !== undefined ) {
+    return {
+      documentShortId: shortId,
+      documentTitle: title,
+      label: title ? `${shortId} - ${title}` : String( shortId ),
+    }
+  }
+  const match = typeof task.title === "string" ? task.title.match( DOCUMENT_REFERENCE_TITLE_PATTERN ) : null
+  if( !match ) {
+    return null
+  }
+  return {
+    documentShortId: Number( match[1] ),
+    documentTitle: match[2],
+    label: `${match[1]} - ${match[2]}`,
+  }
+}
+
+const summarizeTaskForAi = (task) => {
+  const documentReference = getDocumentReference( task )
+  return {
+    type: task.type || "",
+    documentShortId: documentReference?.documentShortId ?? null,
+    documentTitle: documentReference?.documentTitle ?? "",
+    documentLabel: documentReference?.label ?? "",
+    detail: task.detail || "",
+    lifecycleState: task.lifecycleState || "active",
+    visualState: task.visualState || "",
+    projectId: task.projectId || "",
+    reviewEndAt: task.reviewEndAt || null,
+    reviewPeriodState: task.reviewPeriodState || "",
+    createdAt: task.createdAt || null,
+  }
+}
 
 const compareTasksForAi = (taskA, taskB) => {
   const priorityDifference = getTaskPriority( taskA ) - getTaskPriority( taskB )
@@ -77,7 +116,7 @@ const summarizeHistoricalExpiredTasks = (tasks) => {
     countsByType: countTasksByType( tasks ),
     oldestDate: dates[0] ? dates[0].toISOString() : null,
     newestDate: dates[dates.length - 1] ? dates[dates.length - 1].toISOString() : null,
-    sampleProjectIds: projectIds.slice( 0, 12 ),
+    sampleProjectCount: projectIds.length,
   }
 }
 
@@ -89,11 +128,7 @@ const groupPendingTasksForAi = (tasks, now = new Date()) => {
   const sortedActiveTasks = [ ...activeTasks ].sort( compareTasksForAi )
   const sortedRecentExpiredTasks = [ ...recentExpiredTasks ].sort( compareTasksForAi )
   return {
-    policy: {
-      primaryFocus: "Prioritize active actionable tasks before expired historical backlog.",
-      recentExpiredWindowDays: RECENT_EXPIRED_DAYS,
-      historicalExpiredHandling: "Summarize historical expired tasks separately; do not rank them above current actionable work solely by volume.",
-    },
+    recentExpiredWindow: `${RECENT_EXPIRED_DAYS} days`,
     counts: {
       total: tasks.length,
       active: activeTasks.length,
@@ -104,8 +139,8 @@ const groupPendingTasksForAi = (tasks, now = new Date()) => {
     countsByType: countTasksByType( tasks ),
     activeCountsByType: countTasksByType( activeTasks ),
     recentExpiredCountsByType: countTasksByType( recentExpiredTasks ),
-    activeTasks: sortedActiveTasks.slice( 0, MAX_DASHBOARD_TASKS ),
-    recentExpiredTasks: sortedRecentExpiredTasks.slice( 0, MAX_RECENT_EXPIRED_TASKS ),
+    activeTasks: sortedActiveTasks.slice( 0, MAX_DASHBOARD_TASKS ).map( summarizeTaskForAi ),
+    recentExpiredTasks: sortedRecentExpiredTasks.slice( 0, MAX_RECENT_EXPIRED_TASKS ).map( summarizeTaskForAi ),
     historicalExpiredSummary: summarizeHistoricalExpiredTasks( historicalExpiredTasks ),
     truncated: {
       activeTasks: activeTasks.length > MAX_DASHBOARD_TASKS,
