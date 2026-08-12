@@ -136,12 +136,12 @@ test( "handler returns a provider error when Gemini fails", async () => {
   assert.doesNotMatch( JSON.stringify( loggerCalls ), /test-key/u )
 } )
 
-test( "callGemini uses the stable default model contract", async () => {
+test( "callGemini uses the supported lite model contract", async () => {
   let requestedUrl = ""
   await assert.rejects(
     callGemini( {
       apiKey: "test-key",
-      model: "gemini-2.5-flash",
+      model: "gemini-flash-lite-latest",
       prompt: "Hello",
       fetchImpl: async (url) => {
         requestedUrl = url
@@ -154,6 +154,31 @@ test( "callGemini uses the stable default model contract", async () => {
     } ),
     /Gemini request failed/u,
   )
-  assert.match( requestedUrl, /models\/gemini-2\.5-flash:generateContent/u )
-  assert.doesNotMatch( requestedUrl, /flash-lite/u )
+  assert.match( requestedUrl, /models\/gemini-flash-lite-latest:generateContent/u )
+  assert.doesNotMatch( requestedUrl, /gemini-2\.5-flash-lite/u )
+} )
+
+test( "callGemini ignores provider thought parts", async () => {
+  const text = await callGemini( {
+    apiKey: "test-key",
+    model: "gemma-4-26b-a4b-it",
+    prompt: "Hello",
+    fetchImpl: async () => ( {
+      ok: true,
+      json: async () => ( {
+        candidates: [
+          {
+            content: {
+              parts: [
+                { text: "internal reasoning", thought: true },
+                { text: "Visible answer." },
+              ],
+            },
+          },
+        ],
+      } ),
+    } ),
+  } )
+
+  assert.equal( text, "Visible answer." )
 } )

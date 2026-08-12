@@ -361,6 +361,7 @@ const callGemini = async ({ apiKey, model, prompt, fetchImpl = fetch }) => {
   }
   const data = await response.json()
   const text = data?.candidates?.[0]?.content?.parts
+    ?.filter( (part) => part.thought !== true )
     ?.map( (part) => part.text || "" )
     ?.join( "" )
     ?.trim()
@@ -394,7 +395,7 @@ const createAiAssistHandler = ({ admin, logger, verifyBearerToken, setCorsHeader
     if( !apiKey ) {
       throw createAiAssistError( "provider_not_configured", "AI provider is not configured.", 503, "error" )
     }
-    const model = ( process.env.GEMINI_MODEL || "gemini-2.5-flash" ).trim()
+    const model = ( process.env.GEMINI_MODEL || "gemini-flash-lite-latest" ).trim()
     const prompt = buildAiPrompt( { mode: request.mode, language: request.language, context } )
     const result = await callGemini( { apiKey, model, prompt, fetchImpl } )
     try {
