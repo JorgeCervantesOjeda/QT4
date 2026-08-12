@@ -607,9 +607,6 @@ function DashboardPage() {
             <Link className="link" to="/admin/audit">
               Activity log
             </Link>
-            <Link className="link" to="/mcp/setup">
-              MCP setup
-            </Link>
             <button
               type="button"
               className="ghost"

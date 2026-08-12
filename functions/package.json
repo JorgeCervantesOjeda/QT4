@@ -7,8 +7,7 @@
   "main": "index.js",
   "scripts": {
     "deploy": "firebase deploy --only functions",
-    "serve": "firebase emulators:start --only functions",
-    "test": "node --test"
+    "serve": "firebase emulators:start --only functions"
   },
   "dependencies": {
     "firebase-admin": "^13.10.0",

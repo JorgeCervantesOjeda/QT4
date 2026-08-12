@@ -779,53 +779,6 @@
   transition: width 180ms ease;
 }
 
-.mcp-connection-grid {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.mcp-code-card {
-  display: grid;
-  gap: 8px;
-  padding: 12px;
-  border: 1px solid var(--qt-border);
-  border-radius: 8px;
-  background: #fff;
-  min-width: 0;
-}
-
-.mcp-code-card__label {
-  color: var(--qt-ink-strong);
-  font-weight: 800;
-}
-
-.mcp-code-card code {
-  display: block;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  color: var(--qt-ink-strong);
-}
-
-.mcp-token-panel {
-  display: grid;
-  gap: 10px;
-}
-
-.mcp-token-panel textarea {
-  width: 100%;
-  min-height: 150px;
-  resize: vertical;
-  border: 1px solid var(--qt-border);
-  border-radius: 8px;
-  padding: 10px 12px;
-  font-family: "Consolas", "Courier New", monospace;
-  font-size: 0.9rem;
-  color: var(--qt-ink-strong);
-  background: #fff;
-  box-sizing: border-box;
-}
-
 .app-main {
   max-width: 1200px;
   margin: 0 auto;
@@ -1536,9 +1489,6 @@
     grid-template-columns: 1fr;
   }
 
-  .mcp-connection-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 1024px) and (min-width: 769px) {

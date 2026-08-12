@@ -8,7 +8,6 @@ import './App.css'
 
 const DashboardPage = lazy( () => import( './pages/DashboardPage' ) )
 const LoginPage = lazy( () => import( './pages/LoginPage' ) )
-const McpPage = lazy( () => import( './pages/McpPage' ) )
 const ProjectDocumentsPage = lazy( () => import( './pages/ProjectDocumentsPage' ) )
 const ProjectsPage = lazy( () => import( './pages/ProjectsPage' ) )
 const RegisterPage = lazy( () => import( './pages/RegisterPage' ) )
@@ -159,14 +158,6 @@ function App() {
                   element={
                     <RequireAuth>
                       <DashboardPage />
-                    </RequireAuth>
-                  }
-                />
-                <Route
-                  path="/mcp/setup"
-                  element={
-                    <RequireAuth>
-                      <McpPage />
                     </RequireAuth>
                   }
                 />
