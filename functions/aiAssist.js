@@ -17,6 +17,47 @@ const MODE_LABELS = {
   summarize_pending: "pendientes y urgencia",
 }
 
+class AiAssistError extends Error {
+  constructor( code, message, statusCode, logLevel = "warn" ) {
+    super( message )
+    this.name = "AiAssistError"
+    this.code = code
+    this.statusCode = statusCode
+    this.logLevel = logLevel
+  }
+}
+
+const createAiAssistError = (code, message, statusCode, logLevel = "warn" ) =>
+  new AiAssistError( code, message, statusCode, logLevel )
+
+const truncateLogMessage = (value, maxLength = 600) =>
+  String( value || "" ).replace( /\s+/g, " " ).trim().slice( 0, maxLength )
+
+const resolveEntityId = (request = {}) =>
+  request.commentId || request.threadId || request.mode || "unknown"
+
+const logAiAssistFailure = (logger, err, request, uid) => {
+  const code = err instanceof AiAssistError ? err.code : "unexpected"
+  const level = err instanceof AiAssistError ? err.logLevel : "error"
+  const message = err instanceof Error ? err.message : "Unexpected AI assist error"
+  const payload = {
+    code,
+    mode: request?.mode || "unknown",
+    entityId: resolveEntityId( request ),
+    uid: uid || "unknown",
+    message: truncateLogMessage( message ),
+  }
+  if( level === "info" && typeof logger.info === "function" ) {
+    logger.info( "aiAssist failed", payload )
+    return
+  }
+  if( level === "warn" && typeof logger.warn === "function" ) {
+    logger.warn( "aiAssist failed", payload )
+    return
+  }
+  logger.error( "aiAssist failed", payload )
+}
+
 const truncateText = (value, maxLength = MAX_TEXT_LENGTH) => {
   const text = typeof value === "string" ? value.trim() : ""
   if( text.length <= maxLength ) {
@@ -37,14 +78,14 @@ const normalizeLanguage = (value) => {
 
 const normalizeRequiredString = (value, fieldName, maxLength = 160) => {
   if( typeof value !== "string" ) {
-    throw new Error( `${fieldName} is required.` )
+    throw createAiAssistError( "invalid_request", `${fieldName} is required.`, 400 )
   }
   const normalized = value.trim()
   if( !normalized ) {
-    throw new Error( `${fieldName} is required.` )
+    throw createAiAssistError( "invalid_request", `${fieldName} is required.`, 400 )
   }
   if( normalized.length > maxLength ) {
-    throw new Error( `${fieldName} is too long.` )
+    throw createAiAssistError( "invalid_request", `${fieldName} is too long.`, 400 )
   }
   return normalized
 }
@@ -52,7 +93,7 @@ const normalizeRequiredString = (value, fieldName, maxLength = 160) => {
 const normalizeAiAssistRequest = (body) => {
   const mode = normalizeRequiredString( body?.mode, "mode", 80 )
   if( !Object.prototype.hasOwnProperty.call( MODE_SKILLS, mode ) ) {
-    throw new Error( "Unsupported AI assist mode." )
+    throw createAiAssistError( "invalid_request", "Unsupported AI assist mode.", 400 )
   }
   const request = {
     mode,
@@ -138,7 +179,7 @@ const summarizeVersion = (version) => ( {
 
 const loadProjectBundle = async (firestore, uid, projectId, refs) => {
   if( !( await hasProjectAccess( firestore, uid, projectId ) ) ) {
-    throw new Error( "User cannot read this project context." )
+    throw createAiAssistError( "permission_denied", "User cannot read this project context.", 403 )
   }
   const [ projectSnapshot, documentSnapshot, versionSnapshot ] = await Promise.all( [
     firestore.collection( "projects" ).doc( projectId ).get(),
@@ -148,10 +189,10 @@ const loadProjectBundle = async (firestore, uid, projectId, refs) => {
   const document = readDocData( documentSnapshot )
   const version = readDocData( versionSnapshot )
   if( document && document.projectId !== projectId ) {
-    throw new Error( "Document does not belong to this project context." )
+    throw createAiAssistError( "context_mismatch", "Document does not belong to this project context.", 400 )
   }
   if( version && version.projectId !== projectId ) {
-    throw new Error( "Version does not belong to this project context." )
+    throw createAiAssistError( "context_mismatch", "Version does not belong to this project context.", 400 )
   }
   return {
     project: readDocData( projectSnapshot ),
@@ -163,11 +204,11 @@ const loadProjectBundle = async (firestore, uid, projectId, refs) => {
 const loadCommentContext = async (firestore, auth, commentId) => {
   const comment = readDocData( await firestore.collection( "comments" ).doc( commentId ).get() )
   if( !comment ) {
-    throw new Error( "Comment not found." )
+    throw createAiAssistError( "context_not_found", "Comment not found.", 404 )
   }
   const thread = readDocData( await firestore.collection( "threads" ).doc( comment.threadId || "" ).get() )
   if( !thread ) {
-    throw new Error( "Thread not found." )
+    throw createAiAssistError( "context_not_found", "Thread not found.", 404 )
   }
   const bundle = await loadProjectBundle( firestore, auth.uid, comment.projectId, {
     docId: comment.docId,
@@ -185,7 +226,7 @@ const loadCommentContext = async (firestore, auth, commentId) => {
 const loadThreadContext = async (firestore, auth, threadId) => {
   const thread = readDocData( await firestore.collection( "threads" ).doc( threadId ).get() )
   if( !thread ) {
-    throw new Error( "Thread not found." )
+    throw createAiAssistError( "context_not_found", "Thread not found.", 404 )
   }
   const bundle = await loadProjectBundle( firestore, auth.uid, thread.projectId, {
     docId: thread.docId,
@@ -311,7 +352,12 @@ const callGemini = async ({ apiKey, model, prompt, fetchImpl = fetch }) => {
   } )
   if( !response.ok ) {
     const text = await response.text().catch( () => response.statusText )
-    throw new Error( `Gemini request failed (${response.status}): ${text}` )
+    throw createAiAssistError(
+      "provider_error",
+      `Gemini request failed (${response.status}): ${truncateLogMessage( text )}`,
+      502,
+      "error",
+    )
   }
   const data = await response.json()
   const text = data?.candidates?.[0]?.content?.parts
@@ -319,7 +365,7 @@ const callGemini = async ({ apiKey, model, prompt, fetchImpl = fetch }) => {
     ?.join( "" )
     ?.trim()
   if( !text ) {
-    throw new Error( "Gemini returned an empty response." )
+    throw createAiAssistError( "provider_empty_response", "Gemini returned an empty response.", 502, "error" )
   }
   return text
 }
@@ -334,32 +380,59 @@ const createAiAssistHandler = ({ admin, logger, verifyBearerToken, setCorsHeader
     res.status( 405 ).json( { error: "Method not allowed" } )
     return
   }
+  let request = null
+  let uid = ""
   try {
+    request = normalizeAiAssistRequest( req.body && typeof req.body === "object" ? req.body : {} )
     const decoded = await verifyBearerToken( req )
-    const request = normalizeAiAssistRequest( req.body && typeof req.body === "object" ? req.body : {} )
+    if( !decoded?.uid ) {
+      throw createAiAssistError( "auth_missing", "User session is required.", 401 )
+    }
+    uid = decoded.uid
     const context = await loadContext( admin.firestore(), { uid: decoded.uid }, request )
     const apiKey = ( process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || "" ).trim()
     if( !apiKey ) {
-      res.status( 503 ).json( { error: "AI provider is not configured." } )
-      return
+      throw createAiAssistError( "provider_not_configured", "AI provider is not configured.", 503, "error" )
     }
     const model = ( process.env.GEMINI_MODEL || "gemini-2.5-flash-lite" ).trim()
     const prompt = buildAiPrompt( { mode: request.mode, language: request.language, context } )
     const result = await callGemini( { apiKey, model, prompt, fetchImpl } )
-    await admin.firestore().collection( "auditLogs" ).add( {
-      actorId: decoded.uid,
-      action: `aiAssist.${request.mode}`,
-      entityType: "aiAssist",
-      entityId: request.commentId || request.threadId || decoded.uid,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    try {
+      await admin.firestore().collection( "auditLogs" ).add( {
+        actorId: decoded.uid,
+        action: `aiAssist.${request.mode}`,
+        entityType: "aiAssist",
+        entityId: request.commentId || request.threadId || decoded.uid,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      } )
+    } catch( auditErr ) {
+      logger.warn( "aiAssist audit log failed", {
+        code: "audit_log_failed",
+        mode: request.mode,
+        entityId: resolveEntityId( request ),
+        uid: decoded.uid,
+        message: truncateLogMessage( auditErr instanceof Error ? auditErr.message : "Unexpected audit log error" ),
+      } )
+    }
+    logger.info( "aiAssist completed", {
+      mode: request.mode,
+      entityId: resolveEntityId( request ),
+      uid: decoded.uid,
     } )
     res.status( 200 ).json( { ok: true, mode: request.mode, result } )
   } catch( err ) {
-    const message = err instanceof Error ? err.message : "Unexpected AI assist error"
-    logger.error( "aiAssist failed", { message } )
-    const isInputError = /required|Unsupported|too long|not found|User cannot read|does not belong/i.test( message )
-    res.status( isInputError ? 400 : 500 ).json( {
-      error: isInputError ? message : "Internal AI assist error.",
+    logAiAssistFailure( logger, err, request, uid )
+    if( err instanceof AiAssistError ) {
+      const providerError = err.code === "provider_error" || err.code === "provider_empty_response"
+      res.status( err.statusCode ).json( {
+        error: providerError ? "AI provider request failed." : err.message,
+        code: err.code,
+      } )
+      return
+    }
+    res.status( 500 ).json( {
+      error: "Internal AI assist error.",
+      code: "unexpected",
     } )
   }
 }
@@ -368,6 +441,7 @@ module.exports = {
   buildAiPrompt,
   callGemini,
   createAiAssistHandler,
+  createAiAssistError,
   normalizeAiAssistRequest,
   selectSkillNames,
 }

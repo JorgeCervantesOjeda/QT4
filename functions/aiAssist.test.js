@@ -4,9 +4,52 @@ const test = require( "node:test" )
 
 const {
   buildAiPrompt,
+  createAiAssistHandler,
   normalizeAiAssistRequest,
   selectSkillNames,
 } = require( "./aiAssist" )
+
+const createResponse = () => {
+  const response = {
+    headers: {},
+    statusCode: 200,
+    body: null,
+    set( name, value ) {
+      this.headers[name] = value
+      return this
+    },
+    status( statusCode ) {
+      this.statusCode = statusCode
+      return this
+    },
+    json( body ) {
+      this.body = body
+      return this
+    },
+    send( body ) {
+      this.body = body
+      return this
+    },
+  }
+  return response
+}
+
+const createFirestore = () => ( {
+  collection() {
+    return {
+      doc() {
+        return {
+          get: async () => ( { exists: true, data: () => ( { taskCount: 0, expiredTaskCount: 0 } ) } ),
+          collection() {
+            return {
+              get: async () => ( { docs: [] } ),
+            }
+          },
+        }
+      },
+    }
+  },
+} )
 
 test( "normalizes only supported AI assist modes", () => {
   assert.equal(
@@ -41,4 +84,53 @@ test( "prompt forbids writing replies from scratch", () => {
   assert.match( prompt, /No redactes una respuesta nueva desde cero/u )
   assert.match( prompt, /No agregues argumentos nuevos/u )
   assert.match( prompt, /Conserva la intención/u )
+} )
+
+test( "handler returns 401 when the user session is missing", async () => {
+  const loggerCalls = []
+  const handler = createAiAssistHandler( {
+    admin: { firestore: createFirestore },
+    logger: { info: (...args) => loggerCalls.push( args ), warn: (...args) => loggerCalls.push( args ), error: (...args) => loggerCalls.push( args ) },
+    verifyBearerToken: async () => null,
+    setCorsHeaders: () => {},
+  } )
+  const response = createResponse()
+
+  await handler( { method: "POST", body: { mode: "summarize_pending" }, headers: {} }, response )
+
+  assert.equal( response.statusCode, 401 )
+  assert.equal( response.body.error, "User session is required." )
+  assert.match( JSON.stringify( loggerCalls ), /auth_missing/u )
+} )
+
+test( "handler returns a provider error when Gemini fails", async () => {
+  const previousApiKey = process.env.GEMINI_API_KEY
+  process.env.GEMINI_API_KEY = "test-key"
+  const loggerCalls = []
+  const handler = createAiAssistHandler( {
+    admin: {
+      firestore: createFirestore,
+    },
+    logger: { info: (...args) => loggerCalls.push( args ), warn: (...args) => loggerCalls.push( args ), error: (...args) => loggerCalls.push( args ) },
+    verifyBearerToken: async () => ( { uid: "user-1" } ),
+    setCorsHeaders: () => {},
+    fetchImpl: async () => ( {
+      ok: false,
+      status: 403,
+      text: async () => "API key not valid.",
+    } ),
+  } )
+  const response = createResponse()
+
+  await handler( { method: "POST", body: { mode: "summarize_pending" }, headers: {} }, response )
+
+  if( previousApiKey === undefined ) {
+    delete process.env.GEMINI_API_KEY
+  } else {
+    process.env.GEMINI_API_KEY = previousApiKey
+  }
+  assert.equal( response.statusCode, 502 )
+  assert.equal( response.body.error, "AI provider request failed." )
+  assert.match( JSON.stringify( loggerCalls ), /provider_error/u )
+  assert.doesNotMatch( JSON.stringify( loggerCalls ), /test-key/u )
 } )
