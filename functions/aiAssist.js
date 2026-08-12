@@ -1,7 +1,8 @@
 // functions/aiAssist.js: Handles scoped Gemini-based assistance for QT4 review and dashboard tasks.
+const { groupPendingTasksForAi } = require( "./pendingTaskGrouping" )
+
 const MAX_TEXT_LENGTH = 4000
 const MAX_THREAD_COMMENTS = 40
-const MAX_DASHBOARD_TASKS = 80
 
 const MODE_SKILLS = {
   explain_comment: [ "qt4-glossary", "explain-comment", "review-context-safety" ],
@@ -266,22 +267,14 @@ const loadPendingContext = async (firestore, auth) => {
     firestore.collection( "dashboard" ).doc( auth.uid ).collection( "tasks" ).get(),
   ] )
   const tasks = tasksSnapshot.docs.map( (snapshot) => summarizeTask( { id: snapshot.id, ...snapshot.data() } ) )
-  const activeTasks = tasks.filter( (task) => task.lifecycleState !== "expired" )
-  const expiredTasks = tasks.filter( (task) => task.lifecycleState === "expired" )
-  const countsByType = tasks.reduce( (counts, task) => {
-    counts[task.type] = ( counts[task.type] || 0 ) + 1
-    return counts
-  }, {} )
+  const groupedTasks = groupPendingTasksForAi( tasks )
   return {
     dashboard: dashboardSnapshot.exists ? {
       taskCount: Number( dashboardSnapshot.data().taskCount ?? tasks.length ),
-      expiredTaskCount: Number( dashboardSnapshot.data().expiredTaskCount ?? expiredTasks.length ),
+      expiredTaskCount: Number( dashboardSnapshot.data().expiredTaskCount ?? groupedTasks.counts.expired ),
       updatedAt: toDateIso( dashboardSnapshot.data().updatedAt ),
     } : null,
-    countsByType,
-    activeTasks: activeTasks.slice( 0, MAX_DASHBOARD_TASKS ),
-    expiredTaskCount: expiredTasks.length,
-    truncated: activeTasks.length > MAX_DASHBOARD_TASKS,
+    ...groupedTasks,
   }
 }
 
@@ -308,7 +301,7 @@ const skillText = (mode) => {
   if( mode === "improve_text" ) {
     return "Mejora claridad, precisión y tono del texto del usuario. Conserva la intención. No agregues argumentos nuevos."
   }
-  return "Clasifica pendientes por urgencia usando fechas, estado, vencimiento y tipo. Explica la razón de cada prioridad."
+  return "Clasifica pendientes por urgencia usando fechas, estado, vencimiento y tipo. Prioriza primero tareas activas accionables. Considera vencidos recientes como posibles urgencias. Resume vencidos históricos por separado y no los coloques por encima del trabajo actual sólo por volumen. Explica la razón de cada prioridad."
 }
 
 const buildAiPrompt = ({ mode, language, context }) => {
@@ -443,6 +436,7 @@ module.exports = {
   callGemini,
   createAiAssistHandler,
   createAiAssistError,
+  groupPendingTasksForAi,
   normalizeAiAssistRequest,
   selectSkillNames,
 }

@@ -9,6 +9,7 @@ const {
   normalizeAiAssistRequest,
   selectSkillNames,
 } = require( "./aiAssist" )
+const { groupPendingTasksForAi } = require( "./pendingTaskGrouping" )
 
 const createResponse = () => {
   const response = {
@@ -181,4 +182,37 @@ test( "callGemini ignores provider thought parts", async () => {
   } )
 
   assert.equal( text, "Visible answer." )
+} )
+
+test( "groups pending tasks without letting historical expired tasks dominate", () => {
+  const now = new Date( "2026-08-12T00:00:00.000Z" )
+  const activeTask = {
+    id: "active-1",
+    type: "authoring",
+    lifecycleState: "active",
+    createdAt: "2026-08-11T00:00:00.000Z",
+  }
+  const recentExpiredTask = {
+    id: "expired-recent",
+    type: "reply",
+    lifecycleState: "expired",
+    reviewEndAt: "2026-08-10T00:00:00.000Z",
+  }
+  const oldExpiredTasks = Array.from( { length: 20 }, (_, index) => ( {
+    id: `expired-old-${index}`,
+    type: index % 2 === 0 ? "reviewer" : "reply",
+    lifecycleState: "expired",
+    reviewEndAt: "2026-06-01T00:00:00.000Z",
+  } ) )
+
+  const grouped = groupPendingTasksForAi( [ activeTask, recentExpiredTask, ...oldExpiredTasks ], now )
+
+  assert.equal( grouped.counts.total, 22 )
+  assert.equal( grouped.counts.active, 1 )
+  assert.equal( grouped.counts.recentExpired, 1 )
+  assert.equal( grouped.counts.historicalExpired, 20 )
+  assert.deepEqual( grouped.activeTasks.map( (task) => task.id ), [ "active-1" ] )
+  assert.deepEqual( grouped.recentExpiredTasks.map( (task) => task.id ), [ "expired-recent" ] )
+  assert.equal( grouped.historicalExpiredSummary.countsByType.reviewer, 10 )
+  assert.equal( grouped.historicalExpiredSummary.countsByType.reply, 10 )
 } )
