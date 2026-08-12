@@ -4,6 +4,7 @@ const test = require( "node:test" )
 
 const {
   buildAiPrompt,
+  callGemini,
   createAiAssistHandler,
   normalizeAiAssistRequest,
   selectSkillNames,
@@ -133,4 +134,26 @@ test( "handler returns a provider error when Gemini fails", async () => {
   assert.equal( response.body.error, "AI provider request failed." )
   assert.match( JSON.stringify( loggerCalls ), /provider_error/u )
   assert.doesNotMatch( JSON.stringify( loggerCalls ), /test-key/u )
+} )
+
+test( "callGemini uses the stable default model contract", async () => {
+  let requestedUrl = ""
+  await assert.rejects(
+    callGemini( {
+      apiKey: "test-key",
+      model: "gemini-2.5-flash",
+      prompt: "Hello",
+      fetchImpl: async (url) => {
+        requestedUrl = url
+        return {
+          ok: false,
+          status: 418,
+          text: async () => "test provider failure",
+        }
+      },
+    } ),
+    /Gemini request failed/u,
+  )
+  assert.match( requestedUrl, /models\/gemini-2\.5-flash:generateContent/u )
+  assert.doesNotMatch( requestedUrl, /flash-lite/u )
 } )

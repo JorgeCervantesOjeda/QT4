@@ -45,7 +45,7 @@ const logAiAssistFailure = (logger, err, request, uid) => {
     mode: request?.mode || "unknown",
     entityId: resolveEntityId( request ),
     uid: uid || "unknown",
-    message: truncateLogMessage( message ),
+    detail: truncateLogMessage( message ),
   }
   if( level === "info" && typeof logger.info === "function" ) {
     logger.info( "aiAssist failed", payload )
@@ -394,7 +394,7 @@ const createAiAssistHandler = ({ admin, logger, verifyBearerToken, setCorsHeader
     if( !apiKey ) {
       throw createAiAssistError( "provider_not_configured", "AI provider is not configured.", 503, "error" )
     }
-    const model = ( process.env.GEMINI_MODEL || "gemini-2.5-flash-lite" ).trim()
+    const model = ( process.env.GEMINI_MODEL || "gemini-2.5-flash" ).trim()
     const prompt = buildAiPrompt( { mode: request.mode, language: request.language, context } )
     const result = await callGemini( { apiKey, model, prompt, fetchImpl } )
     try {
