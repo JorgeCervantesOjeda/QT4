@@ -430,6 +430,74 @@ test( "handler explains a thread without requiring a comments order index", asyn
   assert.match( providerPrompt, /First comment.[\s\S]*Second comment/u )
 } )
 
+test( "handler includes thread context when improving short draft text", async () => {
+  const previousApiKey = process.env.GEMINI_API_KEY
+  process.env.GEMINI_API_KEY = "test-key"
+  const firestore = () => createMappedFirestore( {
+    "threads/thread-1": {
+      title: "Confirm change",
+      status: "open",
+      projectId: "project-1",
+      docId: "doc-1",
+      versionId: "version-1",
+      commentCount: 1,
+    },
+    "comments/comment-1": {
+      threadId: "thread-1",
+      body: "¿Confirmas que este cambio está correcto?",
+      createdAt: timestamp( "2026-08-12T09:00:00.000Z" ),
+    },
+    "versions/version-1": {
+      projectId: "project-1",
+      docId: "doc-1",
+      number: 1,
+      status: "In Review",
+    },
+    "documents/doc-1": {
+      projectId: "project-1",
+      title: "Readable Draft",
+      shortId: 801,
+    },
+    "projects/project-1": {
+      name: "Readable Project",
+    },
+    "projectMembers/project-1_user-1": {
+      role: "member",
+    },
+  } )
+  let providerPrompt = ""
+  const handler = createAiAssistHandler( {
+    admin: { firestore },
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+    verifyBearerToken: async () => ( { uid: "user-1" } ),
+    setCorsHeaders: () => {},
+    fetchImpl: async (_url, request) => {
+      const body = JSON.parse( request.body )
+      providerPrompt = body.contents[0].parts[0].text
+      return {
+        ok: true,
+        json: async () => ( {
+          candidates: [
+            { content: { parts: [ { text: "Sí." } ] } },
+          ],
+        } ),
+      }
+    },
+  } )
+  const response = createResponse()
+
+  await handler( { method: "POST", body: { mode: "improve_text", text: "si", threadId: "thread-1" }, headers: {} }, response )
+
+  if( previousApiKey === undefined ) {
+    delete process.env.GEMINI_API_KEY
+  } else {
+    process.env.GEMINI_API_KEY = previousApiKey
+  }
+  assert.equal( response.statusCode, 200 )
+  assert.match( providerPrompt, /"userText": "si"/u )
+  assert.match( providerPrompt, /¿Confirmas que este cambio está correcto\?/u )
+} )
+
 test( "callGemini uses the supported lite model contract", async () => {
   let requestedUrl = ""
   await assert.rejects(

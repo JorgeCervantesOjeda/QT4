@@ -7,7 +7,7 @@ export type AiAssistMode = 'explain_comment' | 'explain_thread' | 'improve_text'
 export type AiAssistRequest =
   | { mode: 'explain_comment'; commentId: string; language?: 'auto' | 'es' | 'en' }
   | { mode: 'explain_thread'; threadId: string; language?: 'auto' | 'es' | 'en' }
-  | { mode: 'improve_text'; text: string; language?: 'auto' | 'es' | 'en' }
+  | { mode: 'improve_text'; text: string; threadId?: string; language?: 'auto' | 'es' | 'en' }
   | { mode: 'summarize_pending'; language?: 'auto' | 'es' | 'en' }
 
 export type AiAssistResponse = {

@@ -394,6 +394,7 @@ function SelectedThreadComments( props: Pick<ReviewIssuesPanelProps,
       const response = await requestAiAssist( {
         mode: 'improve_text',
         text: trimmedBody,
+        threadId: selectedThread.id,
       } )
       setDraftAiState( { entityId: selectedThread.id, result: response.result, error: '' } )
     } catch( err ) {

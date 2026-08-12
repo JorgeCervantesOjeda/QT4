@@ -105,6 +105,39 @@ describe( 'lib/aiAssist', () => {
     )
   } )
 
+  it( 'sends thread context when improving draft text', async () => {
+    vi.stubGlobal( 'fetch', fetchMock )
+    authMock.currentUser = {
+      getIdToken: vi.fn().mockResolvedValue( 'token-123' ),
+    }
+    fetchMock.mockResolvedValueOnce( {
+      ok: true,
+      status: 200,
+      json: vi.fn().mockResolvedValue( {
+        ok: true,
+        mode: 'improve_text',
+        result: 'Sí.',
+      } ),
+      text: vi.fn().mockResolvedValue( '' ),
+    } )
+
+    await requestAiAssist(
+      { mode: 'improve_text', text: 'si', threadId: 'thread-1' },
+      { functionUrl: 'https://example.test/ai-assist' },
+    )
+
+    expect( fetchMock ).toHaveBeenCalledWith(
+      'https://example.test/ai-assist',
+      expect.objectContaining( {
+        body: JSON.stringify( {
+          mode: 'improve_text',
+          text: 'si',
+          threadId: 'thread-1',
+        } ),
+      } ),
+    )
+  } )
+
   it( 'throws injected AI assist faults before calling the network', async () => {
     vi.stubGlobal( 'fetch', fetchMock )
     consumeInjectedTestFaultMock.mockReturnValueOnce( new Error( 'Injected AI failure.' ) )

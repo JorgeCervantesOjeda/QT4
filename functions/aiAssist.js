@@ -108,6 +108,9 @@ const normalizeAiAssistRequest = (body) => {
   }
   if( mode === "improve_text" ) {
     request.text = normalizeRequiredString( body.text, "text", MAX_TEXT_LENGTH )
+    if( typeof body.threadId === "string" && body.threadId.trim() ) {
+      request.threadId = normalizeRequiredString( body.threadId, "threadId" )
+    }
   }
   return request
 }
@@ -299,6 +302,12 @@ const loadContext = async (firestore, auth, request) => {
     return await loadThreadContext( firestore, auth, request.threadId )
   }
   if( request.mode === "improve_text" ) {
+    if( request.threadId ) {
+      return {
+        userText: truncateText( request.text ),
+        threadContext: await loadThreadContext( firestore, auth, request.threadId ),
+      }
+    }
     return { userText: truncateText( request.text ) }
   }
   return await loadPendingContext( firestore, auth )
@@ -312,7 +321,7 @@ const skillText = (mode) => {
     return "Explica el issue como una respuesta humana para la persona usuaria. Resume qué pasa, qué parece estar pendiente y quién parece esperar qué. No uses formato de auditoría, no menciones campos técnicos y no propongas respuestas nuevas."
   }
   if( mode === "improve_text" ) {
-    return "Mejora claridad, precisión y tono del texto del usuario. Conserva la intención. No agregues argumentos nuevos."
+    return "Mejora claridad, precisión y tono del texto del usuario. Conserva la intención. Usa el contexto del hilo cuando exista, especialmente si el texto es muy corto. No agregues argumentos nuevos ni conviertas una confirmación breve en una respuesta desde cero. Si el texto breve ya funciona en el hilo, sólo corrige ortografía o indica una versión mínima."
   }
   return "Da una recomendación humana sobre qué atender primero. Evita tono de reporte técnico. No menciones nombres de campos, políticas internas, JSON ni identificadores internos. Prioriza primero tareas activas accionables; considera vencidos recientes como posibles urgencias; resume vencidos históricos por separado y no los pongas por encima del trabajo actual sólo por volumen. Si hay muy pocos documentos concretos, menciona su número corto y título. Si hay varios, menciona sólo números cortos. Si hay muchos, agrupa sin listar todos. Explica la razón en lenguaje natural."
 }
