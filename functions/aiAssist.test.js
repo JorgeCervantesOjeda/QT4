@@ -53,6 +53,52 @@ const createFirestore = () => ( {
   },
 } )
 
+const createMappedFirestore = (docsByPath) => ( {
+  collection(collectionName) {
+    const collectionPath = collectionName
+    return createCollectionRef( docsByPath, collectionPath )
+  },
+} )
+
+const createCollectionRef = (docsByPath, collectionPath) => ( {
+  doc(docId) {
+    return {
+      get: async () => createDocSnapshot( docId, docsByPath[`${collectionPath}/${docId}`] ),
+    }
+  },
+  where(fieldName, operator, value) {
+    return createQueryRef( docsByPath, collectionPath, [ { fieldName, operator, value } ] )
+  },
+} )
+
+const createQueryRef = (docsByPath, collectionPath, filters) => ( {
+  where(fieldName, operator, value) {
+    return createQueryRef( docsByPath, collectionPath, [ ...filters, { fieldName, operator, value } ] )
+  },
+  orderBy() {
+    return this
+  },
+  limit() {
+    return this
+  },
+  get: async () => ( {
+    docs: Object.entries( docsByPath )
+      .filter( ([ path ]) => path.startsWith( `${collectionPath}/` ) )
+      .filter( ([ path ]) => path.slice( collectionPath.length + 1 ).indexOf( "/" ) === -1 )
+      .map( ([ path, data ] ) => createDocSnapshot( path.slice( collectionPath.length + 1 ), data ) )
+      .filter( (snapshot) => snapshot.exists )
+      .filter( (snapshot) => filters.every( (filter) => (
+        filter.operator === "==" && snapshot.data()[filter.fieldName] === filter.value
+      ) ) ),
+  } ),
+} )
+
+const createDocSnapshot = (id, data) => ( {
+  id,
+  exists: Boolean( data ),
+  data: () => data,
+} )
+
 test( "normalizes only supported AI assist modes", () => {
   assert.equal(
     normalizeAiAssistRequest( { mode: "explain_comment", commentId: " comment-1 " } ).commentId,
@@ -86,6 +132,20 @@ test( "prompt forbids writing replies from scratch", () => {
   assert.match( prompt, /No redactes una respuesta nueva desde cero/u )
   assert.match( prompt, /No agregues argumentos nuevos/u )
   assert.match( prompt, /Conserva la intención/u )
+} )
+
+test( "comment explanation prompt asks for a human answer", () => {
+  const prompt = buildAiPrompt( {
+    mode: "explain_comment",
+    language: "es",
+    context: {
+      comment: { body: "Could you clarify this value?", createdBy: "reviewer-1" },
+      thread: { title: "Missing value" },
+    },
+  } )
+
+  assert.match( prompt, /respuesta humana/u )
+  assert.match( prompt, /No uses formato de auditoría/u )
 } )
 
 test( "handler returns 401 when the user session is missing", async () => {
@@ -210,6 +270,67 @@ test( "handler sends document references to Gemini without internal task ids", a
   assert.match( providerPrompt, /"documentShortId": 801/u )
   assert.match( providerPrompt, /"documentTitle": "Readable Draft"/u )
   assert.doesNotMatch( providerPrompt, /authoring-internal-task-id/u )
+} )
+
+test( "handler explains a thread whose project id is only on the version", async () => {
+  const previousApiKey = process.env.GEMINI_API_KEY
+  process.env.GEMINI_API_KEY = "test-key"
+  const firestore = () => createMappedFirestore( {
+    "threads/thread-without-project": {
+      title: "Missing value",
+      status: "open",
+      docId: "doc-1",
+      versionId: "version-1",
+      commentCount: 1,
+    },
+    "comments/comment-1": {
+      threadId: "thread-without-project",
+      body: "Could you clarify this value?",
+      createdBy: "reviewer-1",
+    },
+    "versions/version-1": {
+      projectId: "project-1",
+      docId: "doc-1",
+      number: 1,
+      status: "In Review",
+    },
+    "documents/doc-1": {
+      projectId: "project-1",
+      title: "Readable Draft",
+      shortId: 801,
+    },
+    "projects/project-1": {
+      name: "Readable Project",
+    },
+    "projectMembers/project-1_user-1": {
+      role: "member",
+    },
+  } )
+  const handler = createAiAssistHandler( {
+    admin: { firestore },
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+    verifyBearerToken: async () => ( { uid: "user-1" } ),
+    setCorsHeaders: () => {},
+    fetchImpl: async () => ( {
+      ok: true,
+      json: async () => ( {
+        candidates: [
+          { content: { parts: [ { text: "La persona revisora pide aclarar un valor." } ] } },
+        ],
+      } ),
+    } ),
+  } )
+  const response = createResponse()
+
+  await handler( { method: "POST", body: { mode: "explain_thread", threadId: "thread-without-project" }, headers: {} }, response )
+
+  if( previousApiKey === undefined ) {
+    delete process.env.GEMINI_API_KEY
+  } else {
+    process.env.GEMINI_API_KEY = previousApiKey
+  }
+  assert.equal( response.statusCode, 200 )
+  assert.equal( response.body.result, "La persona revisora pide aclarar un valor." )
 } )
 
 test( "callGemini uses the supported lite model contract", async () => {

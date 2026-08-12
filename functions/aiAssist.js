@@ -179,24 +179,27 @@ const summarizeVersion = (version) => ( {
 } )
 
 const loadProjectBundle = async (firestore, uid, projectId, refs) => {
-  if( !( await hasProjectAccess( firestore, uid, projectId ) ) ) {
-    throw createAiAssistError( "permission_denied", "User cannot read this project context.", 403 )
-  }
-  const [ projectSnapshot, documentSnapshot, versionSnapshot ] = await Promise.all( [
-    firestore.collection( "projects" ).doc( projectId ).get(),
+  const [ documentSnapshot, versionSnapshot ] = await Promise.all( [
     refs.docId ? firestore.collection( "documents" ).doc( refs.docId ).get() : Promise.resolve( null ),
     refs.versionId ? firestore.collection( "versions" ).doc( refs.versionId ).get() : Promise.resolve( null ),
   ] )
   const document = readDocData( documentSnapshot )
   const version = readDocData( versionSnapshot )
-  if( document && document.projectId !== projectId ) {
+  const resolvedProjectId = projectId || document?.projectId || version?.projectId || ""
+  if( !( await hasProjectAccess( firestore, uid, resolvedProjectId ) ) ) {
+    throw createAiAssistError( "permission_denied", "User cannot read this project context.", 403 )
+  }
+  if( projectId && projectId !== resolvedProjectId ) {
+    throw createAiAssistError( "context_mismatch", "Project context does not match linked records.", 400 )
+  }
+  if( document && document.projectId !== resolvedProjectId ) {
     throw createAiAssistError( "context_mismatch", "Document does not belong to this project context.", 400 )
   }
-  if( version && version.projectId !== projectId ) {
+  if( version && version.projectId !== resolvedProjectId ) {
     throw createAiAssistError( "context_mismatch", "Version does not belong to this project context.", 400 )
   }
   return {
-    project: readDocData( projectSnapshot ),
+    project: readDocData( await firestore.collection( "projects" ).doc( resolvedProjectId ).get() ),
     document,
     version,
   }
@@ -295,10 +298,10 @@ const loadContext = async (firestore, auth, request) => {
 
 const skillText = (mode) => {
   if( mode === "explain_comment" ) {
-    return "Explica qué dice el comentario, qué pide, si requiere acción y qué ambigüedades hay. No propongas una respuesta."
+    return "Explica el comentario como una respuesta humana para la persona usuaria. Di qué parece pedir, si requiere acción y qué queda ambiguo. No uses formato de auditoría, no menciones campos técnicos y no propongas una respuesta."
   }
   if( mode === "explain_thread" ) {
-    return "Resume el hilo, enumera asuntos pendientes y explica quién parece esperar qué. No propongas respuestas nuevas."
+    return "Explica el issue como una respuesta humana para la persona usuaria. Resume qué pasa, qué parece estar pendiente y quién parece esperar qué. No uses formato de auditoría, no menciones campos técnicos y no propongas respuestas nuevas."
   }
   if( mode === "improve_text" ) {
     return "Mejora claridad, precisión y tono del texto del usuario. Conserva la intención. No agregues argumentos nuevos."
