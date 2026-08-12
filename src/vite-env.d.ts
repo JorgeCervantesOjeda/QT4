@@ -12,6 +12,7 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_APP_ID: string;
   readonly VITE_FIREBASE_MEASUREMENT_ID: string;
   readonly VITE_FIREBASE_MONITOR_FUNCTION_URL?: string;
+  readonly VITE_FIREBASE_AI_ASSIST_FUNCTION_URL?: string;
   readonly VITE_GIPHY_API_KEY?: string;
   readonly VITE_APP_BUILD?: string;
   readonly VITE_FILES_API_MODE?: 'proxy' | 'direct';

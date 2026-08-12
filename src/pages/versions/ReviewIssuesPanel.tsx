@@ -1,7 +1,9 @@
 // Issue and comment workspace for review-time collaboration on the selected version.
 import type { ColumnDef, OnChangeFn, SortingState } from '@tanstack/react-table'
-import type { Dispatch, RefObject, SetStateAction } from 'react'
+import type { Dispatch, ReactNode, RefObject, SetStateAction } from 'react'
+import { useState } from 'react'
 import DataTable from '../../components/DataTable'
+import { requestAiAssist } from '../../lib/aiAssist'
 import { formatTimeAgoWithTimestamp } from '../../lib/time'
 import type { CommentSummary, ThreadSummary, VersionSummary } from './types'
 import {
@@ -14,6 +16,12 @@ import {
 type CommentWindowMeta = {
   state: string
   label: string
+}
+
+type AiAssistTextState = {
+  entityId: string
+  result: string
+  error: string
 }
 
 type ReviewIssuesPanelProps = {
@@ -319,10 +327,87 @@ function SelectedThreadComments( props: Pick<ReviewIssuesPanelProps,
     setNewCommentBody,
     onAddComment,
   } = props
+  const [activeAiRequest, setActiveAiRequest] = useState<string | null>( null )
+  const [threadAiState, setThreadAiState] = useState<AiAssistTextState | null>( null )
+  const [commentAiStates, setCommentAiStates] = useState<Record<string, AiAssistTextState>>( {} )
+  const [draftAiState, setDraftAiState] = useState<AiAssistTextState | null>( null )
 
   if( !selectedThread ) {
     return null
   }
+
+  const explainSelectedThread = async () => {
+    const requestKey = `thread:${selectedThread.id}`
+    setActiveAiRequest( requestKey )
+    setThreadAiState( { entityId: selectedThread.id, result: '', error: '' } )
+    try {
+      const response = await requestAiAssist( {
+        mode: 'explain_thread',
+        threadId: selectedThread.id,
+      } )
+      setThreadAiState( { entityId: selectedThread.id, result: response.result, error: '' } )
+    } catch( err ) {
+      const message = err instanceof Error ? err.message : 'Unexpected AI error'
+      setThreadAiState( { entityId: selectedThread.id, result: '', error: message } )
+    } finally {
+      setActiveAiRequest( null )
+    }
+  }
+
+  const explainComment = async (commentId: string) => {
+    const requestKey = `comment:${commentId}`
+    setActiveAiRequest( requestKey )
+    setCommentAiStates( ( previous ) => ( {
+      ...previous,
+      [commentId]: { entityId: commentId, result: '', error: '' },
+    } ) )
+    try {
+      const response = await requestAiAssist( {
+        mode: 'explain_comment',
+        commentId,
+      } )
+      setCommentAiStates( ( previous ) => ( {
+        ...previous,
+        [commentId]: { entityId: commentId, result: response.result, error: '' },
+      } ) )
+    } catch( err ) {
+      const message = err instanceof Error ? err.message : 'Unexpected AI error'
+      setCommentAiStates( ( previous ) => ( {
+        ...previous,
+        [commentId]: { entityId: commentId, result: '', error: message },
+      } ) )
+    } finally {
+      setActiveAiRequest( null )
+    }
+  }
+
+  const improveDraft = async () => {
+    const trimmedBody = newCommentBody.trim()
+    if( !trimmedBody ) {
+      setDraftAiState( { entityId: selectedThread.id, result: '', error: 'Write text before improving it.' } )
+      return
+    }
+    const requestKey = `draft:${selectedThread.id}`
+    setActiveAiRequest( requestKey )
+    setDraftAiState( { entityId: selectedThread.id, result: '', error: '' } )
+    try {
+      const response = await requestAiAssist( {
+        mode: 'improve_text',
+        text: trimmedBody,
+      } )
+      setDraftAiState( { entityId: selectedThread.id, result: response.result, error: '' } )
+    } catch( err ) {
+      const message = err instanceof Error ? err.message : 'Unexpected AI error'
+      setDraftAiState( { entityId: selectedThread.id, result: '', error: message } )
+    } finally {
+      setActiveAiRequest( null )
+    }
+  }
+
+  const selectedThreadAiState = threadAiState?.entityId === selectedThread.id ? threadAiState : null
+  const selectedDraftAiState = draftAiState?.entityId === selectedThread.id ? draftAiState : null
+  const threadRequestKey = `thread:${selectedThread.id}`
+  const draftRequestKey = `draft:${selectedThread.id}`
 
   return (
     <div className="stack">
@@ -344,7 +429,23 @@ function SelectedThreadComments( props: Pick<ReviewIssuesPanelProps,
         <button type="button" onClick={() => requestThreadStatusChangeConfirmation( selectedThread )} disabled={isBusy}>
           {selectedThread.status === 'open' ? 'Close issue' : 'Reopen issue'}
         </button>
+        <button
+          type="button"
+          className="ghost"
+          onClick={explainSelectedThread}
+          disabled={isBusy || activeAiRequest !== null}
+        >
+          {activeAiRequest === threadRequestKey ? 'Explaining issue...' : 'Explain issue'}
+        </button>
       </div>
+      {selectedThreadAiState || activeAiRequest === threadRequestKey ? (
+        <AiAssistPanel
+          title="Issue explanation"
+          isLoading={activeAiRequest === threadRequestKey}
+          result={selectedThreadAiState?.result ?? ''}
+          error={selectedThreadAiState?.error ?? ''}
+        />
+      ) : null}
       <div className="actions">
         <ViewToggle label="Comment view" value={commentsViewMode} onChange={setCommentsViewMode} />
       </div>
@@ -374,6 +475,24 @@ function SelectedThreadComments( props: Pick<ReviewIssuesPanelProps,
               <p className="muted">By: {formatUserLabel( comment.createdBy )}</p>
               <p className="muted">{formatTimeAgoWithTimestamp( comment.createdAt )}</p>
               <p className="comment-body">{comment.body}</p>
+              <div className="actions">
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => explainComment( comment.id )}
+                  disabled={isBusy || activeAiRequest !== null}
+                >
+                  {activeAiRequest === `comment:${comment.id}` ? 'Explaining comment...' : 'Explain comment'}
+                </button>
+              </div>
+              {commentAiStates[comment.id] || activeAiRequest === `comment:${comment.id}` ? (
+                <AiAssistPanel
+                  title="Comment explanation"
+                  isLoading={activeAiRequest === `comment:${comment.id}`}
+                  result={commentAiStates[comment.id]?.result ?? ''}
+                  error={commentAiStates[comment.id]?.error ?? ''}
+                />
+              ) : null}
             </article>
           ) )}
         </div>
@@ -391,7 +510,54 @@ function SelectedThreadComments( props: Pick<ReviewIssuesPanelProps,
         <button type="button" onClick={onAddComment} disabled={isBusy}>
           Add comment
         </button>
+        <button
+          type="button"
+          className="ghost"
+          onClick={improveDraft}
+          disabled={isBusy || activeAiRequest !== null || !newCommentBody.trim()}
+        >
+          {activeAiRequest === draftRequestKey ? 'Improving writing...' : 'Improve writing'}
+        </button>
       </div>
+      {selectedDraftAiState || activeAiRequest === draftRequestKey ? (
+        <AiAssistPanel
+          title="Writing suggestion"
+          isLoading={activeAiRequest === draftRequestKey}
+          result={selectedDraftAiState?.result ?? ''}
+          error={selectedDraftAiState?.error ?? ''}
+          action={selectedDraftAiState?.result ? (
+            <button type="button" className="ghost" onClick={() => setNewCommentBody( selectedDraftAiState.result )}>
+              Use improved text
+            </button>
+          ) : null}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+function AiAssistPanel( {
+  title,
+  isLoading,
+  result,
+  error,
+  action,
+}: {
+  title: string
+  isLoading: boolean
+  result: string
+  error: string
+  action?: ReactNode
+} ) {
+  return (
+    <div className="ai-assist-panel">
+      <div className="panel-header">
+        <h4>{title}</h4>
+        {action ? <div className="actions">{action}</div> : null}
+      </div>
+      {isLoading ? <p className="muted">Working...</p> : null}
+      {error ? <p className="error">{error}</p> : null}
+      {result ? <p className="ai-assist-result">{result}</p> : null}
     </div>
   )
 }

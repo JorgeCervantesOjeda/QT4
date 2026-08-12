@@ -15,6 +15,7 @@ import ModalDialog from '../components/ModalDialog'
 import { GiphyInline } from '../giphy/GiphyProvider'
 import { useErrorChecklistModal } from '../hooks/useErrorChecklistModal'
 import { reportAbnormalError } from '../lib/errorMonitor'
+import { requestAiAssist } from '../lib/aiAssist'
 import { db } from '../lib/firebase'
 import {
   deserializeDashboardTask,
@@ -43,6 +44,9 @@ function DashboardPage() {
   const [dashboardUpdatedAt, setDashboardUpdatedAt] = useState<Date | null>( null )
   const [nowMs, setNowMs] = useState( () => Date.now() )
   const [refreshProgress, setRefreshProgress] = useState<DashboardBuildProgress | null>( null )
+  const [urgencyStatus, setUrgencyStatus] = useState<'idle' | 'loading' | 'ready'>( 'idle' )
+  const [urgencyResult, setUrgencyResult] = useState( '' )
+  const [urgencyError, setUrgencyError] = useState( '' )
   const [lastRefreshByScope, setLastRefreshByScope] = useState<Record<DashboardRefreshScope, Date | null>>( {
     all: null,
     authoring: null,
@@ -414,6 +418,30 @@ function DashboardPage() {
     } ) )
   }
 
+  const analyzeUrgency = () => {
+    setUrgencyStatus( 'loading' )
+    setUrgencyResult( '' )
+    setUrgencyError( '' )
+    void (async () => {
+      try {
+        const response = await requestAiAssist( {
+          mode: 'summarize_pending',
+        } )
+        setUrgencyResult( response.result )
+        setUrgencyStatus( 'ready' )
+      } catch( err ) {
+        const message = err instanceof Error ? err.message : 'Unexpected AI error'
+        setUrgencyError( message )
+        setUrgencyStatus( 'ready' )
+        void reportAbnormalError( {
+          error: err,
+          source: 'network',
+          action: 'dashboard.aiAssist.urgency',
+        } )
+      }
+    })()
+  }
+
   const formatElapsed = (value: Date | null) => {
     if( !value ) {
       return '--:--:--'
@@ -616,8 +644,26 @@ function DashboardPage() {
             >
               Refresh all sections
             </button>
+            <button
+              type="button"
+              className="ghost"
+              onClick={analyzeUrgency}
+              disabled={isLoadingTasks || urgencyStatus === 'loading'}
+            >
+              {urgencyStatus === 'loading' ? 'Analyzing urgency...' : 'Analyze urgency'}
+            </button>
             <span className="muted">Since refresh: {formatElapsed( lastRefreshByScope.all )}</span>
           </div>
+          {urgencyStatus !== 'idle' ? (
+            <div className="ai-assist-panel">
+              <div className="panel-header">
+                <h3>Urgency summary</h3>
+              </div>
+              {urgencyStatus === 'loading' ? <p className="muted">Working...</p> : null}
+              {urgencyError ? <p className="error">{urgencyError}</p> : null}
+              {urgencyResult ? <p className="ai-assist-result">{urgencyResult}</p> : null}
+            </div>
+          ) : null}
         </section>
         {error ? (
           <ErrorChecklistModal

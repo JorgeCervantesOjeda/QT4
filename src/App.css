@@ -1808,6 +1808,31 @@
   background: #fff8e1;
 }
 
+.ai-assist-panel {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba( 30, 76, 120, 0.22 );
+  border-radius: 8px;
+  background: rgba( 230, 239, 248, 0.5 );
+  padding: 12px;
+}
+
+.ai-assist-panel .panel-header {
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.ai-assist-panel h3,
+.ai-assist-panel h4,
+.ai-assist-panel p {
+  margin: 0;
+}
+
+.ai-assist-result {
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
 .data-table--comments tr.comment-row--highlight td {
   background: #fff8e1;
 }
