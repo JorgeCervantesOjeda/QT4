@@ -19,7 +19,7 @@ import { useAuth } from '../auth/useAuth'
 import AppBrand from '../components/AppBrand'
 import BackStack from '../components/BackStack'
 import DataTable from '../components/DataTable'
-import ErrorChecklistModal from '../components/ErrorChecklistModal'
+import ErrorChecklistModal, { type ChecklistItem } from '../components/ErrorChecklistModal'
 import ModalDialog from '../components/ModalDialog'
 import { GiphyInline } from '../giphy/GiphyProvider'
 import { useErrorChecklistModal } from '../hooks/useErrorChecklistModal'
@@ -990,6 +990,30 @@ function ProjectDocumentsPage() {
     setIsChangeRequestModalOpen( false )
   }
 
+  const buildChangeRequestChecklist = useCallback( (): ChecklistItem[] => {
+    const selectedBaseProjectForChecklist = selectedBaseVersion?.projectId ?? selectedBaseProjectId
+    return [
+      { label: '(target project is selected)', ok: Boolean( projectId && project ) },
+      { label: '(user is signed in)', ok: Boolean( userId ) },
+      { label: '(base project is selected)', ok: Boolean( selectedBaseProjectForChecklist ) },
+      { label: '(user is member of base project)', ok: Boolean( selectedBaseVersion ) },
+      {
+        label: '(base project is different from target project)',
+        ok: Boolean( selectedBaseProjectForChecklist && selectedBaseProjectForChecklist !== projectId ),
+      },
+      { label: "(base version status = 'Accepted')", ok: selectedBaseVersion?.status === 'Accepted' },
+      { label: '(change request title is provided)', ok: changeRequestTitle.trim().length > 0 },
+    ]
+  }, [ changeRequestTitle, project, projectId, selectedBaseProjectId, selectedBaseVersion, userId ] )
+
+  const openChangeRequestCreationError = useCallback( (message: string) => {
+    const userMessage = message.startsWith( 'Change request creation failed:' )
+      ? message
+      : `Change request creation failed: ${message}`
+    setChangeRequestError( userMessage )
+    openError( userMessage, buildChangeRequestChecklist() )
+  }, [ buildChangeRequestChecklist, openError ] )
+
   const handleCreateChangeRequest = async ( event: React.FormEvent<HTMLFormElement> ) => {
     event.preventDefault()
     const validation = validateChangeRequestCreation( {
@@ -1002,11 +1026,11 @@ function ProjectDocumentsPage() {
       userId,
     } )
     if( !validation.ok ) {
-      setChangeRequestError( validation.message )
+      openChangeRequestCreationError( validation.message )
       return
     }
     if( !projectId || !selectedBaseVersion ) {
-      setChangeRequestError( 'Select a base document version before creating a change request.' )
+      openChangeRequestCreationError( 'Select a base document version before creating a change request.' )
       return
     }
     setChangeRequestError( null )
@@ -1032,7 +1056,7 @@ function ProjectDocumentsPage() {
           projectId,
         } )
       }
-      setChangeRequestError( message )
+      openChangeRequestCreationError( message )
     } finally {
       setIsCreatingChangeRequest( false )
     }

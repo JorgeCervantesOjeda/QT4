@@ -228,6 +228,32 @@
   align-items: center;
 }
 
+.base-document-reference {
+  margin-top: 8px;
+}
+
+.base-document-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.base-document-actions a.ghost {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 10px 14px;
+  border: 1px solid var(--qt-border);
+  border-radius: 8px;
+  color: var(--qt-ink);
+  text-decoration: none;
+}
+
+.base-document-actions a.ghost:hover {
+  box-shadow: var(--qt-hover-shadow);
+}
+
 .context-nav-button {
   margin-top: 10px;
   padding: 10px 16px;

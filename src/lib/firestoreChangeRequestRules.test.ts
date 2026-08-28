@@ -153,4 +153,26 @@ describeWithFirestoreEmulator( 'firestore.rules change-request documents', () =>
       ),
     )
   } )
+
+  it( 'rejects a change request when the creator is not a base project member', async () => {
+    await testEnv.withSecurityRulesDisabled( async ( context ) => {
+      await setDoc( doc( context.firestore(), 'projectMembers', `${baseProjectId}_${userId}` ), {
+        projectId: baseProjectId,
+        userId,
+        role: 'removed',
+      } )
+    } )
+    const firestore = testEnv.authenticatedContext( userId ).firestore()
+
+    await assertFails(
+      setDoc(
+        doc( firestore, 'documents', 'change-request-base-membership-denied' ),
+        buildChangeRequestDocument( {
+          baseProjectId,
+          baseDocId,
+          baseVersionId,
+        } ),
+      ),
+    )
+  } )
 } )

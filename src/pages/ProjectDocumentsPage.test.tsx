@@ -79,7 +79,14 @@ vi.mock( '../components/DataTable', () => ( {
 } ) )
 
 vi.mock( '../components/ErrorChecklistModal', () => ( {
-  default: ({ error }: { error: string }) => <div role="dialog">{error}</div>,
+  default: ({ error, checklist }: { error: string; checklist?: Array<{ label?: string; ok?: boolean }> }) => (
+    <div role="alertdialog" aria-label="Error details">
+      <p>{error}</p>
+      {checklist?.map( ( item ) => (
+        <span key={item.label}>{`${item.label}: ${item.ok ? 'ok' : 'fail'}`}</span>
+      ) )}
+    </div>
+  ),
 } ) )
 
 vi.mock( '../components/ModalDialog', () => ( {
@@ -608,5 +615,130 @@ describe( 'pages/ProjectDocumentsPage', () => {
         && payload.title === 'Beta client requirements'
     } ) ).toBe( true )
     expect( navigateMock ).toHaveBeenCalledWith( '/documents/generated-doc/versions?projectId=project-1' )
+  }, 15000 )
+
+  it( 'shows an informative popup when change request creation fails', async () => {
+    getDocMock.mockImplementation( async ( docRef: { collection: string; id: string } ) => {
+      if( docRef.collection === 'projects' && docRef.id === 'project-1' ) {
+        return createDocSnapshot( {
+          id: 'project-1',
+          data: {
+            shortId: 42,
+            name: 'Alpha Project',
+            leaderId: 'user-member-1',
+          },
+        } )
+      }
+      if( docRef.collection === 'projects' && docRef.id === 'project-2' ) {
+        return createDocSnapshot( {
+          id: 'project-2',
+          data: {
+            shortId: 84,
+            name: 'Beta Project',
+            leaderId: 'user-member-1',
+          },
+        } )
+      }
+      if( docRef.collection === 'userProfiles' && docRef.id === 'user-reviewer-1' ) {
+        return createDocSnapshot( {
+          id: 'user-reviewer-1',
+          data: {
+            displayName: 'Review Lead',
+          },
+        } )
+      }
+      return createMissingSnapshot( docRef.id )
+    } )
+    getDocsMock.mockImplementation( async ( queryArg: unknown ) => {
+      const collectionName = getCollectionName( queryArg )
+      const requestedProjectId = getWhereValue( queryArg, 'projectId' )
+      const requestedUserId = getWhereValue( queryArg, 'userId' )
+      if( collectionName === 'versions' && requestedProjectId === 'project-1' ) {
+        return createQuerySnapshot( versionRecords )
+      }
+      if( collectionName === 'versions' && requestedProjectId === 'project-2' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'base-version-1',
+            data: {
+              projectId: 'project-2',
+              docId: 'base-document-1',
+              number: 100,
+              status: 'Accepted',
+              createdBy: 'user-member-1',
+              reviewerIds: [],
+            },
+          },
+        ] )
+      }
+      if( collectionName === 'documents' && requestedProjectId === 'project-2' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'base-document-1',
+            data: {
+              projectId: 'project-2',
+              title: 'Shared Requirements',
+              type: 'document',
+              shortId: 9,
+              createdBy: 'user-member-1',
+            },
+          },
+        ] )
+      }
+      if( collectionName === 'projectMembers' && requestedProjectId === 'project-1' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'project-1_user-member-1',
+            data: {
+              projectId: 'project-1',
+              userId: 'user-member-1',
+              role: 'leader',
+              email: 'member@example.com',
+            },
+          },
+        ] )
+      }
+      if( collectionName === 'projectMembers' && requestedUserId === 'user-member-1' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'project-1_user-member-1',
+            data: {
+              projectId: 'project-1',
+              userId: 'user-member-1',
+              role: 'leader',
+            },
+          },
+          {
+            id: 'project-2_user-member-1',
+            data: {
+              projectId: 'project-2',
+              userId: 'user-member-1',
+              role: 'member',
+            },
+          },
+        ] )
+      }
+      if( collectionName === 'userDirectory' ) {
+        return createQuerySnapshot( [] )
+      }
+      return createQuerySnapshot( [] )
+    } )
+    runTransactionMock.mockRejectedValueOnce( new Error( 'Missing or insufficient permissions.' ) )
+
+    render( <ProjectDocumentsPage /> )
+
+    expect( await screen.findByRole( 'heading', { name: '17 - Controlled Document' }, { timeout: 10000 } ) ).toBeTruthy()
+    fireEvent.click( screen.getByRole( 'button', { name: 'New change request' } ) )
+    expect( await screen.findByText( '9 - Shared Requirements - 1.00' ) ).toBeTruthy()
+
+    fireEvent.change( screen.getByLabelText( 'Change request title' ), {
+      target: { value: 'Beta client requirements' },
+    } )
+    fireEvent.click( screen.getByRole( 'button', { name: 'Create change request' } ) )
+
+    const popup = await screen.findByRole( 'alertdialog', { name: 'Error details' }, { timeout: 10000 } )
+    expect( popup.textContent ).toContain( 'Change request creation failed: Missing or insufficient permissions.' )
+    expect( popup.textContent ).toContain( '(user is member of base project): ok' )
+    expect( popup.textContent ).toContain( "(base version status = 'Accepted'): ok" )
   }, 15000 )
 } )

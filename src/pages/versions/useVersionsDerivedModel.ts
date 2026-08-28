@@ -1,7 +1,7 @@
 // src/pages/versions/useVersionsDerivedModel.ts
 // Derives permissions, labels, columns, and reporting helpers for VersionsPage.
 import { useCallback, useMemo } from "react";
-import { versionNumberToString } from "../../domain/types";
+import { FIRST_VERSION_NUMBER, versionNumberToString } from "../../domain/types";
 import { reportAbnormalError } from "../../lib/errorMonitor";
 import { getEffectiveFileStorageProviderHint } from "../../lib/fileStorage";
 import { isOfflineFirestoreError, parseDashboardFocusTarget } from "./utils";
@@ -47,6 +47,7 @@ const useVersionsDerivedModel = ({
   const {
     versions,
     documentData,
+    baseDocumentData,
     setDocumentData,
     projectName,
     projectShortId,
@@ -264,6 +265,49 @@ const useVersionsDerivedModel = ({
     userEmail: user?.email,
     userId,
   });
+  const baseVersionForDownload = useMemo<VersionSummary | null>(() => {
+    if (
+      documentData?.type !== "changeRequest" ||
+      !baseDocumentData?.versionId
+    ) {
+      return null;
+    }
+    return {
+      id: baseDocumentData.versionId,
+      number: baseDocumentData.versionNumber ?? FIRST_VERSION_NUMBER,
+      status: baseDocumentData.versionStatus ?? "Accepted",
+      createdBy: "",
+      createdAt: null,
+      activityAt: null,
+      reviewerIds: [],
+      reviewStartAt: null,
+      reviewEndAt: null,
+      hasFile: baseDocumentData.hasFile,
+      fileRefId: baseDocumentData.fileRefId,
+      numThreads: 0,
+      numOpenThreads: 0,
+      numComments: 0,
+      numThreadsWithTwoPlusComments: 0,
+      acceptedErrorReportId: null,
+    };
+  }, [baseDocumentData, documentData?.type]);
+  const requestDownloadBaseDocument = useCallback(() => {
+    if (downloadStatus === "downloading") {
+      return;
+    }
+    if (!baseVersionForDownload) {
+      setError(
+        "Cannot download this file: change request base document metadata is incomplete.",
+      );
+      return;
+    }
+    requestDownloadVersionFile(baseVersionForDownload);
+  }, [
+    baseVersionForDownload,
+    downloadStatus,
+    requestDownloadVersionFile,
+    setError,
+  ]);
   const orderedThreads = useMemo(
     () => (threadsViewMode === "table" ? visibleThreadRows : threads),
     [threadsViewMode, visibleThreadRows, threads],
@@ -411,6 +455,7 @@ const useVersionsDerivedModel = ({
     threadNavigationStatusLabel,
     resolveUserEmail,
     membersTableRows,
+    requestDownloadBaseDocument,
     requestDownloadVersionFile,
     statusClassName,
     allowedReviewerIds,

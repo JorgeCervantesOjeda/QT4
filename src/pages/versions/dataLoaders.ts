@@ -16,6 +16,7 @@ import { FIRST_VERSION_NUMBER } from '../../domain/types'
 import { db } from '../../lib/firebase'
 import type {
   AcceptedErrorReportSummary,
+  BaseDocumentSummary,
   DocumentSummary,
   ProjectMember,
   VersionSummary,
@@ -27,12 +28,6 @@ import {
   areVersionsEqual,
   toTimestampDate,
 } from './utils'
-
-type BaseDocumentSummary = {
-  id: string
-  title: string
-  shortId: number | null
-}
 
 type UserDirectory = Record<string, { email?: string | null; displayName?: string | null }>
 
@@ -248,7 +243,7 @@ const loadDocumentAndVersions = async (params: LoadDocumentAndVersionsParams) =>
     } )
     setProjectMembers( ( previous ) => ( areProjectMembersEqual( previous, members ) ? previous : members ) )
     updateProjectSummary( projectSnapshot, setProjectName, setProjectShortId )
-    await updateBaseDocumentSummary( loadedBaseVersionId, baseDocumentSnapshot, setBaseDocumentData )
+    await updateBaseDocumentSummary( loadedBaseProjectId, loadedBaseVersionId, baseDocumentSnapshot, setBaseDocumentData )
     updateSelectedVersionState( {
       members,
       nextVersions,
@@ -298,44 +293,67 @@ const updateProjectSummary = (
 }
 
 const updateBaseDocumentSummary = async (
+  baseProjectId: string | null,
   baseVersionId: string | null,
   baseDocumentSnapshot: Awaited<ReturnType<typeof getDocFromServer>> | null,
   setBaseDocumentData: Dispatch<SetStateAction<BaseDocumentSummary | null>>,
 ) => {
-  if( baseDocumentSnapshot && baseDocumentSnapshot.exists() ) {
-    const baseData = baseDocumentSnapshot.data() as Record<string, unknown>
-    setBaseDocumentData( {
-      id: baseDocumentSnapshot.id,
-      title: ( baseData?.title as string | undefined ) ?? 'Untitled document',
-      shortId: Number.isFinite( baseData?.shortId ) ? Number( baseData?.shortId ) : null,
-    } )
-    return
-  }
   if( !baseVersionId ) {
+    if( baseDocumentSnapshot && baseDocumentSnapshot.exists() ) {
+      const baseData = baseDocumentSnapshot.data() as Record<string, unknown>
+      setBaseDocumentData( {
+        id: baseDocumentSnapshot.id,
+        projectId: ( baseData?.projectId as string | undefined ) ?? baseProjectId ?? '',
+        title: ( baseData?.title as string | undefined ) ?? 'Untitled document',
+        shortId: Number.isFinite( baseData?.shortId ) ? Number( baseData?.shortId ) : null,
+        versionId: null,
+        versionNumber: null,
+        versionStatus: null,
+        hasFile: false,
+        fileRefId: null,
+      } )
+      return
+    }
     setBaseDocumentData( null )
     return
   }
   try {
     const baseVersionSnapshot = await getDocFromServer( doc( db, 'versions', baseVersionId ) )
+    const baseVersionData = baseVersionSnapshot.exists()
+      ? baseVersionSnapshot.data() as Record<string, unknown>
+      : {}
     const resolvedBaseDocId = baseVersionSnapshot.exists()
-      ? ( baseVersionSnapshot.data()?.docId as string | undefined ) ?? ''
-      : ''
+      ? ( baseVersionData.docId as string | undefined ) ?? ''
+      : baseDocumentSnapshot?.id ?? ''
     if( !resolvedBaseDocId ) {
       setBaseDocumentData( null )
       return
     }
-    const baseDocSnapshot = await getDocFromServer( doc( db, 'documents', resolvedBaseDocId ) )
+    const baseDocSnapshot = baseDocumentSnapshot?.exists()
+      ? baseDocumentSnapshot
+      : await getDocFromServer( doc( db, 'documents', resolvedBaseDocId ) )
     if( !baseDocSnapshot.exists() ) {
       setBaseDocumentData( null )
       return
     }
-    const baseDocData = baseDocSnapshot.data()
+    const baseDocData = baseDocSnapshot.data() as Record<string, unknown>
     setBaseDocumentData( {
       id: baseDocSnapshot.id,
+      projectId: ( baseDocData?.projectId as string | undefined ) ?? ( baseVersionData.projectId as string | undefined ) ?? baseProjectId ?? '',
       title: ( baseDocData?.title as string | undefined ) ?? 'Untitled document',
       shortId: Number.isFinite( baseDocData?.shortId ) ? Number( baseDocData?.shortId ) : null,
+      versionId: baseVersionSnapshot.exists() ? baseVersionSnapshot.id : baseVersionId,
+      versionNumber: baseVersionSnapshot.exists() ? Number( baseVersionData.number ?? FIRST_VERSION_NUMBER ) : null,
+      versionStatus: baseVersionSnapshot.exists() ? ( baseVersionData.status as string | undefined ) ?? null : null,
+      hasFile: Boolean( baseVersionData.hasFile ),
+      fileRefId: ( baseVersionData.fileRefId as string | null | undefined ) ?? null,
     } )
-  } catch {
+  } catch( err ) {
+    console.warn( 'Base document summary fallback failed:', {
+      baseProjectId,
+      baseVersionId,
+      error: err instanceof Error ? err.message : String( err ),
+    } )
     setBaseDocumentData( null )
   }
 }

@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import type { SortingState } from "@tanstack/react-table";
 import type {
   AcceptedErrorReportSummary,
+  BaseDocumentSummary,
   CommentSummary,
   DocumentSummary,
   FileRefSummary,
@@ -23,11 +24,8 @@ const useVersionsPageState = () => {
   const [documentData, setDocumentData] = useState<DocumentSummary | null>(
     null,
   );
-  const [baseDocumentData, setBaseDocumentData] = useState<{
-    id: string;
-    title: string;
-    shortId: number | null;
-  } | null>(null);
+  const [baseDocumentData, setBaseDocumentData] =
+    useState<BaseDocumentSummary | null>(null);
   const [projectName, setProjectName] = useState("");
   const [projectShortId, setProjectShortId] = useState<number | null>(null);
   const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);

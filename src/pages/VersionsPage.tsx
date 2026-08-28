@@ -137,6 +137,7 @@ function VersionsPage() {
     hasNextThread,
     threadNavigationStatusLabel,
     membersTableRows,
+    requestDownloadBaseDocument,
     requestDownloadVersionFile,
     statusClassName,
     allowedReviewerIds,
@@ -318,6 +319,7 @@ function VersionsPage() {
       projectReportLabel={projectReportLabel}
       projectShortId={projectShortId}
       requestCreateVersionConfirmation={requestCreateVersionConfirmation}
+      requestDownloadBaseDocument={requestDownloadBaseDocument}
       requestDownloadSelectedFile={requestDownloadSelectedFile}
       requestDownloadVersionFile={requestDownloadVersionFile}
       requestErrorReportCreation={requestErrorReportCreation}

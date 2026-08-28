@@ -14,6 +14,7 @@ import VersionsModals from "./VersionsModals";
 import VersionsToolbar from "./VersionsToolbar";
 import type {
   AcceptedErrorReportSummary,
+  BaseDocumentSummary,
   CommentSummary,
   DocumentSummary,
   FileRefSummary,
@@ -26,11 +27,7 @@ type VersionsPageViewProps = {
   acceptedErrorReports: AcceptedErrorReportSummary[];
   acceptedErrorReportsStatus: "idle" | "loading" | "ready" | "error";
   allowedReviewerIds: string[];
-  baseDocumentData: {
-    id: string;
-    title: string;
-    shortId: number | null;
-  } | null;
+  baseDocumentData: BaseDocumentSummary | null;
   canAssignReviewers: boolean;
   canEditDocumentTitle: boolean;
   canUploadFile: boolean;
@@ -109,6 +106,7 @@ type VersionsPageViewProps = {
   projectReportLabel: string;
   projectShortId: number | null;
   requestCreateVersionConfirmation: () => void;
+  requestDownloadBaseDocument: () => void;
   requestDownloadSelectedFile: () => void;
   requestDownloadVersionFile: (version: VersionSummary) => void;
   requestErrorReportCreation: () => void;
@@ -242,6 +240,7 @@ const VersionsPageShell = (
       canEditDocumentTitle={props.canEditDocumentTitle}
       isBusy={props.isBusy}
       onEditDocumentTitle={props.requestDocumentTitleEdit}
+      onDownloadBaseDocument={props.requestDownloadBaseDocument}
     />
     <main className="app-main">{props.children}</main>
   </div>

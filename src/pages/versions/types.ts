@@ -33,6 +33,18 @@ type DocumentSummary = {
   baseVersionId?: string | null
 }
 
+type BaseDocumentSummary = {
+  id: string
+  projectId: string
+  title: string
+  shortId: number | null
+  versionId: string | null
+  versionNumber: number | null
+  versionStatus: string | null
+  hasFile: boolean
+  fileRefId: string | null
+}
+
 type ProjectMember = {
   userId: string
   role: string
@@ -85,6 +97,7 @@ type DashboardFocusTarget = 'actions' | 'file' | 'issues' | 'comments'
 
 export type {
   AcceptedErrorReportSummary,
+  BaseDocumentSummary,
   CommentSummary,
   DashboardFocusTarget,
   DocumentSummary,

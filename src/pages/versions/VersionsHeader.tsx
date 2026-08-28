@@ -1,22 +1,19 @@
 // Header and document identity controls for the Versions page. Keeps route chrome separate from workflow logic.
 import AppBrand from '../../components/AppBrand'
 import BackStack from '../../components/BackStack'
-import type { DocumentSummary } from './types'
+import type { BaseDocumentSummary, DocumentSummary } from './types'
 
 type VersionsHeaderProps = {
   projectId: string
   projectName: string
   projectShortId: number | null
   documentData: DocumentSummary | null
-  baseDocumentData: {
-    id: string
-    title: string
-    shortId: number | null
-  } | null
+  baseDocumentData: BaseDocumentSummary | null
   docId?: string
   canEditDocumentTitle: boolean
   isBusy: boolean
   onEditDocumentTitle: () => void
+  onDownloadBaseDocument?: () => void
 }
 
 const documentTypeLabel = (documentType?: string) => {
@@ -39,7 +36,14 @@ function VersionsHeader( {
   canEditDocumentTitle,
   isBusy,
   onEditDocumentTitle,
+  onDownloadBaseDocument,
 }: VersionsHeaderProps ) {
+  const baseDocumentPath = documentData?.type === 'changeRequest' && baseDocumentData
+    ? `/documents/${baseDocumentData.id}/versions?projectId=${
+      documentData.baseProjectId ?? baseDocumentData.projectId
+    }&versionId=${documentData.baseVersionId ?? baseDocumentData.versionId ?? ''}`
+    : ''
+
   return (
     <header className="app-header">
       <div>
@@ -73,18 +77,35 @@ function VersionsHeader( {
           ) : null}
         </div>
         {documentData?.type === 'errorReport' || documentData?.type === 'changeRequest' ? (
-          <p className="muted">
-            <span>
-              {documentData.type === 'changeRequest'
-                ? 'This document is a change request for:'
-                : 'This document is an error report for:'}
-            </span>{' '}
-            {baseDocumentData
-              ? `${baseDocumentData.shortId ?? 'Unassigned'} - ${baseDocumentData.title}`
-              : documentData?.baseDocId
-                ? `Document ${documentData.baseDocId}`
-                : 'Unknown'}
-          </p>
+          <div className="base-document-reference">
+            <p className="muted">
+              <span>
+                {documentData.type === 'changeRequest'
+                  ? 'This document is a change request for:'
+                  : 'This document is an error report for:'}
+              </span>{' '}
+              {baseDocumentData
+                ? `${baseDocumentData.shortId ?? 'Unassigned'} - ${baseDocumentData.title}`
+                : documentData?.baseDocId
+                  ? `Document ${documentData.baseDocId}`
+                  : 'Unknown'}
+            </p>
+            {documentData.type === 'changeRequest' && baseDocumentPath ? (
+              <div className="base-document-actions">
+                <a className="ghost" href={baseDocumentPath}>
+                  Open base document
+                </a>
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={onDownloadBaseDocument}
+                  disabled={isBusy || !onDownloadBaseDocument}
+                >
+                  Download base document
+                </button>
+              </div>
+            ) : null}
+          </div>
         ) : null}
       </div>
       <BackStack
