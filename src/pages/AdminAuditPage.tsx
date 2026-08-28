@@ -364,6 +364,9 @@ function AdminAuditPage() {
         if( entry.type === 'errorReport' ) {
           return `Error report - ${shortId} - ${entry.title}`
         }
+        if( entry.type === 'changeRequest' ) {
+          return `Change request - ${shortId} - ${entry.title}`
+        }
         return `${shortId} - ${entry.title}`
       }
       const resolveVersionLabel = (versionId?: string) => {
@@ -556,6 +559,9 @@ function AdminAuditPage() {
     const shortId = entry.shortId ?? 'Unassigned'
     if( entry.type === 'errorReport' ) {
       return `Error report - ${shortId} - ${entry.title}`
+    }
+    if( entry.type === 'changeRequest' ) {
+      return `Change request - ${shortId} - ${entry.title}`
     }
     return `${shortId} - ${entry.title}`
   }

@@ -5,6 +5,8 @@ const {
   onSnapshotMock,
   getDocMock,
   getDocsMock,
+  runTransactionMock,
+  transactionSetMock,
   setDocMock,
   navigateMock,
   reportAbnormalErrorMock,
@@ -13,6 +15,8 @@ const {
   onSnapshotMock: vi.fn(),
   getDocMock: vi.fn(),
   getDocsMock: vi.fn(),
+  runTransactionMock: vi.fn(),
+  transactionSetMock: vi.fn(),
   setDocMock: vi.fn(),
   navigateMock: vi.fn(),
   reportAbnormalErrorMock: vi.fn(),
@@ -35,7 +39,7 @@ vi.mock( 'firebase/firestore', () => ( {
   limit: ( value: number ) => ( { type: 'limit', value } ),
   onSnapshot: (...args: unknown[]) => onSnapshotMock( ...args ),
   query: ( base: unknown, ...constraints: unknown[] ) => ( { kind: 'query', base, constraints } ),
-  runTransaction: vi.fn(),
+  runTransaction: (...args: unknown[]) => runTransactionMock( ...args ),
   serverTimestamp: vi.fn( () => 'server-timestamp' ),
   setDoc: (...args: unknown[]) => setDocMock( ...args ),
   where: ( field: string, op: string, value: unknown ) => ( { type: 'where', field, op, value } ),
@@ -267,6 +271,13 @@ describe( 'pages/ProjectDocumentsPage', () => {
   beforeEach( () => {
     vi.clearAllMocks()
     primeDocumentMocks()
+    logAuditMock.mockResolvedValue( undefined )
+    runTransactionMock.mockImplementation( async ( _db: unknown, callback: (transaction: unknown) => Promise<void> ) => {
+      await callback( {
+        get: async () => ( { data: () => ( { nextNumber: 31 } ) } ),
+        set: transactionSetMock,
+      } )
+    } )
   } )
 
   it( 'renders the project label and loaded document summary', async () => {
@@ -460,5 +471,142 @@ describe( 'pages/ProjectDocumentsPage', () => {
     expect( await screen.findByRole( 'heading', { name: '17 - Controlled Document' }, { timeout: 10000 } ) ).toBeTruthy()
     expect( screen.getByText( 'No versions yet' ) ).toBeTruthy()
     expect( screen.queryByRole( 'dialog' ) ).toBeNull()
+  }, 15000 )
+
+  it( 'creates a change request only from an accepted base in another project', async () => {
+    getDocMock.mockImplementation( async ( docRef: { collection: string; id: string } ) => {
+      if( docRef.collection === 'projects' && docRef.id === 'project-1' ) {
+        return createDocSnapshot( {
+          id: 'project-1',
+          data: {
+            shortId: 42,
+            name: 'Alpha Project',
+            leaderId: 'user-member-1',
+          },
+        } )
+      }
+      if( docRef.collection === 'projects' && docRef.id === 'project-2' ) {
+        return createDocSnapshot( {
+          id: 'project-2',
+          data: {
+            shortId: 84,
+            name: 'Beta Project',
+            leaderId: 'user-member-1',
+          },
+        } )
+      }
+      if( docRef.collection === 'userProfiles' && docRef.id === 'user-reviewer-1' ) {
+        return createDocSnapshot( {
+          id: 'user-reviewer-1',
+          data: {
+            displayName: 'Review Lead',
+          },
+        } )
+      }
+      return createMissingSnapshot( docRef.id )
+    } )
+    getDocsMock.mockImplementation( async ( queryArg: unknown ) => {
+      const collectionName = getCollectionName( queryArg )
+      const requestedProjectId = getWhereValue( queryArg, 'projectId' )
+      const requestedUserId = getWhereValue( queryArg, 'userId' )
+      if( collectionName === 'versions' && requestedProjectId === 'project-1' ) {
+        return createQuerySnapshot( versionRecords )
+      }
+      if( collectionName === 'versions' && requestedProjectId === 'project-2' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'base-version-1',
+            data: {
+              projectId: 'project-2',
+              docId: 'base-document-1',
+              number: 100,
+              status: 'Accepted',
+              createdBy: 'user-member-1',
+              reviewerIds: [],
+            },
+          },
+        ] )
+      }
+      if( collectionName === 'documents' && requestedProjectId === 'project-2' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'base-document-1',
+            data: {
+              projectId: 'project-2',
+              title: 'Shared Requirements',
+              type: 'document',
+              shortId: 9,
+              createdBy: 'user-member-1',
+            },
+          },
+        ] )
+      }
+      if( collectionName === 'projectMembers' && requestedProjectId === 'project-1' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'project-1_user-member-1',
+            data: {
+              projectId: 'project-1',
+              userId: 'user-member-1',
+              role: 'leader',
+              email: 'member@example.com',
+            },
+          },
+        ] )
+      }
+      if( collectionName === 'projectMembers' && requestedUserId === 'user-member-1' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'project-1_user-member-1',
+            data: {
+              projectId: 'project-1',
+              userId: 'user-member-1',
+              role: 'leader',
+            },
+          },
+          {
+            id: 'project-2_user-member-1',
+            data: {
+              projectId: 'project-2',
+              userId: 'user-member-1',
+              role: 'member',
+            },
+          },
+        ] )
+      }
+      if( collectionName === 'userDirectory' ) {
+        return createQuerySnapshot( [] )
+      }
+      return createQuerySnapshot( [] )
+    } )
+
+    render( <ProjectDocumentsPage /> )
+
+    expect( await screen.findByRole( 'heading', { name: '17 - Controlled Document' }, { timeout: 10000 } ) ).toBeTruthy()
+    fireEvent.click( screen.getByRole( 'button', { name: 'New change request' } ) )
+
+    const baseProjectSelect = await screen.findByLabelText( 'Base project', {}, { timeout: 10000 } )
+    expect( baseProjectSelect.textContent ).toContain( '84 - Beta Project' )
+    expect( baseProjectSelect.textContent ).not.toContain( '42 - Alpha Project' )
+    expect( await screen.findByText( '9 - Shared Requirements - 1.00' ) ).toBeTruthy()
+
+    fireEvent.change( screen.getByLabelText( 'Change request title' ), {
+      target: { value: 'Beta client requirements' },
+    } )
+    fireEvent.click( screen.getByRole( 'button', { name: 'Create change request' } ) )
+
+    await waitFor( () => {
+      expect( transactionSetMock ).toHaveBeenCalled()
+    } )
+    expect( transactionSetMock.mock.calls.some( ( call ) => {
+      const payload = call[1] as Record<string, unknown>
+      return payload.type === 'changeRequest'
+        && payload.projectId === 'project-1'
+        && payload.baseProjectId === 'project-2'
+        && payload.baseDocId === 'base-document-1'
+        && payload.baseVersionId === 'base-version-1'
+        && payload.title === 'Beta client requirements'
+    } ) ).toBe( true )
+    expect( navigateMock ).toHaveBeenCalledWith( '/documents/generated-doc/versions?projectId=project-1' )
   }, 15000 )
 } )

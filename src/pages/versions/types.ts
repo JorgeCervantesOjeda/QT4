@@ -28,6 +28,7 @@ type DocumentSummary = {
   authorId?: string | null
   type: string
   shortId: number | null
+  baseProjectId?: string | null
   baseDocId?: string | null
   baseVersionId?: string | null
 }

@@ -19,6 +19,16 @@ type VersionsHeaderProps = {
   onEditDocumentTitle: () => void
 }
 
+const documentTypeLabel = (documentType?: string) => {
+  if( documentType === 'errorReport' ) {
+    return 'Error report'
+  }
+  if( documentType === 'changeRequest' ) {
+    return 'Change request'
+  }
+  return 'Document'
+}
+
 function VersionsHeader( {
   projectId,
   projectName,
@@ -45,7 +55,7 @@ function VersionsHeader( {
           ) : null}
           <div className="context-nav-label">
             <span className="document-title-prefix">
-              {documentData?.type === 'errorReport' ? 'Error report' : 'Document'}
+              {documentTypeLabel( documentData?.type )}
             </span>
             <span className="document-title-text">
               {`${documentData?.shortId ?? 'Unassigned'} - ${documentData?.title ?? docId ?? 'Unknown'}`}
@@ -62,9 +72,13 @@ function VersionsHeader( {
             </button>
           ) : null}
         </div>
-        {documentData?.type === 'errorReport' ? (
+        {documentData?.type === 'errorReport' || documentData?.type === 'changeRequest' ? (
           <p className="muted">
-            This document is an error report for:{' '}
+            <span>
+              {documentData.type === 'changeRequest'
+                ? 'This document is a change request for:'
+                : 'This document is an error report for:'}
+            </span>{' '}
             {baseDocumentData
               ? `${baseDocumentData.shortId ?? 'Unassigned'} - ${baseDocumentData.title}`
               : documentData?.baseDocId

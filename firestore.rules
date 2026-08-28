@@ -495,6 +495,78 @@ service cloud.firestore {
       return value in ['files-api', 'firebase-functions'];
     }
 
+    function documentTypeOf(documentData) {
+      return documentData.keys().hasAny(['type']) ? documentData.type : 'document';
+    }
+
+    function isValidDocumentType(documentData) {
+      return documentTypeOf(documentData) in [
+        'document',
+        'errorReport',
+        'changeRequest'
+      ];
+    }
+
+    function hasNoBaseDocumentFields(documentData) {
+      return !documentData.keys().hasAny([
+        'baseProjectId',
+        'baseDocId',
+        'baseVersionId'
+      ]);
+    }
+
+    function isAcceptedBaseVersion(baseProjectId, baseDocId, baseVersionId) {
+      return baseProjectId is string
+        && baseProjectId.size() > 0
+        && baseDocId is string
+        && baseDocId.size() > 0
+        && baseVersionId is string
+        && baseVersionId.size() > 0
+        && documentDoc(baseDocId).data.projectId == baseProjectId
+        && versionDoc(baseVersionId).data.projectId == baseProjectId
+        && versionDoc(baseVersionId).data.docId == baseDocId
+        && versionDoc(baseVersionId).data.status == 'Accepted';
+    }
+
+    function isNormalDocumentCreate(documentData) {
+      return documentTypeOf(documentData) == 'document'
+        && hasNoBaseDocumentFields(documentData);
+    }
+
+    function isErrorReportDocumentCreate(documentData) {
+      return documentTypeOf(documentData) == 'errorReport'
+        && isAcceptedBaseVersion(
+          documentData.projectId,
+          documentData.baseDocId,
+          documentData.baseVersionId
+        )
+        && (
+          !documentData.keys().hasAny(['baseProjectId'])
+          || documentData.baseProjectId == documentData.projectId
+        );
+    }
+
+    function isChangeRequestDocumentCreate(documentData) {
+      return documentTypeOf(documentData) == 'changeRequest'
+        && documentData.baseProjectId is string
+        && documentData.baseProjectId != documentData.projectId
+        && (isProjectMember(documentData.baseProjectId) || isAdmin())
+        && isAcceptedBaseVersion(
+          documentData.baseProjectId,
+          documentData.baseDocId,
+          documentData.baseVersionId
+        );
+    }
+
+    function isValidDocumentCreateByType(documentData) {
+      return isValidDocumentType(documentData)
+        && (
+          isNormalDocumentCreate(documentData)
+          || isErrorReportDocumentCreate(documentData)
+          || isChangeRequestDocumentCreate(documentData)
+        );
+    }
+
     match /userProfiles/{userId} {
       allow read: if isSelf(userId) || isAdmin();
       allow create: if isSelf(userId)
@@ -581,7 +653,8 @@ service cloud.firestore {
         && request.resource.data.shortId is int
         && request.resource.data.shortId > 0
         && request.resource.data.authorId == request.auth.uid
-        && request.resource.data.createdBy == request.auth.uid;
+        && request.resource.data.createdBy == request.auth.uid
+        && isValidDocumentCreateByType(request.resource.data);
       allow update: if (
           (isProjectLeader(resource.data.projectId) || isDocumentAuthor() || isAdmin())
           && request.resource.data.projectId == resource.data.projectId

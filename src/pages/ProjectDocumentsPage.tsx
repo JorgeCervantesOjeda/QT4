@@ -25,9 +25,20 @@ import { GiphyInline } from '../giphy/GiphyProvider'
 import { useErrorChecklistModal } from '../hooks/useErrorChecklistModal'
 import { FIRST_VERSION_NUMBER, versionNumberToString } from '../domain/types'
 import { logAudit } from '../lib/audit'
+import {
+  buildChangeRequestTitle,
+  validateChangeRequestCreation,
+} from '../lib/changeRequests'
 import { reportAbnormalError } from '../lib/errorMonitor'
 import { db } from '../lib/firebase'
 import { formatTimeAgoWithTimestamp } from '../lib/time'
+import {
+  createChangeRequestDocument,
+  loadAcceptedBaseVersions,
+  loadChangeRequestBaseProjects,
+  type ChangeRequestBaseProject,
+  type ChangeRequestBaseVersion,
+} from './projectDocuments/changeRequestData'
 
 type DocumentSummary = {
   id: string
@@ -35,6 +46,7 @@ type DocumentSummary = {
   createdBy: string
   type: string
   shortId: number | null
+  baseProjectId?: string | null
   baseDocId?: string | null
   latestVersionNumber: number | null
   latestStatus: string | null
@@ -57,6 +69,11 @@ type ProjectMember = {
   userId: string
   role: 'leader' | 'member'
   email?: string | null
+}
+
+type BaseDocumentReference = {
+  title: string
+  shortId: number | null
 }
 
 type DocumentFilter = 'all' | 'mine'
@@ -243,6 +260,16 @@ function ProjectDocumentsPage() {
   const [isAddingMember, setIsAddingMember] = useState( false )
   const [isMembersPanelExpanded, setIsMembersPanelExpanded] = useState( false )
   const [isBusy, setIsBusy] = useState( false )
+  const [isChangeRequestModalOpen, setIsChangeRequestModalOpen] = useState( false )
+  const [isLoadingChangeRequestBases, setIsLoadingChangeRequestBases] = useState( false )
+  const [isCreatingChangeRequest, setIsCreatingChangeRequest] = useState( false )
+  const [baseProjects, setBaseProjects] = useState<ChangeRequestBaseProject[]>( [] )
+  const [acceptedBaseVersions, setAcceptedBaseVersions] = useState<ChangeRequestBaseVersion[]>( [] )
+  const [selectedBaseProjectId, setSelectedBaseProjectId] = useState( '' )
+  const [selectedBaseVersionId, setSelectedBaseVersionId] = useState( '' )
+  const [changeRequestTitle, setChangeRequestTitle] = useState( '' )
+  const [changeRequestError, setChangeRequestError] = useState<string | null>( null )
+  const [baseDocumentReferences, setBaseDocumentReferences] = useState<Record<string, BaseDocumentReference>>( {} )
   const [isLoadingDocuments, setIsLoadingDocuments] = useState( true )
   const { error, errorChecklist, openError, clearError } = useErrorChecklistModal()
   const [successMessage, setSuccessMessage] = useState<string | null>( null )
@@ -263,6 +290,22 @@ function ProjectDocumentsPage() {
   const canSubmit = useMemo(
     () => title.trim().length > 0 && !isBusy && Boolean( projectId ) && Boolean( project ),
     [ title, isBusy, projectId, project ],
+  )
+
+  const selectedBaseVersion = useMemo(
+    () => acceptedBaseVersions.find( ( versionItem ) => versionItem.versionId === selectedBaseVersionId ) ?? null,
+    [ acceptedBaseVersions, selectedBaseVersionId ],
+  )
+
+  const canCreateChangeRequest = useMemo(
+    () =>
+      !isCreatingChangeRequest &&
+      Boolean( projectId ) &&
+      Boolean( project ) &&
+      Boolean( userId ) &&
+      Boolean( selectedBaseVersion ) &&
+      changeRequestTitle.trim().length > 0,
+    [ changeRequestTitle, isCreatingChangeRequest, project, projectId, selectedBaseVersion, userId ],
   )
 
   const formatUserLabel = useCallback( (memberUserId: string) => {
@@ -314,6 +357,31 @@ function ProjectDocumentsPage() {
     return map
   }, [ documents ] )
 
+  const formatBaseDocumentLabel = useCallback( (documentItem: DocumentSummary) => {
+    if( !documentItem.baseDocId ) {
+      return 'Unknown'
+    }
+    if( baseDocumentById.has( documentItem.baseDocId ) ) {
+      const baseDoc = baseDocumentById.get( documentItem.baseDocId )
+      return `${baseDoc?.shortId ?? 'Unassigned'} - ${baseDoc?.title ?? 'Unknown'}`
+    }
+    const externalBaseDoc = baseDocumentReferences[documentItem.baseDocId]
+    if( externalBaseDoc ) {
+      return `${externalBaseDoc.shortId ?? 'Unassigned'} - ${externalBaseDoc.title}`
+    }
+    return `Document ${documentItem.baseDocId}`
+  }, [ baseDocumentById, baseDocumentReferences ] )
+
+  const formatDocumentTitle = useCallback( (documentItem: DocumentSummary) => {
+    if( documentItem.type === 'errorReport' ) {
+      return `Error report - ${documentItem.shortId ?? 'Unassigned'} - ${documentItem.title}`
+    }
+    if( documentItem.type === 'changeRequest' ) {
+      return `Change request - ${documentItem.shortId ?? 'Unassigned'} - ${documentItem.title}`
+    }
+    return `${documentItem.shortId ?? 'Unassigned'} - ${documentItem.title}`
+  }, [] )
+
   const documentColumns = useMemo<ColumnDef<DocumentSummary & { creatorLabel: string; updatedAtMs: number }>[]>(
     () => [
       {
@@ -333,7 +401,13 @@ function ProjectDocumentsPage() {
         accessorKey: 'title',
         cell: ( info ) => {
           const row = info.row.original
-          return row.type === 'errorReport' ? `Error report - ${row.title}` : row.title
+          if( row.type === 'errorReport' ) {
+            return `Error report - ${row.title}`
+          }
+          if( row.type === 'changeRequest' ) {
+            return `Change request - ${row.title}`
+          }
+          return row.title
         },
       },
       {
@@ -341,27 +415,19 @@ function ProjectDocumentsPage() {
         accessorKey: 'baseDocId',
         cell: ( info ) => {
           const row = info.row.original
-          if( row.type !== 'errorReport' ) {
+          if( row.type !== 'errorReport' && row.type !== 'changeRequest' ) {
             return '-'
           }
-          if( row.baseDocId && baseDocumentById.has( row.baseDocId ) ) {
-            const baseDoc = baseDocumentById.get( row.baseDocId )
+          if( row.baseDocId ) {
+            const baseLabel = formatBaseDocumentLabel( row )
             return (
               <span className="error-report-for">
                 <span className="error-report-for__short">
-                  {baseDoc?.shortId ?? 'Unassigned'}
+                  {baseLabel.split( ' - ' )[0] ?? 'Unknown'}
                 </span>
                 <span className="error-report-for__full">
-                  {`${baseDoc?.shortId ?? 'Unassigned'} - ${baseDoc?.title ?? 'Unknown'}`}
+                  {baseLabel}
                 </span>
-              </span>
-            )
-          }
-          if( row.baseDocId ) {
-            return (
-              <span className="error-report-for">
-                <span className="error-report-for__short">Unknown</span>
-                <span className="error-report-for__full">{`Document ${row.baseDocId}`}</span>
               </span>
             )
           }
@@ -386,7 +452,7 @@ function ProjectDocumentsPage() {
           }`,
       },
     ],
-    [ baseDocumentById ],
+    [ formatBaseDocumentLabel ],
   )
 
   const sortedDocumentCards = useMemo( () => {
@@ -516,6 +582,7 @@ function ProjectDocumentsPage() {
           createdBy: ( data.createdBy as string ) ?? ( data.authorId as string ) ?? '',
           type: ( data.type as string | undefined ) ?? 'document',
           shortId: Number.isFinite( data.shortId ) ? Number( data.shortId ) : null,
+          baseProjectId: ( data.baseProjectId as string | undefined ) ?? null,
           baseDocId: ( data.baseDocId as string | undefined ) ?? null,
           latestVersionNumber: null,
           latestStatus: null,
@@ -635,6 +702,39 @@ function ProjectDocumentsPage() {
           isMine,
         }
       } )
+      step = 'base-references'
+      const currentDocumentIds = new Set( baseDocuments.map( ( documentItem ) => documentItem.id ) )
+      const externalBaseDocIds = Array.from(
+        new Set(
+          baseDocuments
+            .map( ( documentItem ) => documentItem.baseDocId )
+            .filter( ( baseDocId ): baseDocId is string =>
+              typeof baseDocId === 'string' && baseDocId.length > 0 && !currentDocumentIds.has( baseDocId ),
+            ),
+        ),
+      )
+      const nextBaseDocumentReferences: Record<string, BaseDocumentReference> = {}
+      await Promise.all(
+        externalBaseDocIds.map( async ( baseDocId ) => {
+          try {
+            const baseDocSnapshot = await getDoc( doc( db, 'documents', baseDocId ) )
+            if( baseDocSnapshot.exists() ) {
+              const baseDocData = baseDocSnapshot.data()
+              nextBaseDocumentReferences[baseDocId] = {
+                title: ( baseDocData.title as string | undefined ) ?? 'Untitled document',
+                shortId: Number.isFinite( baseDocData.shortId ) ? Number( baseDocData.shortId ) : null,
+              }
+            }
+          } catch( err ) {
+            console.warn( 'Project document base reference lookup skipped:', {
+              projectId,
+              baseDocId,
+              reason: err,
+            } )
+          }
+        } ),
+      )
+      setBaseDocumentReferences( nextBaseDocumentReferences )
       if( filter === 'mine' && userId ) {
         const filtered = latestVersions
           .filter( ( entry ) => entry.isMine )
@@ -791,6 +891,151 @@ function ProjectDocumentsPage() {
     }
     shouldRestoreTitleFocusRef.current = false
     shouldRestoreMemberFocusRef.current = false
+  }
+
+  const loadChangeRequestBaseProjectsForModal = useCallback( async () => {
+    if( !projectId || !userId ) {
+      setBaseProjects( [] )
+      setSelectedBaseProjectId( '' )
+      return
+    }
+    setIsLoadingChangeRequestBases( true )
+    setChangeRequestError( null )
+    try {
+      const loadedProjects = await loadChangeRequestBaseProjects( projectId, userId )
+      setBaseProjects( loadedProjects )
+      setSelectedBaseProjectId( ( currentProjectId ) => {
+        if( currentProjectId && loadedProjects.some( ( baseProject ) => baseProject.id === currentProjectId ) ) {
+          return currentProjectId
+        }
+        return loadedProjects[0]?.id ?? ''
+      } )
+    } catch( err ) {
+      const message = err instanceof Error ? err.message : 'Unexpected error'
+      void reportAbnormalError( {
+        error: err,
+        source: 'firestore',
+        action: 'projectDocuments.loadChangeRequestBaseProjects',
+        projectId,
+      } )
+      setChangeRequestError( `Change request bases failed to load: ${message}` )
+      setBaseProjects( [] )
+      setSelectedBaseProjectId( '' )
+    } finally {
+      setIsLoadingChangeRequestBases( false )
+    }
+  }, [ projectId, userId ] )
+
+  const loadAcceptedBaseVersionsForModal = useCallback( async (baseProjectId: string) => {
+    if( !baseProjectId ) {
+      setAcceptedBaseVersions( [] )
+      setSelectedBaseVersionId( '' )
+      return
+    }
+    setIsLoadingChangeRequestBases( true )
+    setChangeRequestError( null )
+    try {
+      const acceptedVersions = await loadAcceptedBaseVersions( baseProjectId )
+      setAcceptedBaseVersions( acceptedVersions )
+      setSelectedBaseVersionId( ( currentVersionId ) => {
+        if( currentVersionId && acceptedVersions.some( ( versionItem ) => versionItem.versionId === currentVersionId ) ) {
+          return currentVersionId
+        }
+        return acceptedVersions[0]?.versionId ?? ''
+      } )
+      if( acceptedVersions.length > 0 && changeRequestTitle.trim().length === 0 ) {
+        setChangeRequestTitle( buildChangeRequestTitle( acceptedVersions[0].docTitle ) )
+      }
+    } catch( err ) {
+      const message = err instanceof Error ? err.message : 'Unexpected error'
+      void reportAbnormalError( {
+        error: err,
+        source: 'firestore',
+        action: 'projectDocuments.loadAcceptedBaseVersions',
+        projectId,
+        focus: baseProjectId,
+      } )
+      setChangeRequestError( `Accepted base versions failed to load: ${message}` )
+      setAcceptedBaseVersions( [] )
+      setSelectedBaseVersionId( '' )
+    } finally {
+      setIsLoadingChangeRequestBases( false )
+    }
+  }, [ changeRequestTitle, projectId ] )
+
+  useEffect( () => {
+    if( isChangeRequestModalOpen ) {
+      void loadChangeRequestBaseProjectsForModal()
+    }
+  }, [ isChangeRequestModalOpen, loadChangeRequestBaseProjectsForModal ] )
+
+  useEffect( () => {
+    if( isChangeRequestModalOpen ) {
+      void loadAcceptedBaseVersionsForModal( selectedBaseProjectId )
+    }
+  }, [ isChangeRequestModalOpen, loadAcceptedBaseVersionsForModal, selectedBaseProjectId ] )
+
+  const openChangeRequestModal = () => {
+    setChangeRequestError( null )
+    setAcceptedBaseVersions( [] )
+    setSelectedBaseVersionId( '' )
+    setChangeRequestTitle( '' )
+    setIsChangeRequestModalOpen( true )
+  }
+
+  const closeChangeRequestModal = () => {
+    if( isCreatingChangeRequest ) {
+      return
+    }
+    setIsChangeRequestModalOpen( false )
+  }
+
+  const handleCreateChangeRequest = async ( event: React.FormEvent<HTMLFormElement> ) => {
+    event.preventDefault()
+    const validation = validateChangeRequestCreation( {
+      targetProjectId: projectId ?? '',
+      baseProjectId: selectedBaseVersion?.projectId ?? selectedBaseProjectId,
+      baseDocId: selectedBaseVersion?.docId ?? '',
+      baseVersionId: selectedBaseVersion?.versionId ?? '',
+      baseVersionStatus: selectedBaseVersion?.status ?? '',
+      title: changeRequestTitle,
+      userId,
+    } )
+    if( !validation.ok ) {
+      setChangeRequestError( validation.message )
+      return
+    }
+    if( !projectId || !selectedBaseVersion ) {
+      setChangeRequestError( 'Select a base document version before creating a change request.' )
+      return
+    }
+    setChangeRequestError( null )
+    setSuccessMessage( null )
+    setIsCreatingChangeRequest( true )
+    try {
+      const changeRequest = await createChangeRequestDocument( {
+        projectId,
+        selectedBaseVersion,
+        title: changeRequestTitle,
+        userEmail: user?.email,
+        userId,
+      } )
+      setIsChangeRequestModalOpen( false )
+      navigate( `/documents/${changeRequest.docId}/versions?projectId=${projectId}` )
+    } catch( err ) {
+      const message = err instanceof Error ? err.message : 'Unexpected error'
+      if( !isOfflineFirestoreError( err ) ) {
+        void reportAbnormalError( {
+          error: err,
+          source: 'firestore',
+          action: 'projectDocuments.createChangeRequest',
+          projectId,
+        } )
+      }
+      setChangeRequestError( message )
+    } finally {
+      setIsCreatingChangeRequest( false )
+    }
   }
 
   const handleAddMember = async ( event: React.FormEvent<HTMLFormElement> ) => {
@@ -968,6 +1213,7 @@ function ProjectDocumentsPage() {
         transaction.set( documentRef, {
           projectId,
           title: title.trim(),
+          type: 'document',
           createdBy: userId,
           authorId: userId,
           updatedBy: userId,
@@ -1158,6 +1404,11 @@ function ProjectDocumentsPage() {
               </button>
             </div>
           </form>
+          <div className="actions">
+            <button type="button" onClick={openChangeRequestModal} disabled={!projectId || !project || !userId}>
+              New change request
+            </button>
+          </div>
         </section>
 
         {isLoadingDocuments && documents.length === 0 ? (
@@ -1212,6 +1463,90 @@ function ProjectDocumentsPage() {
                       OK
                     </button>
                   </div>
+              </ModalDialog>
+            ) : null}
+            {isChangeRequestModalOpen ? (
+              <ModalDialog onClose={closeChangeRequestModal}>
+                <form className="form" onSubmit={handleCreateChangeRequest}>
+                  <h3>Create change request</h3>
+                  {isLoadingChangeRequestBases ? (
+                    <p className="muted">Loading available bases...</p>
+                  ) : null}
+                  {baseProjects.length === 0 && !isLoadingChangeRequestBases ? (
+                    <p className="muted">No other readable projects have accepted base documents.</p>
+                  ) : (
+                    <>
+                      <label className="field">
+                        <span>Base project</span>
+                        <select
+                          value={selectedBaseProjectId}
+                          onChange={( event ) => {
+                            setSelectedBaseProjectId( event.target.value )
+                            setSelectedBaseVersionId( '' )
+                            setAcceptedBaseVersions( [] )
+                            setChangeRequestTitle( '' )
+                          }}
+                          disabled={isLoadingChangeRequestBases || isCreatingChangeRequest}
+                        >
+                          {baseProjects.map( ( baseProject ) => (
+                            <option key={baseProject.id} value={baseProject.id}>
+                              {`${baseProject.shortId ?? 'Unassigned'} - ${baseProject.name}`}
+                            </option>
+                          ) )}
+                        </select>
+                      </label>
+                      <label className="field">
+                        <span>Base document</span>
+                        <select
+                          value={selectedBaseVersionId}
+                          onChange={( event ) => {
+                            const nextVersionId = event.target.value
+                            setSelectedBaseVersionId( nextVersionId )
+                            const nextBaseVersion = acceptedBaseVersions.find(
+                              ( versionItem ) => versionItem.versionId === nextVersionId,
+                            )
+                            if( nextBaseVersion ) {
+                              setChangeRequestTitle( buildChangeRequestTitle( nextBaseVersion.docTitle ) )
+                            }
+                          }}
+                          disabled={
+                            isLoadingChangeRequestBases ||
+                            isCreatingChangeRequest ||
+                            acceptedBaseVersions.length === 0
+                          }
+                        >
+                          {acceptedBaseVersions.map( ( versionItem ) => (
+                            <option key={versionItem.versionId} value={versionItem.versionId}>
+                              {`${versionItem.docShortId ?? 'Unassigned'} - ${versionItem.docTitle} - ${versionNumberToString( versionItem.versionNumber )}`}
+                            </option>
+                          ) )}
+                        </select>
+                      </label>
+                      {acceptedBaseVersions.length === 0 && !isLoadingChangeRequestBases ? (
+                        <p className="muted">This base project has no accepted document versions.</p>
+                      ) : null}
+                      <label className="field">
+                        <span>Change request title</span>
+                        <input
+                          type="text"
+                          value={changeRequestTitle}
+                          onChange={( event ) => setChangeRequestTitle( event.target.value )}
+                          disabled={isCreatingChangeRequest}
+                          required
+                        />
+                      </label>
+                    </>
+                  )}
+                  {changeRequestError ? <p className="error">{changeRequestError}</p> : null}
+                  <div className="actions">
+                    <button type="submit" disabled={!canCreateChangeRequest}>
+                      {isCreatingChangeRequest ? 'Creating change request...' : 'Create change request'}
+                    </button>
+                    <button type="button" className="ghost" onClick={closeChangeRequestModal} disabled={isCreatingChangeRequest}>
+                      Cancel
+                    </button>
+                  </div>
+                </form>
               </ModalDialog>
             ) : null}
             <div className="actions">
@@ -1276,18 +1611,11 @@ function ProjectDocumentsPage() {
                     }}
                   >
                     <h3>
-                    {documentItem.type === 'errorReport'
-                      ? `Error report - ${documentItem.shortId ?? 'Unassigned'} - ${documentItem.title}`
-                      : `${documentItem.shortId ?? 'Unassigned'} - ${documentItem.title}`}
+                      {formatDocumentTitle( documentItem )}
                     </h3>
-                    {documentItem.type === 'errorReport' ? (
+                    {documentItem.type === 'errorReport' || documentItem.type === 'changeRequest' ? (
                       <p className="muted">
-                        For document:{' '}
-                        {documentItem.baseDocId && baseDocumentById.has( documentItem.baseDocId )
-                          ? `${baseDocumentById.get( documentItem.baseDocId )?.shortId ?? 'Unassigned'} - ${
-                              baseDocumentById.get( documentItem.baseDocId )?.title ?? 'Unknown'
-                            }`
-                          : 'Unknown'}
+                        For document: {formatBaseDocumentLabel( documentItem )}
                       </p>
                     ) : null}
                     <p className="muted">

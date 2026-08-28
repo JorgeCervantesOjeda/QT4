@@ -161,6 +161,7 @@ const loadDocumentAndVersions = async (params: LoadDocumentAndVersionsParams) =>
     const loadedAuthorId = ( documentRaw.createdBy as string ) ?? ( documentRaw.authorId as string ) ?? ''
     const detectedShortId = Number.isFinite( documentRaw.shortId ) ? Number( documentRaw.shortId ) : null
     const loadedType = ( documentRaw.type as string | undefined ) ?? 'document'
+    const loadedBaseProjectId = ( documentRaw.baseProjectId as string | undefined ) ?? null
     const loadedBaseDocId = ( documentRaw.baseDocId as string | undefined ) ?? null
     const loadedBaseVersionId = ( documentRaw.baseVersionId as string | undefined ) ?? null
     setDocumentData( {
@@ -171,6 +172,7 @@ const loadDocumentAndVersions = async (params: LoadDocumentAndVersionsParams) =>
       authorId: ( documentRaw.authorId as string | undefined ) ?? loadedAuthorId,
       type: loadedType,
       shortId: detectedShortId,
+      baseProjectId: loadedBaseProjectId,
       baseDocId: loadedBaseDocId,
       baseVersionId: loadedBaseVersionId,
     } )
@@ -178,6 +180,15 @@ const loadDocumentAndVersions = async (params: LoadDocumentAndVersionsParams) =>
       setVersions( [] )
       setBaseDocumentData( null )
       setError( 'Invalid error report data: baseDocId and baseVersionId are required.' )
+      return
+    }
+    if(
+      loadedType === 'changeRequest' &&
+      ( !loadedBaseProjectId || !loadedBaseDocId || !loadedBaseVersionId || loadedBaseProjectId === loadedProjectId )
+    ) {
+      setVersions( [] )
+      setBaseDocumentData( null )
+      setError( 'Invalid change request data: baseProjectId, baseDocId and baseVersionId from another project are required.' )
       return
     }
 
