@@ -15,7 +15,11 @@ import {
 import { logAudit } from "../../lib/audit";
 import { db } from "../../lib/firebase";
 import { notifyEmailUsingActiveProvider } from "../../lib/notifications";
-import { REVIEW_WINDOW_MS } from "../../lib/reviewWindow";
+import {
+  calculateReviewEndAt,
+  DEFAULT_REVIEW_DURATION_DAYS,
+  numOfReviewDurationDays,
+} from "../../lib/reviewWindow";
 import type { DocumentSummary, VersionSummary } from "./types";
 
 type ReportVersionsError = (
@@ -35,6 +39,7 @@ type VersionCreateAndReviewActionParams = {
   latestVersion: VersionSummary | null;
   loadDocumentAndVersions: () => void;
   projectId: string;
+  reviewDurationDays: number;
   reportVersionsError: ReportVersionsError;
   resolveUserEmail: (memberUserId: string) => string | null;
   setEmailNotifyMessage: (value: string) => void;
@@ -142,6 +147,7 @@ const createVersionCreateAndReviewActions = (
           reviewerIds: [],
           reviewStartAt: null,
           reviewEndAt: null,
+          reviewDurationDays: DEFAULT_REVIEW_DURATION_DAYS,
           hasFile: false,
           fileRefId: null,
           stats: {
@@ -235,14 +241,18 @@ const createVersionCreateAndReviewActions = (
     setEmailNotifyMessage("");
     setIsBusy(true);
     try {
+      const normalizedReviewDurationDays = numOfReviewDurationDays(
+        params.reviewDurationDays,
+      );
       const reviewEndAt = Timestamp.fromDate(
-        new Date(Date.now() + REVIEW_WINDOW_MS),
+        calculateReviewEndAt(normalizedReviewDurationDays),
       );
       const batch = writeBatch(db);
       batch.update(doc(db, "versions", latestVersion.id), {
         status: "In Review",
         reviewStartAt: serverTimestamp(),
         reviewEndAt,
+        reviewDurationDays: normalizedReviewDurationDays,
         activityAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         updatedBy: userId,

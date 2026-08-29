@@ -1,10 +1,14 @@
+// src/lib/reviewWindow.test.ts
+// Verifies review-window helpers and supported duration boundaries.
 import { describe, expect, it } from 'vitest'
 import {
   ONE_HOUR_MS,
+  calculateReviewEndAt,
   canAddCommentInWindow,
   formatApproxCountdown,
   getCommentWindowRemainingMs,
   isReviewExpired,
+  numOfReviewDurationDays,
   shouldAutoSetReviewed,
 } from './reviewWindow'
 
@@ -94,5 +98,19 @@ describe( 'lib/reviewWindow', () => {
     expect( formatApproxCountdown( 0 ) ).toBe( '0m' )
     expect( formatApproxCountdown( 20 * 60 * 1000 ) ).toBe( '20m' )
     expect( formatApproxCountdown( 95 * 60 * 1000 ) ).toBe( '1h 35m' )
+  } )
+
+  it( 'normalizes review duration days to the supported range', () => {
+    expect( numOfReviewDurationDays( 0 ) ).toBe( 1 )
+    expect( numOfReviewDurationDays( 7 ) ).toBe( 7 )
+    expect( numOfReviewDurationDays( 31 ) ).toBe( 30 )
+  } )
+
+  it( 'calculates review end time from selected duration days', () => {
+    const startMs = new Date( '2026-04-03T09:00:00.000Z' ).getTime()
+
+    expect( calculateReviewEndAt( 3, startMs ).toISOString() ).toBe(
+      '2026-04-06T09:00:00.000Z',
+    )
   } )
 } )

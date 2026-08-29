@@ -11,6 +11,7 @@ type VersionSummary = {
   reviewerIds: string[]
   reviewStartAt?: Date | null
   reviewEndAt?: Date | null
+  reviewDurationDays: number
   hasFile: boolean
   fileRefId: string | null
   numThreads: number

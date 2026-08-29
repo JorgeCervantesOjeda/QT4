@@ -143,6 +143,7 @@ function VersionsPage() {
     allowedReviewerIds,
     createButtonLabel,
     canAssignReviewers,
+    canConfigureReviewDuration,
     canUploadFile,
     handleToggleAllReviewers,
     errorChecklist,
@@ -235,6 +236,7 @@ function VersionsPage() {
     handleConfirmVersionDecision,
     handleCreateErrorReport,
     handleCreateThread,
+    handleReviewDurationDaysChange,
     memberColumns,
     moveSelectedVersion,
     openReviewIssuesForVersion,
@@ -253,6 +255,7 @@ function VersionsPage() {
       allowedReviewerIds={allowedReviewerIds}
       baseDocumentData={baseDocumentData}
       canAssignReviewers={canAssignReviewers}
+      canConfigureReviewDuration={canConfigureReviewDuration}
       canEditDocumentTitle={canEditDocumentTitle}
       canUploadFile={canUploadFile}
       clockNowMs={clockNowMs}
@@ -291,6 +294,7 @@ function VersionsPage() {
       handleConfirmVersionDecision={handleConfirmVersionDecision}
       handleCreateErrorReport={handleCreateErrorReport}
       handleCreateThread={handleCreateThread}
+      handleReviewDurationDaysChange={handleReviewDurationDaysChange}
       handleSaveDocumentTitle={handleSaveDocumentTitle}
       handleSelectAdjacentThread={handleSelectAdjacentThread}
       handleToggleAllReviewers={handleToggleAllReviewers}

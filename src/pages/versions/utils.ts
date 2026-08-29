@@ -142,6 +142,7 @@ const areVersionsEqual = (left: VersionSummary[], right: VersionSummary[]) => {
       !areStringArraysEqual(a.reviewerIds, b.reviewerIds) ||
       toDateMs(a.reviewStartAt) !== toDateMs(b.reviewStartAt) ||
       toDateMs(a.reviewEndAt) !== toDateMs(b.reviewEndAt) ||
+      a.reviewDurationDays !== b.reviewDurationDays ||
       a.hasFile !== b.hasFile ||
       a.fileRefId !== b.fileRefId ||
       a.numThreads !== b.numThreads ||

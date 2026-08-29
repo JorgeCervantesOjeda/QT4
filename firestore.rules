@@ -146,6 +146,21 @@ service cloud.firestore {
         && versionNumOpenThreads(versionData) == 0;
     }
 
+    function hasValidReviewDurationDays(versionData) {
+      return !versionData.keys().hasAny(['reviewDurationDays'])
+        || (
+          versionData.reviewDurationDays is int
+          && versionData.reviewDurationDays >= 1
+          && versionData.reviewDurationDays <= 30
+        );
+    }
+
+    function keepsReviewDurationDays() {
+      return resource.data.keys().hasAny(['reviewDurationDays'])
+        ? request.resource.data.reviewDurationDays == resource.data.reviewDurationDays
+        : !request.resource.data.keys().hasAny(['reviewDurationDays']);
+    }
+
     function isStartReviewTransition() {
       return resource.data.status == 'In Creation'
         && request.resource.data.status == 'In Review'
@@ -157,6 +172,7 @@ service cloud.firestore {
       return resource.data.status == 'In Review'
         && request.resource.data.status == 'Accepted'
         && hasReviewEvidence(resource.data)
+        && keepsReviewDurationDays()
         && request.resource.data.number
           == resource.data.number + (100 - (resource.data.number % 100));
     }
@@ -165,17 +181,20 @@ service cloud.firestore {
       return resource.data.status == 'In Review'
         && request.resource.data.status == 'Rejected'
         && hasReviewEvidence(resource.data)
+        && keepsReviewDurationDays()
         && request.resource.data.number == resource.data.number;
     }
 
     function isReviewedTransition() {
       return resource.data.status == 'In Review'
         && request.resource.data.status == 'Reviewed'
+        && keepsReviewDurationDays()
         && request.resource.data.number == resource.data.number;
     }
     function isReplacedTransition() {
       return resource.data.status == 'Accepted'
         && request.resource.data.status == 'Replaced'
+        && keepsReviewDurationDays()
         && request.resource.data.number == resource.data.number;
     }
 
@@ -188,6 +207,7 @@ service cloud.firestore {
         && request.resource.data.createdBy == resource.data.createdBy
         && request.resource.data.reviewerIds == resource.data.reviewerIds
         && request.resource.data.hasFile == resource.data.hasFile
+        && keepsReviewDurationDays()
         && request.resource.data.diff(resource.data).changedKeys().hasOnly([
           'stats',
           'numThreads',
@@ -210,6 +230,7 @@ service cloud.firestore {
         && request.resource.data.status == resource.data.status
         && request.resource.data.reviewerIds == resource.data.reviewerIds
         && request.resource.data.hasFile == resource.data.hasFile
+        && keepsReviewDurationDays()
         && request.resource.data.diff(resource.data).changedKeys().hasOnly([
           'stats',
           'numThreads',
@@ -292,6 +313,10 @@ service cloud.firestore {
         && (
           resource.data.status == 'In Creation'
           || request.resource.data.hasFile == resource.data.hasFile
+        )
+        && (
+          resource.data.status == 'In Creation'
+          || keepsReviewDurationDays()
         );
     }
 
@@ -788,6 +813,7 @@ service cloud.firestore {
         && request.resource.data.status == 'In Creation'
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.reviewerIds is list
+        && hasValidReviewDurationDays(request.resource.data)
         && isValidVersionState(request.resource.data.status);
       allow update: if (
           (isProjectLeader(resource.data.projectId)
@@ -797,6 +823,7 @@ service cloud.firestore {
         && request.resource.data.docId == resource.data.docId
         && (request.resource.data.createdBy == resource.data.createdBy || isAuthorReassignmentAllowed())
         && request.resource.data.keys().hasAll(resource.data.keys())
+        && hasValidReviewDurationDays(request.resource.data)
           && (
             isSameStatusUpdateAllowed()
             || isStartReviewTransition()

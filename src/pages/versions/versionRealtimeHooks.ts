@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore'
 import { FIRST_VERSION_NUMBER } from '../../domain/types'
 import { db } from '../../lib/firebase'
+import { numOfReviewDurationDays } from '../../lib/reviewWindow'
 import type { ProjectMember, VersionSummary } from './types'
 import {
   areProjectMembersEqual,
@@ -81,6 +82,7 @@ const useVersionsProjectSubscription = (params: {
             reviewerIds: ( data.reviewerIds as string[] | undefined ) ?? [],
             reviewStartAt: toTimestampDate( data.reviewStartAt ),
             reviewEndAt: toTimestampDate( data.reviewEndAt ),
+            reviewDurationDays: numOfReviewDurationDays( data.reviewDurationDays ),
             hasFile: Boolean( data.hasFile ),
             fileRefId: ( data.fileRefId as string | null | undefined ) ?? null,
             numThreads: Number( stats.numThreads ?? data.numThreads ?? 0 ),

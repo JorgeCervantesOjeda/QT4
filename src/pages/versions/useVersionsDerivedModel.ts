@@ -4,6 +4,7 @@ import { useCallback, useMemo } from "react";
 import { FIRST_VERSION_NUMBER, versionNumberToString } from "../../domain/types";
 import { reportAbnormalError } from "../../lib/errorMonitor";
 import { getEffectiveFileStorageProviderHint } from "../../lib/fileStorage";
+import { DEFAULT_REVIEW_DURATION_DAYS } from "../../lib/reviewWindow";
 import { isOfflineFirestoreError, parseDashboardFocusTarget } from "./utils";
 import useReviewDerivedState from "./reviewDerivedState";
 import useDocumentTitleEditing from "./documentTitleEditing";
@@ -282,6 +283,7 @@ const useVersionsDerivedModel = ({
       reviewerIds: [],
       reviewStartAt: null,
       reviewEndAt: null,
+      reviewDurationDays: DEFAULT_REVIEW_DURATION_DAYS,
       hasFile: baseDocumentData.hasFile,
       fileRefId: baseDocumentData.fileRefId,
       numThreads: 0,
@@ -462,6 +464,7 @@ const useVersionsDerivedModel = ({
     createButtonLabel,
     canCreateVersion,
     canAssignReviewers,
+    canConfigureReviewDuration: canAssignReviewers,
     canUploadFile,
     handleToggleReviewer,
     handleToggleAllReviewers,

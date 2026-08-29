@@ -1,5 +1,11 @@
+// src/lib/reviewWindow.ts
+// Provides review window duration, expiry, and grace-period helpers.
 export const ONE_HOUR_MS = 60 * 60 * 1000
-export const REVIEW_WINDOW_MS = 24 * ONE_HOUR_MS
+export const MILLISECONDS_PER_DAY = 24 * ONE_HOUR_MS
+export const MIN_REVIEW_DURATION_DAYS = 1
+export const MAX_REVIEW_DURATION_DAYS = 30
+export const DEFAULT_REVIEW_DURATION_DAYS = 1
+export const REVIEW_WINDOW_MS = DEFAULT_REVIEW_DURATION_DAYS * MILLISECONDS_PER_DAY
 
 type CommentWindowInput = {
   versionStatus: string
@@ -20,6 +26,22 @@ type ReviewCompletionInput = {
 }
 
 const isFiniteDate = (value?: Date | null): value is Date => Boolean( value && Number.isFinite( value.getTime() ) )
+
+export const numOfReviewDurationDays = (value: unknown): number => {
+  const numericValue = typeof value === 'number' ? value : Number( value )
+  if( !Number.isFinite( numericValue ) ) {
+    return DEFAULT_REVIEW_DURATION_DAYS
+  }
+  return Math.min(
+    MAX_REVIEW_DURATION_DAYS,
+    Math.max( MIN_REVIEW_DURATION_DAYS, Math.trunc( numericValue ) ),
+  )
+}
+
+export const calculateReviewEndAt = (
+  reviewDurationDays: unknown,
+  startMs: number = Date.now(),
+): Date => new Date( startMs + numOfReviewDurationDays( reviewDurationDays ) * MILLISECONDS_PER_DAY )
 
 export const isReviewExpired = (reviewEndAt?: Date | null, nowMs: number = Date.now()): boolean => {
   if( !isFiniteDate( reviewEndAt ) ) {

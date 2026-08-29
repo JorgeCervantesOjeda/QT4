@@ -7,6 +7,7 @@ import type { FileStorageProviderKind } from "../../domain/types";
 import AcceptedErrorReportsPanel from "./AcceptedErrorReportsPanel";
 import AuthorReviewerAssignmentPanel from "./AuthorReviewerAssignmentPanel";
 import ReviewIssuesPanel from "./ReviewIssuesPanel";
+import ReviewDurationPanel from "./ReviewDurationPanel";
 import VersionFilePanel from "./VersionFilePanel";
 import VersionListPanel from "./VersionListPanel";
 import VersionsHeader from "./VersionsHeader";
@@ -29,6 +30,7 @@ type VersionsPageViewProps = {
   allowedReviewerIds: string[];
   baseDocumentData: BaseDocumentSummary | null;
   canAssignReviewers: boolean;
+  canConfigureReviewDuration: boolean;
   canEditDocumentTitle: boolean;
   canUploadFile: boolean;
   clockNowMs: number;
@@ -71,6 +73,7 @@ type VersionsPageViewProps = {
   handleConfirmVersionDecision: () => void;
   handleCreateErrorReport: (title: string) => void;
   handleCreateThread: () => void;
+  handleReviewDurationDaysChange: (reviewDurationDays: number) => void;
   handleSaveDocumentTitle: () => void;
   handleSelectAdjacentThread: (direction: -1 | 1) => void;
   handleClosePendingVersionAction: () => void;
@@ -352,6 +355,7 @@ const VersionsPageDialogs = (props: VersionsPageViewProps) => (
     pendingVersionAction={props.pendingVersionAction}
     onClosePendingVersionAction={props.handleClosePendingVersionAction}
     onConfirmPendingVersionAction={props.handleConfirmPendingVersionAction}
+    reviewDurationDays={props.latestVersion?.reviewDurationDays ?? 1}
     pendingThreadStatusChange={props.pendingThreadStatusChange}
     onClosePendingThreadStatusChange={() =>
       props.setPendingThreadStatusChange(null)
@@ -388,18 +392,26 @@ const VersionsPageDialogs = (props: VersionsPageViewProps) => (
 const ReviewIssuesArea = (props: VersionsPageViewProps) => (
   <>
     {props.selectedVersion && props.selectedVersion.status === "In Creation" ? (
-      <AuthorReviewerAssignmentPanel
-        projectId={props.projectId}
-        allowedReviewerIds={props.allowedReviewerIds}
-        selectedReviewerIds={props.selectedReviewerIds}
-        isBusy={props.isBusy}
-        canAssignReviewers={props.canAssignReviewers}
-        onToggleAllReviewers={props.handleToggleAllReviewers}
-        memberColumns={props.memberColumns}
-        membersTableRows={props.membersTableRows}
-        membersSorting={props.membersSorting}
-        setMembersSorting={props.setMembersSorting}
-      />
+      <>
+        <ReviewDurationPanel
+          isBusy={props.isBusy}
+          canConfigureReviewDuration={props.canConfigureReviewDuration}
+          reviewDurationDays={props.selectedVersion.reviewDurationDays}
+          onReviewDurationDaysChange={props.handleReviewDurationDaysChange}
+        />
+        <AuthorReviewerAssignmentPanel
+          projectId={props.projectId}
+          allowedReviewerIds={props.allowedReviewerIds}
+          selectedReviewerIds={props.selectedReviewerIds}
+          isBusy={props.isBusy}
+          canAssignReviewers={props.canAssignReviewers}
+          onToggleAllReviewers={props.handleToggleAllReviewers}
+          memberColumns={props.memberColumns}
+          membersTableRows={props.membersTableRows}
+          membersSorting={props.membersSorting}
+          setMembersSorting={props.setMembersSorting}
+        />
+      </>
     ) : null}
     {props.selectedVersion ? (
       <ReviewIssuesPanel

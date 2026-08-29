@@ -4,8 +4,10 @@ import { useCallback } from "react";
 import { useMemberColumns, useThreadColumns } from "./columns";
 import { createErrorReportActions } from "./errorReportActions";
 import { createReviewIssueActions } from "./reviewIssueActions";
+import { createReviewDurationActions } from "./reviewDurationActions";
 import { createVersionCreateAndReviewActions } from "./versionCreateAndReviewActions";
 import { createVersionDecisionActions } from "./versionDecisionActions";
+import { DEFAULT_REVIEW_DURATION_DAYS } from "../../lib/reviewWindow";
 import type useVersionsDerivedModel from "./useVersionsDerivedModel";
 import type useVersionsRuntimeModel from "./useVersionsRuntimeModel";
 import type { ThreadSummary } from "./types";
@@ -64,6 +66,7 @@ const useVersionsActionModel = ({
     setPendingUploadFile,
     setPendingVersionAction,
     setSelectedThreadId,
+    setVersions,
     setSuccessEmailRecipients,
     setSuccessMessage,
     setVersionDecisionModal,
@@ -85,6 +88,8 @@ const useVersionsActionModel = ({
       latestVersion: derived.latestVersion,
       loadDocumentAndVersions,
       projectId: derived.projectId,
+      reviewDurationDays:
+        derived.latestVersion?.reviewDurationDays ?? DEFAULT_REVIEW_DURATION_DAYS,
       reportVersionsError: derived.reportVersionsError,
       resolveUserEmail: derived.resolveUserEmail,
       setEmailNotifyMessage: setEmailNotifyMessage,
@@ -98,6 +103,19 @@ const useVersionsActionModel = ({
       userId,
       versions: versions,
     });
+
+  const { handleReviewDurationDaysChange } = createReviewDurationActions({
+    canConfigureReviewDuration: derived.canConfigureReviewDuration,
+    docId,
+    projectId: derived.projectId,
+    selectedVersion: derived.selectedVersion,
+    setError,
+    setIsBusy,
+    setVersions,
+    reportVersionsError: derived.reportVersionsError,
+    userEmail,
+    userId,
+  });
 
   const memberColumns = useMemberColumns({
     handleAssignAuthor: derived.handleAssignAuthor,
@@ -356,6 +374,7 @@ const useVersionsActionModel = ({
     handleConfirmVersionDecision,
     handleCreateErrorReport,
     handleCreateThread: reviewIssueActions.handleCreateThread,
+    handleReviewDurationDaysChange,
     memberColumns,
     moveSelectedVersion,
     openReviewIssuesForVersion,

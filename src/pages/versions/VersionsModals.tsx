@@ -41,6 +41,7 @@ type VersionsModalsProps = {
   pendingVersionAction: PendingVersionAction | null;
   onClosePendingVersionAction: () => void;
   onConfirmPendingVersionAction: () => void;
+  reviewDurationDays: number;
   pendingThreadStatusChange: ThreadSummary | null;
   onClosePendingThreadStatusChange: () => void;
   onConfirmThreadStatusChange: () => void;
@@ -82,6 +83,7 @@ function VersionsModals(props: VersionsModalsProps) {
     pendingVersionAction,
     onClosePendingVersionAction,
     onConfirmPendingVersionAction,
+    reviewDurationDays,
     pendingThreadStatusChange,
     onClosePendingThreadStatusChange,
     onConfirmThreadStatusChange,
@@ -217,7 +219,7 @@ function VersionsModals(props: VersionsModalsProps) {
             {pendingVersionAction === "createVersion"
               ? "Confirm creating a new version."
               : pendingVersionAction === "startReview"
-                ? "Confirm starting review for the latest version."
+                ? `Confirm starting review for the latest version. Duration: ${reviewDurationDays} ${reviewDurationDays === 1 ? "day" : "days"}.`
                 : "Confirm replacing the current file."}
           </p>
           <div className="actions">

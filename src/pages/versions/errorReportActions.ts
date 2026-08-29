@@ -9,6 +9,7 @@ import {
 import { FIRST_VERSION_NUMBER } from "../../domain/types";
 import { logAudit } from "../../lib/audit";
 import { db } from "../../lib/firebase";
+import { DEFAULT_REVIEW_DURATION_DAYS } from "../../lib/reviewWindow";
 import type { VersionSummary } from "./types";
 
 type ErrorReportActionParams = {
@@ -111,6 +112,7 @@ const createErrorReportActions = (params: ErrorReportActionParams) => {
           reviewerIds: [],
           reviewStartAt: null,
           reviewEndAt: null,
+          reviewDurationDays: DEFAULT_REVIEW_DURATION_DAYS,
           hasFile: false,
           fileRefId: null,
           stats: {
