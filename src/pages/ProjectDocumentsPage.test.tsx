@@ -595,7 +595,7 @@ describe( 'pages/ProjectDocumentsPage', () => {
     const baseProjectSelect = await screen.findByLabelText( 'Base project', {}, { timeout: 10000 } )
     expect( baseProjectSelect.textContent ).toContain( '84 - Beta Project' )
     expect( baseProjectSelect.textContent ).not.toContain( '42 - Alpha Project' )
-    expect( await screen.findByText( '9 - Shared Requirements - 1.00' ) ).toBeTruthy()
+    expect( await screen.findByText( 'P84 / D9 / v1.00 - Shared Requirements' ) ).toBeTruthy()
 
     fireEvent.change( screen.getByLabelText( 'Change request title' ), {
       target: { value: 'Beta client requirements' },
@@ -613,6 +613,139 @@ describe( 'pages/ProjectDocumentsPage', () => {
         && payload.baseDocId === 'base-document-1'
         && payload.baseVersionId === 'base-version-1'
         && payload.title === 'Beta client requirements'
+    } ) ).toBe( true )
+    expect( navigateMock ).toHaveBeenCalledWith( '/documents/generated-doc/versions?projectId=project-1' )
+  }, 15000 )
+
+  it( 'creates a derived variant from accepted change requests over the same external base', async () => {
+    versionRecords = [
+      {
+        id: 'document-version-1',
+        data: {
+          projectId: 'project-1',
+          docId: 'document-1',
+          number: 1,
+          status: 'In Review',
+          createdBy: 'user-reviewer-1',
+          reviewerIds: [ 'user-member-1' ],
+          createdAt: new Date( '2026-04-01T10:00:00.000Z' ),
+          reviewEndAt: new Date( '2099-04-03T09:00:00.000Z' ),
+        },
+      },
+      {
+        id: 'change-request-version-1',
+        data: {
+          projectId: 'project-1',
+          docId: 'change-request-1',
+          number: 100,
+          status: 'Accepted',
+          createdBy: 'user-member-1',
+          reviewerIds: [],
+          createdAt: new Date( '2026-04-02T10:00:00.000Z' ),
+        },
+      },
+    ]
+    onSnapshotMock.mockImplementation( (
+      _query: unknown,
+      onNext: (snapshot: ReturnType<typeof createQuerySnapshot>) => void,
+    ) => {
+      onNext(
+        createQuerySnapshot( [
+          {
+            id: 'document-1',
+            data: {
+              projectId: 'project-1',
+              title: 'Controlled Document',
+              createdBy: 'user-reviewer-1',
+              shortId: 17,
+              createdAt: new Date( '2026-04-01T10:00:00.000Z' ),
+              updatedAt: new Date( '2026-04-02T12:00:00.000Z' ),
+            },
+          },
+          {
+            id: 'change-request-1',
+            data: {
+              projectId: 'project-1',
+              title: 'Beta client requirements',
+              type: 'changeRequest',
+              shortId: 31,
+              createdBy: 'user-member-1',
+              baseProjectId: 'project-2',
+              baseDocId: 'base-document-1',
+              baseVersionId: 'base-version-1',
+              createdAt: new Date( '2026-04-02T10:00:00.000Z' ),
+            },
+          },
+        ] ),
+      )
+      return () => undefined
+    } )
+    getDocMock.mockImplementation( async ( docRef: { collection: string; id: string } ) => {
+      if( docRef.collection === 'projects' && docRef.id === 'project-1' ) {
+        return createDocSnapshot( {
+          id: 'project-1',
+          data: {
+            shortId: 42,
+            name: 'Alpha Project',
+            leaderId: 'user-member-1',
+          },
+        } )
+      }
+      if( docRef.collection === 'projects' && docRef.id === 'project-2' ) {
+        return createDocSnapshot( {
+          id: 'project-2',
+          data: {
+            shortId: 84,
+            name: 'Beta Project',
+          },
+        } )
+      }
+      if( docRef.collection === 'documents' && docRef.id === 'base-document-1' ) {
+        return createDocSnapshot( {
+          id: 'base-document-1',
+          data: {
+            projectId: 'project-2',
+            title: 'Shared Requirements',
+            shortId: 9,
+          },
+        } )
+      }
+      if( docRef.collection === 'versions' && docRef.id === 'base-version-1' ) {
+        return createDocSnapshot( {
+          id: 'base-version-1',
+          data: {
+            projectId: 'project-2',
+            docId: 'base-document-1',
+            number: 100,
+            status: 'Accepted',
+          },
+        } )
+      }
+      return createMissingSnapshot( docRef.id )
+    } )
+
+    render( <ProjectDocumentsPage /> )
+
+    expect(
+      await screen.findByRole( 'region', { name: 'Active derived configuration' }, { timeout: 10000 } ),
+    ).toBeTruthy()
+    expect( await screen.findByText( 'P84 / D9 / v1.00 - Shared Requirements', {}, { timeout: 10000 } ) )
+      .toBeTruthy()
+
+    fireEvent.click( screen.getByRole( 'button', { name: 'Generate derived variant' } ) )
+
+    await waitFor( () => {
+      expect( transactionSetMock ).toHaveBeenCalled()
+    } )
+    expect( transactionSetMock.mock.calls.some( ( call ) => {
+      const payload = call[1] as Record<string, unknown>
+      return payload.type === 'derivedDocument'
+        && payload.projectId === 'project-1'
+        && payload.originProjectId === 'project-2'
+        && payload.originDocumentId === 'base-document-1'
+        && payload.originVersionId === 'base-version-1'
+        && Array.isArray( payload.incorporatedChangeRequestVersionIds )
+        && payload.incorporatedChangeRequestVersionIds.includes( 'change-request-version-1' )
     } ) ).toBe( true )
     expect( navigateMock ).toHaveBeenCalledWith( '/documents/generated-doc/versions?projectId=project-1' )
   }, 15000 )
@@ -729,7 +862,7 @@ describe( 'pages/ProjectDocumentsPage', () => {
 
     expect( await screen.findByRole( 'heading', { name: '17 - Controlled Document' }, { timeout: 10000 } ) ).toBeTruthy()
     fireEvent.click( screen.getByRole( 'button', { name: 'New change request' } ) )
-    expect( await screen.findByText( '9 - Shared Requirements - 1.00' ) ).toBeTruthy()
+    expect( await screen.findByText( 'P84 / D9 / v1.00 - Shared Requirements' ) ).toBeTruthy()
 
     fireEvent.change( screen.getByLabelText( 'Change request title' ), {
       target: { value: 'Beta client requirements' },

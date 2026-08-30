@@ -1,9 +1,11 @@
 const { onRequest } = require( "firebase-functions/v2/https" )
+const { onDocumentUpdated } = require( "firebase-functions/v2/firestore" )
 const { logger } = require( "firebase-functions" )
 const admin = require( "firebase-admin" )
 const nodemailer = require( "nodemailer" )
 const crypto = require( "node:crypto" )
 const { createAiAssistHandler } = require( "./aiAssist" )
+const { createPropagateAcceptedErrorReportHandler } = require( "./propagatedErrorReports" )
 
 if( admin.apps.length === 0 ) {
   admin.initializeApp()
@@ -527,6 +529,11 @@ exports.reportClientMonitorEvent = onRequest( { cors: false, maxInstances: 10, i
     res.status( 500 ).json( { error: "Internal server error", detail: message } )
   }
 } )
+
+exports.propagateAcceptedErrorReport = onDocumentUpdated(
+  "versions/{versionId}",
+  createPropagateAcceptedErrorReportHandler( { admin, logger } ),
+)
 
 exports.aiAssist = onRequest(
   { cors: false, maxInstances: 10, invoker: "public", secrets: [ "GEMINI_API_KEY" ] },

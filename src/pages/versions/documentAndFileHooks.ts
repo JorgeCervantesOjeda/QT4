@@ -63,6 +63,9 @@ function useDocumentSubscription( {
         const nextBaseProjectId = ( data.baseProjectId as string | undefined ) ?? null
         const nextBaseDocId = ( data.baseDocId as string | undefined ) ?? null
         const nextBaseVersionId = ( data.baseVersionId as string | undefined ) ?? null
+        const nextOriginProjectId = ( data.originProjectId as string | undefined ) ?? null
+        const nextOriginDocumentId = ( data.originDocumentId as string | undefined ) ?? null
+        const nextOriginVersionId = ( data.originVersionId as string | undefined ) ?? null
         const nextDocumentType = ( data.type as string | undefined ) ?? 'document'
         setDocumentData( {
           id: snapshot.id,
@@ -75,6 +78,11 @@ function useDocumentSubscription( {
           baseProjectId: nextBaseProjectId,
           baseDocId: nextBaseDocId,
           baseVersionId: nextBaseVersionId,
+          originProjectId: nextOriginProjectId,
+          originDocumentId: nextOriginDocumentId,
+          originVersionId: nextOriginVersionId,
+          incorporatedChangeRequestVersionIds:
+            ( data.incorporatedChangeRequestVersionIds as string[] | undefined ) ?? [],
         } )
         if( nextDocumentType === 'errorReport' && ( !nextBaseDocId || !nextBaseVersionId ) ) {
           setVersions( [] )
@@ -91,11 +99,26 @@ function useDocumentSubscription( {
           setError( 'Invalid change request data: baseProjectId, baseDocId and baseVersionId from another project are required.' )
           return
         }
-        if( ( nextDocumentType === 'errorReport' || nextDocumentType === 'changeRequest' ) && nextBaseDocId ) {
+        if(
+          nextDocumentType === 'derivedDocument' &&
+          ( !nextOriginProjectId || !nextOriginDocumentId || !nextOriginVersionId || nextOriginProjectId === loadedProjectId )
+        ) {
+          setVersions( [] )
+          setBaseDocumentData( null )
+          setError( 'Invalid derived document data: originProjectId, originDocumentId and originVersionId from another project are required.' )
+          return
+        }
+        const referenceProjectId = nextBaseProjectId ?? nextOriginProjectId
+        const referenceDocId = nextBaseDocId ?? nextOriginDocumentId
+        const referenceVersionId = nextBaseVersionId ?? nextOriginVersionId
+        if(
+          ( nextDocumentType === 'errorReport' || nextDocumentType === 'changeRequest' || nextDocumentType === 'derivedDocument' ) &&
+          referenceDocId
+        ) {
           void loadBaseDocumentSummary( {
-            baseDocId: nextBaseDocId,
-            baseProjectId: nextBaseProjectId,
-            baseVersionId: nextBaseVersionId,
+            baseDocId: referenceDocId,
+            baseProjectId: referenceProjectId,
+            baseVersionId: referenceVersionId,
             setBaseDocumentData,
           } )
         } else {
@@ -122,18 +145,23 @@ async function loadBaseDocumentSummary(value: {
   setBaseDocumentData: Dispatch<SetStateAction<BaseDocumentSummary | null>>
 }) {
   try {
-    const [ baseDocSnapshot, baseVersionSnapshot ] = await Promise.all( [
+    const [ baseDocSnapshot, baseVersionSnapshot, baseProjectSnapshot ] = await Promise.all( [
       getDocFromServer( doc( db, 'documents', value.baseDocId ) ),
       value.baseVersionId ? getDocFromServer( doc( db, 'versions', value.baseVersionId ) ) : Promise.resolve( null ),
+      value.baseProjectId ? getDocFromServer( doc( db, 'projects', value.baseProjectId ) ) : Promise.resolve( null ),
     ] )
     if( baseDocSnapshot.exists() ) {
       const baseDocData = baseDocSnapshot.data()
       const baseVersionData = baseVersionSnapshot?.exists()
         ? baseVersionSnapshot.data() as Record<string, unknown>
         : {}
+      const baseProjectData = baseProjectSnapshot?.exists()
+        ? baseProjectSnapshot.data() as Record<string, unknown>
+        : null
       value.setBaseDocumentData( {
         id: baseDocSnapshot.id,
         projectId: ( baseDocData?.projectId as string | undefined ) ?? value.baseProjectId ?? '',
+        projectShortId: Number.isFinite( baseProjectData?.shortId ) ? Number( baseProjectData?.shortId ) : null,
         title: ( baseDocData?.title as string | undefined ) ?? 'Untitled document',
         shortId: Number.isFinite( baseDocData?.shortId ) ? Number( baseDocData?.shortId ) : null,
         versionId: baseVersionSnapshot?.exists() ? baseVersionSnapshot.id : value.baseVersionId,

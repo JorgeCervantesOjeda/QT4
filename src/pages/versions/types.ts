@@ -32,11 +32,16 @@ type DocumentSummary = {
   baseProjectId?: string | null
   baseDocId?: string | null
   baseVersionId?: string | null
+  originProjectId?: string | null
+  originDocumentId?: string | null
+  originVersionId?: string | null
+  incorporatedChangeRequestVersionIds?: string[]
 }
 
 type BaseDocumentSummary = {
   id: string
   projectId: string
+  projectShortId: number | null
   title: string
   shortId: number | null
   versionId: string | null

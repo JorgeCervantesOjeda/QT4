@@ -160,6 +160,9 @@ const loadDocumentAndVersions = async (params: LoadDocumentAndVersionsParams) =>
     const loadedBaseProjectId = ( documentRaw.baseProjectId as string | undefined ) ?? null
     const loadedBaseDocId = ( documentRaw.baseDocId as string | undefined ) ?? null
     const loadedBaseVersionId = ( documentRaw.baseVersionId as string | undefined ) ?? null
+    const loadedOriginProjectId = ( documentRaw.originProjectId as string | undefined ) ?? null
+    const loadedOriginDocumentId = ( documentRaw.originDocumentId as string | undefined ) ?? null
+    const loadedOriginVersionId = ( documentRaw.originVersionId as string | undefined ) ?? null
     setDocumentData( {
       id: documentSnapshot.id,
       projectId: loadedProjectId,
@@ -171,6 +174,11 @@ const loadDocumentAndVersions = async (params: LoadDocumentAndVersionsParams) =>
       baseProjectId: loadedBaseProjectId,
       baseDocId: loadedBaseDocId,
       baseVersionId: loadedBaseVersionId,
+      originProjectId: loadedOriginProjectId,
+      originDocumentId: loadedOriginDocumentId,
+      originVersionId: loadedOriginVersionId,
+      incorporatedChangeRequestVersionIds:
+        ( documentRaw.incorporatedChangeRequestVersionIds as string[] | undefined ) ?? [],
     } )
     if( loadedType === 'errorReport' && ( !loadedBaseDocId || !loadedBaseVersionId ) ) {
       setVersions( [] )
@@ -187,9 +195,21 @@ const loadDocumentAndVersions = async (params: LoadDocumentAndVersionsParams) =>
       setError( 'Invalid change request data: baseProjectId, baseDocId and baseVersionId from another project are required.' )
       return
     }
+    if(
+      loadedType === 'derivedDocument' &&
+      ( !loadedOriginProjectId || !loadedOriginDocumentId || !loadedOriginVersionId || loadedOriginProjectId === loadedProjectId )
+    ) {
+      setVersions( [] )
+      setBaseDocumentData( null )
+      setError( 'Invalid derived document data: originProjectId, originDocumentId and originVersionId from another project are required.' )
+      return
+    }
+    const referenceProjectId = loadedBaseProjectId ?? loadedOriginProjectId
+    const referenceDocId = loadedBaseDocId ?? loadedOriginDocumentId
+    const referenceVersionId = loadedBaseVersionId ?? loadedOriginVersionId
 
     step = 'versions-members'
-    const [ versionsSnapshot, membersSnapshot, projectSnapshot, baseDocumentSnapshot ] = await Promise.all( [
+    const [ versionsSnapshot, membersSnapshot, projectSnapshot, baseDocumentSnapshot, baseProjectSnapshot ] = await Promise.all( [
       getDocs(
         query(
           collection( db, 'versions' ),
@@ -200,7 +220,8 @@ const loadDocumentAndVersions = async (params: LoadDocumentAndVersionsParams) =>
       ),
       getDocs( query( collection( db, 'projectMembers' ), where( 'projectId', '==', loadedProjectId ) ) ),
       loadedProjectId ? getDocFromServer( doc( db, 'projects', loadedProjectId ) ) : Promise.resolve( null ),
-      loadedBaseDocId ? getDocFromServer( doc( db, 'documents', loadedBaseDocId ) ) : Promise.resolve( null ),
+      referenceDocId ? getDocFromServer( doc( db, 'documents', referenceDocId ) ) : Promise.resolve( null ),
+      referenceProjectId ? getDocFromServer( doc( db, 'projects', referenceProjectId ) ) : Promise.resolve( null ),
     ] )
 
     const nextVersions = versionsSnapshot.docs.map( ( versionSnapshot ) => {
@@ -245,7 +266,13 @@ const loadDocumentAndVersions = async (params: LoadDocumentAndVersionsParams) =>
     } )
     setProjectMembers( ( previous ) => ( areProjectMembersEqual( previous, members ) ? previous : members ) )
     updateProjectSummary( projectSnapshot, setProjectName, setProjectShortId )
-    await updateBaseDocumentSummary( loadedBaseProjectId, loadedBaseVersionId, baseDocumentSnapshot, setBaseDocumentData )
+    await updateBaseDocumentSummary(
+      referenceProjectId,
+      referenceVersionId,
+      baseDocumentSnapshot,
+      baseProjectSnapshot,
+      setBaseDocumentData,
+    )
     updateSelectedVersionState( {
       members,
       nextVersions,
@@ -298,14 +325,22 @@ const updateBaseDocumentSummary = async (
   baseProjectId: string | null,
   baseVersionId: string | null,
   baseDocumentSnapshot: Awaited<ReturnType<typeof getDocFromServer>> | null,
+  baseProjectSnapshot: Awaited<ReturnType<typeof getDocFromServer>> | null,
   setBaseDocumentData: Dispatch<SetStateAction<BaseDocumentSummary | null>>,
 ) => {
+  const baseProjectData = baseProjectSnapshot?.exists()
+    ? baseProjectSnapshot.data() as Record<string, unknown>
+    : null
+  const baseProjectShortId = Number.isFinite( baseProjectData?.shortId )
+    ? Number( baseProjectData?.shortId )
+    : null
   if( !baseVersionId ) {
     if( baseDocumentSnapshot && baseDocumentSnapshot.exists() ) {
       const baseData = baseDocumentSnapshot.data() as Record<string, unknown>
       setBaseDocumentData( {
         id: baseDocumentSnapshot.id,
         projectId: ( baseData?.projectId as string | undefined ) ?? baseProjectId ?? '',
+        projectShortId: baseProjectShortId,
         title: ( baseData?.title as string | undefined ) ?? 'Untitled document',
         shortId: Number.isFinite( baseData?.shortId ) ? Number( baseData?.shortId ) : null,
         versionId: null,
@@ -342,6 +377,7 @@ const updateBaseDocumentSummary = async (
     setBaseDocumentData( {
       id: baseDocSnapshot.id,
       projectId: ( baseDocData?.projectId as string | undefined ) ?? ( baseVersionData.projectId as string | undefined ) ?? baseProjectId ?? '',
+      projectShortId: baseProjectShortId,
       title: ( baseDocData?.title as string | undefined ) ?? 'Untitled document',
       shortId: Number.isFinite( baseDocData?.shortId ) ? Number( baseDocData?.shortId ) : null,
       versionId: baseVersionSnapshot.exists() ? baseVersionSnapshot.id : baseVersionId,

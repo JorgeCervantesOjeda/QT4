@@ -1,3 +1,5 @@
+// src/pages/ProjectDocumentsPage.tsx
+// Lists project documents and creates regular, change-request, and derived documents.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ColumnDef, SortingState } from '@tanstack/react-table'
 import {
@@ -29,6 +31,11 @@ import {
   buildChangeRequestTitle,
   validateChangeRequestCreation,
 } from '../lib/changeRequests'
+import {
+  buildActiveConfiguration,
+  formatShortDocumentReference,
+  type ActiveConfigurationLine,
+} from '../lib/documentDerivation'
 import { reportAbnormalError } from '../lib/errorMonitor'
 import { db } from '../lib/firebase'
 import { formatTimeAgoWithTimestamp } from '../lib/time'
@@ -39,6 +46,7 @@ import {
   type ChangeRequestBaseProject,
   type ChangeRequestBaseVersion,
 } from './projectDocuments/changeRequestData'
+import { createDerivedDocument } from './projectDocuments/derivedDocumentData'
 
 type DocumentSummary = {
   id: string
@@ -48,6 +56,12 @@ type DocumentSummary = {
   shortId: number | null
   baseProjectId?: string | null
   baseDocId?: string | null
+  baseVersionId?: string | null
+  originProjectId?: string | null
+  originDocumentId?: string | null
+  originVersionId?: string | null
+  incorporatedChangeRequestVersionIds?: string[]
+  latestVersionId: string | null
   latestVersionNumber: number | null
   latestStatus: string | null
   latestReviewEndAt?: Date | null
@@ -72,8 +86,10 @@ type ProjectMember = {
 }
 
 type BaseDocumentReference = {
+  projectShortId: number | null
   title: string
   shortId: number | null
+  versionNumber: number | null
 }
 
 type DocumentFilter = 'all' | 'mine'
@@ -263,6 +279,7 @@ function ProjectDocumentsPage() {
   const [isChangeRequestModalOpen, setIsChangeRequestModalOpen] = useState( false )
   const [isLoadingChangeRequestBases, setIsLoadingChangeRequestBases] = useState( false )
   const [isCreatingChangeRequest, setIsCreatingChangeRequest] = useState( false )
+  const [isCreatingDerivedDocument, setIsCreatingDerivedDocument] = useState( false )
   const [baseProjects, setBaseProjects] = useState<ChangeRequestBaseProject[]>( [] )
   const [acceptedBaseVersions, setAcceptedBaseVersions] = useState<ChangeRequestBaseVersion[]>( [] )
   const [selectedBaseProjectId, setSelectedBaseProjectId] = useState( '' )
@@ -297,6 +314,11 @@ function ProjectDocumentsPage() {
     [ acceptedBaseVersions, selectedBaseVersionId ],
   )
 
+  const selectedBaseProject = useMemo(
+    () => baseProjects.find( ( baseProject ) => baseProject.id === selectedBaseProjectId ) ?? null,
+    [ baseProjects, selectedBaseProjectId ],
+  )
+
   const canCreateChangeRequest = useMemo(
     () =>
       !isCreatingChangeRequest &&
@@ -306,6 +328,22 @@ function ProjectDocumentsPage() {
       Boolean( selectedBaseVersion ) &&
       changeRequestTitle.trim().length > 0,
     [ changeRequestTitle, isCreatingChangeRequest, project, projectId, selectedBaseVersion, userId ],
+  )
+
+  const activeConfigurationLines = useMemo(
+    () => buildActiveConfiguration(
+      documents.map( ( documentItem ) => ( {
+        documentId: documentItem.id,
+        versionId: documentItem.latestVersionId ?? '',
+        projectId: projectId ?? '',
+        documentType: documentItem.type,
+        baseProjectId: documentItem.baseProjectId,
+        baseDocId: documentItem.baseDocId,
+        baseVersionId: documentItem.baseVersionId,
+        status: documentItem.latestStatus ?? '',
+      } ) ),
+    ),
+    [ documents, projectId ],
   )
 
   const formatUserLabel = useCallback( (memberUserId: string) => {
@@ -363,14 +401,37 @@ function ProjectDocumentsPage() {
     }
     if( baseDocumentById.has( documentItem.baseDocId ) ) {
       const baseDoc = baseDocumentById.get( documentItem.baseDocId )
-      return `${baseDoc?.shortId ?? 'Unassigned'} - ${baseDoc?.title ?? 'Unknown'}`
+      return formatShortDocumentReference( {
+        projectShortId: project?.shortId,
+        documentShortId: baseDoc?.shortId,
+        versionNumber: documentItem.latestVersionNumber,
+        title: baseDoc?.title ?? 'Unknown',
+      } )
     }
     const externalBaseDoc = baseDocumentReferences[documentItem.baseDocId]
     if( externalBaseDoc ) {
-      return `${externalBaseDoc.shortId ?? 'Unassigned'} - ${externalBaseDoc.title}`
+      return formatShortDocumentReference( {
+        projectShortId: externalBaseDoc.projectShortId,
+        documentShortId: externalBaseDoc.shortId,
+        versionNumber: externalBaseDoc.versionNumber,
+        title: externalBaseDoc.title,
+      } )
     }
-    return `Document ${documentItem.baseDocId}`
-  }, [ baseDocumentById, baseDocumentReferences ] )
+    return 'Base document reference unavailable'
+  }, [ baseDocumentById, baseDocumentReferences, project?.shortId ] )
+
+  const formatActiveConfigurationLine = useCallback( (line: ActiveConfigurationLine) => {
+    const baseReference = baseDocumentReferences[line.originDocumentId]
+    if( baseReference ) {
+      return formatShortDocumentReference( {
+        projectShortId: baseReference.projectShortId,
+        documentShortId: baseReference.shortId,
+        versionNumber: baseReference.versionNumber,
+        title: baseReference.title,
+      } )
+    }
+    return 'Base document pending reference load'
+  }, [ baseDocumentReferences ] )
 
   const formatDocumentTitle = useCallback( (documentItem: DocumentSummary) => {
     if( documentItem.type === 'errorReport' ) {
@@ -378,6 +439,9 @@ function ProjectDocumentsPage() {
     }
     if( documentItem.type === 'changeRequest' ) {
       return `Change request - ${documentItem.shortId ?? 'Unassigned'} - ${documentItem.title}`
+    }
+    if( documentItem.type === 'derivedDocument' ) {
+      return `Derived variant - ${documentItem.shortId ?? 'Unassigned'} - ${documentItem.title}`
     }
     return `${documentItem.shortId ?? 'Unassigned'} - ${documentItem.title}`
   }, [] )
@@ -584,6 +648,13 @@ function ProjectDocumentsPage() {
           shortId: Number.isFinite( data.shortId ) ? Number( data.shortId ) : null,
           baseProjectId: ( data.baseProjectId as string | undefined ) ?? null,
           baseDocId: ( data.baseDocId as string | undefined ) ?? null,
+          baseVersionId: ( data.baseVersionId as string | undefined ) ?? null,
+          originProjectId: ( data.originProjectId as string | undefined ) ?? null,
+          originDocumentId: ( data.originDocumentId as string | undefined ) ?? null,
+          originVersionId: ( data.originVersionId as string | undefined ) ?? null,
+          incorporatedChangeRequestVersionIds:
+            ( data.incorporatedChangeRequestVersionIds as string[] | undefined ) ?? [],
+          latestVersionId: null,
           latestVersionNumber: null,
           latestStatus: null,
           createdAt,
@@ -613,6 +684,7 @@ function ProjectDocumentsPage() {
       } )
       setProjectMembers( members )
       const versionSummaryByDocId = new Map<string, {
+        latestVersionId: string
         latestNumber: number
         latestStatus: string
         latestReviewEndAt: Date | null
@@ -637,6 +709,7 @@ function ProjectDocumentsPage() {
 
           if( !current || versionNumber >= current.latestNumber ) {
             versionSummaryByDocId.set( versionDocId, {
+              latestVersionId: versionSnapshot.id,
               latestNumber: versionNumber,
               latestStatus: ( versionData.status as string | undefined ) ?? 'In Creation',
               latestReviewEndAt: toSnapshotDate( versionData.reviewEndAt ),
@@ -690,6 +763,7 @@ function ProjectDocumentsPage() {
           documentItem: {
             ...documentItem,
             createdAt: resolvedCreatedAt,
+            latestVersionId: versionSummary.latestVersionId,
             latestVersionNumber: versionSummary.latestNumber,
             latestStatus: versionSummary.latestStatus,
             latestReviewEndAt: versionSummary.latestReviewEndAt,
@@ -707,9 +781,9 @@ function ProjectDocumentsPage() {
       const externalBaseDocIds = Array.from(
         new Set(
           baseDocuments
-            .map( ( documentItem ) => documentItem.baseDocId )
-            .filter( ( baseDocId ): baseDocId is string =>
-              typeof baseDocId === 'string' && baseDocId.length > 0 && !currentDocumentIds.has( baseDocId ),
+            .flatMap( ( documentItem ) => [documentItem.baseDocId, documentItem.originDocumentId] )
+            .filter( ( referenceDocId ): referenceDocId is string =>
+              typeof referenceDocId === 'string' && referenceDocId.length > 0 && !currentDocumentIds.has( referenceDocId ),
             ),
         ),
       )
@@ -720,9 +794,27 @@ function ProjectDocumentsPage() {
             const baseDocSnapshot = await getDoc( doc( db, 'documents', baseDocId ) )
             if( baseDocSnapshot.exists() ) {
               const baseDocData = baseDocSnapshot.data()
+              const baseProjectId = ( baseDocData.projectId as string | undefined ) ?? ''
+              const baseVersionId = baseDocuments.find( ( documentItem ) =>
+                documentItem.baseDocId === baseDocId || documentItem.originDocumentId === baseDocId,
+              )?.baseVersionId ?? baseDocuments.find( ( documentItem ) =>
+                documentItem.originDocumentId === baseDocId,
+              )?.originVersionId ?? ''
+              const [ baseProjectSnapshot, baseVersionSnapshot ] = await Promise.all( [
+                baseProjectId ? getDoc( doc( db, 'projects', baseProjectId ) ) : Promise.resolve( null ),
+                baseVersionId ? getDoc( doc( db, 'versions', baseVersionId ) ) : Promise.resolve( null ),
+              ] )
+              const baseProjectData = baseProjectSnapshot?.exists()
+                ? baseProjectSnapshot.data()
+                : null
+              const baseVersionData = baseVersionSnapshot?.exists()
+                ? baseVersionSnapshot.data()
+                : null
               nextBaseDocumentReferences[baseDocId] = {
+                projectShortId: Number.isFinite( baseProjectData?.shortId ) ? Number( baseProjectData?.shortId ) : null,
                 title: ( baseDocData.title as string | undefined ) ?? 'Untitled document',
                 shortId: Number.isFinite( baseDocData.shortId ) ? Number( baseDocData.shortId ) : null,
+                versionNumber: Number.isFinite( baseVersionData?.number ) ? Number( baseVersionData?.number ) : null,
               }
             }
           } catch( err ) {
@@ -1059,6 +1151,51 @@ function ProjectDocumentsPage() {
       openChangeRequestCreationError( message )
     } finally {
       setIsCreatingChangeRequest( false )
+    }
+  }
+
+  const buildDerivedDocumentChecklist = useCallback( (line: ActiveConfigurationLine): ChecklistItem[] => [
+    { label: '(project is selected)', ok: Boolean( projectId && project ) },
+    { label: '(user is signed in)', ok: Boolean( userId ) },
+    { label: '(base project is external)', ok: Boolean( line.originProjectId && line.originProjectId !== projectId ) },
+    { label: '(base document is selected)', ok: Boolean( line.originDocumentId ) },
+    { label: '(base version is selected)', ok: Boolean( line.originVersionId ) },
+    { label: '(accepted change requests exist)', ok: line.changeRequestVersionIds.length > 0 },
+  ], [ project, projectId, userId ] )
+
+  const handleCreateDerivedDocument = async (line: ActiveConfigurationLine) => {
+    if( !projectId || !project || !userId ) {
+      openError( 'Sign in and select an existing project before creating a derived variant.', buildDerivedDocumentChecklist( line ) )
+      return
+    }
+    setSuccessMessage( null )
+    clearError()
+    setIsCreatingDerivedDocument( true )
+    try {
+      const baseReference = baseDocumentReferences[line.originDocumentId]
+      const titleSuffix = baseReference?.title ?? 'external base'
+      const derivedDocument = await createDerivedDocument( {
+        line,
+        title: `Derived variant - ${titleSuffix}`,
+        userEmail: user?.email,
+        userId,
+      } )
+      navigate( `/documents/${derivedDocument.docId}/versions?projectId=${projectId}` )
+    } catch( err ) {
+      const message = err instanceof Error ? err.message : 'Unexpected error'
+      if( !isOfflineFirestoreError( err ) ) {
+        void reportAbnormalError( {
+          error: err,
+          source: 'firestore',
+          action: 'projectDocuments.createDerivedDocument',
+          projectId,
+          docId: line.originDocumentId,
+          versionId: line.originVersionId,
+        } )
+      }
+      openError( `Derived variant creation failed: ${message}`, buildDerivedDocumentChecklist( line ) )
+    } finally {
+      setIsCreatingDerivedDocument( false )
     }
   }
 
@@ -1435,6 +1572,34 @@ function ProjectDocumentsPage() {
           </div>
         </section>
 
+        {activeConfigurationLines.length > 0 ? (
+          <section className="panel stack" aria-label="Active derived configuration">
+            <div className="panel-header">
+              <div>
+                <h2>Active derived configuration</h2>
+                <p className="muted">Accepted change requests grouped by external base.</p>
+              </div>
+            </div>
+            <div className="project-grid">
+              {activeConfigurationLines.map( ( line ) => (
+                <article key={line.key} className="project-card">
+                  <h3>{formatActiveConfigurationLine( line )}</h3>
+                  <p className="muted">
+                    Accepted change requests: {line.changeRequestVersionIds.length}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void handleCreateDerivedDocument( line )}
+                    disabled={isCreatingDerivedDocument}
+                  >
+                    {isCreatingDerivedDocument ? 'Generating derived variant...' : 'Generate derived variant'}
+                  </button>
+                </article>
+              ) )}
+            </div>
+          </section>
+        ) : null}
+
         {isLoadingDocuments && documents.length === 0 ? (
           <section className="panel">
             <GiphyInline reason="loading" />
@@ -1541,7 +1706,12 @@ function ProjectDocumentsPage() {
                         >
                           {acceptedBaseVersions.map( ( versionItem ) => (
                             <option key={versionItem.versionId} value={versionItem.versionId}>
-                              {`${versionItem.docShortId ?? 'Unassigned'} - ${versionItem.docTitle} - ${versionNumberToString( versionItem.versionNumber )}`}
+                              {formatShortDocumentReference( {
+                                projectShortId: selectedBaseProject?.shortId,
+                                documentShortId: versionItem.docShortId,
+                                versionNumber: versionItem.versionNumber,
+                                title: versionItem.docTitle,
+                              } )}
                             </option>
                           ) )}
                         </select>

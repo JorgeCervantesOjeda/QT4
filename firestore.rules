@@ -528,7 +528,8 @@ service cloud.firestore {
       return documentTypeOf(documentData) in [
         'document',
         'errorReport',
-        'changeRequest'
+        'changeRequest',
+        'derivedDocument'
       ];
     }
 
@@ -583,12 +584,32 @@ service cloud.firestore {
         );
     }
 
+    function isDerivedDocumentCreate(documentData) {
+      return documentTypeOf(documentData) == 'derivedDocument'
+        && documentData.originProjectId is string
+        && documentData.originProjectId.size() > 0
+        && documentData.originProjectId != documentData.projectId
+        && (isProjectMember(documentData.originProjectId) || isAdmin())
+        && documentData.originDocumentId is string
+        && documentData.originDocumentId.size() > 0
+        && documentData.originVersionId is string
+        && documentData.originVersionId.size() > 0
+        && documentData.incorporatedChangeRequestVersionIds is list
+        && documentData.incorporatedChangeRequestVersionIds.size() > 0
+        && isAcceptedBaseVersion(
+          documentData.originProjectId,
+          documentData.originDocumentId,
+          documentData.originVersionId
+        );
+    }
+
     function isValidDocumentCreateByType(documentData) {
       return isValidDocumentType(documentData)
         && (
           isNormalDocumentCreate(documentData)
           || isErrorReportDocumentCreate(documentData)
           || isChangeRequestDocumentCreate(documentData)
+          || isDerivedDocumentCreate(documentData)
         );
     }
 
@@ -899,6 +920,25 @@ service cloud.firestore {
       allow read: if isProjectMember(resource.data.projectId) || isAdmin();
       allow create: if isProjectMember(request.resource.data.projectId) || isAdmin();
       allow update: if isProjectLeader(resource.data.projectId) || isAdmin();
+      allow delete: if false;
+    }
+
+    match /derivedConfigurations/{configId} {
+      allow read: if isProjectMember(resource.data.projectId) || isAdmin();
+      allow create: if (isProjectMember(request.resource.data.projectId) || isAdmin())
+        && request.resource.data.projectId is string
+        && request.resource.data.projectId.size() > 0
+        && request.resource.data.originProjectId is string
+        && request.resource.data.originProjectId.size() > 0
+        && request.resource.data.originProjectId != request.resource.data.projectId
+        && request.resource.data.originDocumentId is string
+        && request.resource.data.originDocumentId.size() > 0
+        && request.resource.data.originVersionId is string
+        && request.resource.data.originVersionId.size() > 0
+        && request.resource.data.activeChangeRequestVersionIds is list
+        && request.resource.data.status in ['Open', 'Generated', 'Accepted']
+        && request.resource.data.generationStatus in ['open', 'generating', 'generated', 'accepted'];
+      allow update: if isProjectMember(resource.data.projectId) || isAdmin();
       allow delete: if false;
     }
 

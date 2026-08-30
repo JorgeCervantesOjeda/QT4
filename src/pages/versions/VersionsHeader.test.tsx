@@ -33,6 +33,7 @@ describe( 'versions/VersionsHeader', () => {
         baseDocumentData={{
           id: 'base-document-1',
           projectId: 'project-2',
+          projectShortId: 12,
           title: 'Shared Requirements',
           shortId: 9,
           versionId: 'base-version-1',
@@ -51,7 +52,7 @@ describe( 'versions/VersionsHeader', () => {
     expect( screen.getByText( 'Change request' ) ).toBeTruthy()
     expect( screen.getByText( '31 - Beta client requirements' ) ).toBeTruthy()
     expect( screen.getByText( 'This document is a change request for:' ) ).toBeTruthy()
-    expect( screen.getByText( '9 - Shared Requirements' ) ).toBeTruthy()
+    expect( screen.getByText( 'P12 / D9 / v1.00 - Shared Requirements' ) ).toBeTruthy()
   } )
 
   it( 'links change requests to the base document page and direct download action', () => {
@@ -76,6 +77,7 @@ describe( 'versions/VersionsHeader', () => {
         baseDocumentData={{
           id: 'base-document-1',
           projectId: 'project-2',
+          projectShortId: 12,
           title: 'Shared Requirements',
           shortId: 9,
           versionId: 'base-version-1',
@@ -97,5 +99,49 @@ describe( 'versions/VersionsHeader', () => {
     fireEvent.click( screen.getByRole( 'button', { name: 'Download base document' } ) )
 
     expect( downloadBaseDocument ).toHaveBeenCalledOnce()
+  } )
+
+  it( 'labels derived variants and links to their origin version', () => {
+    render(
+      <VersionsHeader
+        projectId="project-1"
+        projectName="Target Project"
+        projectShortId={42}
+        documentData={{
+          id: 'derived-document-1',
+          projectId: 'project-1',
+          title: 'Beta derived requirements',
+          createdBy: 'user-1',
+          type: 'derivedDocument',
+          shortId: 32,
+          originProjectId: 'project-2',
+          originDocumentId: 'base-document-1',
+          originVersionId: 'base-version-1',
+          incorporatedChangeRequestVersionIds: ['change-request-version-1'],
+        }}
+        baseDocumentData={{
+          id: 'base-document-1',
+          projectId: 'project-2',
+          projectShortId: 12,
+          title: 'Shared Requirements',
+          shortId: 9,
+          versionId: 'base-version-1',
+          versionNumber: 100,
+          versionStatus: 'Accepted',
+          hasFile: true,
+          fileRefId: 'file-1',
+        }}
+        canEditDocumentTitle={false}
+        isBusy={false}
+        onEditDocumentTitle={() => undefined}
+        onDownloadBaseDocument={() => undefined}
+      />,
+    )
+
+    expect( screen.getByText( 'Derived variant' ) ).toBeTruthy()
+    expect( screen.getByText( 'This document is derived from:' ) ).toBeTruthy()
+    expect( screen.getByText( 'P12 / D9 / v1.00 - Shared Requirements' ) ).toBeTruthy()
+    expect( screen.getByRole( 'link', { name: 'Open base document' } ).getAttribute( 'href' ) )
+      .toBe( '/documents/base-document-1/versions?projectId=project-2&versionId=base-version-1' )
   } )
 } )

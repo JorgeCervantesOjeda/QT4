@@ -103,6 +103,20 @@ const buildChangeRequestDocument = (value: {
   shortId: 31,
 } )
 
+const buildDerivedDocument = () => ( {
+  projectId: targetProjectId,
+  type: 'derivedDocument',
+  title: 'Derived variant',
+  originProjectId: baseProjectId,
+  originDocumentId: baseDocId,
+  originVersionId: baseVersionId,
+  incorporatedChangeRequestVersionIds: ['change-request-version-1'],
+  createdBy: userId,
+  authorId: userId,
+  updatedBy: userId,
+  shortId: 32,
+} )
+
 describeWithFirestoreEmulator( 'firestore.rules change-request documents', () => {
   beforeAll( async () => {
     testEnv = await initializeTestEnvironment( {
@@ -172,6 +186,17 @@ describeWithFirestoreEmulator( 'firestore.rules change-request documents', () =>
           baseDocId,
           baseVersionId,
         } ),
+      ),
+    )
+  } )
+
+  it( 'allows creating a derived document from an accepted external origin version', async () => {
+    const firestore = testEnv.authenticatedContext( userId ).firestore()
+
+    await assertSucceeds(
+      setDoc(
+        doc( firestore, 'documents', 'derived-document-allowed' ),
+        buildDerivedDocument(),
       ),
     )
   } )

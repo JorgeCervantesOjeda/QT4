@@ -1,6 +1,7 @@
 // Header and document identity controls for the Versions page. Keeps route chrome separate from workflow logic.
 import AppBrand from '../../components/AppBrand'
 import BackStack from '../../components/BackStack'
+import { formatShortDocumentReference } from '../../lib/documentDerivation'
 import type { BaseDocumentSummary, DocumentSummary } from './types'
 
 type VersionsHeaderProps = {
@@ -23,6 +24,9 @@ const documentTypeLabel = (documentType?: string) => {
   if( documentType === 'changeRequest' ) {
     return 'Change request'
   }
+  if( documentType === 'derivedDocument' ) {
+    return 'Derived variant'
+  }
   return 'Document'
 }
 
@@ -38,10 +42,11 @@ function VersionsHeader( {
   onEditDocumentTitle,
   onDownloadBaseDocument,
 }: VersionsHeaderProps ) {
-  const baseDocumentPath = documentData?.type === 'changeRequest' && baseDocumentData
+  const baseDocumentPath =
+    ( documentData?.type === 'changeRequest' || documentData?.type === 'derivedDocument' ) && baseDocumentData
     ? `/documents/${baseDocumentData.id}/versions?projectId=${
-      documentData.baseProjectId ?? baseDocumentData.projectId
-    }&versionId=${documentData.baseVersionId ?? baseDocumentData.versionId ?? ''}`
+      documentData.baseProjectId ?? documentData.originProjectId ?? baseDocumentData.projectId
+    }&versionId=${documentData.baseVersionId ?? documentData.originVersionId ?? baseDocumentData.versionId ?? ''}`
     : ''
 
   return (
@@ -76,21 +81,28 @@ function VersionsHeader( {
             </button>
           ) : null}
         </div>
-        {documentData?.type === 'errorReport' || documentData?.type === 'changeRequest' ? (
+        {documentData?.type === 'errorReport' || documentData?.type === 'changeRequest' || documentData?.type === 'derivedDocument' ? (
           <div className="base-document-reference">
             <p className="muted">
               <span>
                 {documentData.type === 'changeRequest'
                   ? 'This document is a change request for:'
-                  : 'This document is an error report for:'}
+                  : documentData.type === 'derivedDocument'
+                    ? 'This document is derived from:'
+                    : 'This document is an error report for:'}
               </span>{' '}
               {baseDocumentData
-                ? `${baseDocumentData.shortId ?? 'Unassigned'} - ${baseDocumentData.title}`
+                ? formatShortDocumentReference( {
+                  projectShortId: baseDocumentData.projectShortId,
+                  documentShortId: baseDocumentData.shortId,
+                  versionNumber: baseDocumentData.versionNumber,
+                  title: baseDocumentData.title,
+                } )
                 : documentData?.baseDocId
-                  ? `Document ${documentData.baseDocId}`
+                  ? 'Base document reference unavailable'
                   : 'Unknown'}
             </p>
-            {documentData.type === 'changeRequest' && baseDocumentPath ? (
+            {( documentData.type === 'changeRequest' || documentData.type === 'derivedDocument' ) && baseDocumentPath ? (
               <div className="base-document-actions">
                 <a className="ghost" href={baseDocumentPath}>
                   Open base document

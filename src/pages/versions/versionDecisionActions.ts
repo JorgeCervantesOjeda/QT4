@@ -12,6 +12,11 @@ import {
 } from "firebase/firestore";
 import { isIntegerVersionNumber } from "../../domain/types";
 import { logAudit } from "../../lib/audit";
+import {
+  ACCEPTED_DERIVED_DOCUMENT_MESSAGE,
+  DERIVED_GENERATION_IN_PROGRESS_MESSAGE,
+  buildDerivationLineKey,
+} from "../../lib/documentDerivation";
 import { db } from "../../lib/firebase";
 import type { DocumentSummary, VersionSummary } from "./types";
 
@@ -58,6 +63,97 @@ const rejectBlockedMessage =
   "have a file, all issues closed, and at least one issue with two or more " +
   "comments; you must be author, leader, or admin.";
 
+const STALE_DERIVED_DOCUMENT_MESSAGE =
+  "This derived variant no longer matches the active accepted change requests. Create a new derived variant before accepting.";
+
+const asStringArray = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+
+const areStringSetsEqual = (left: string[], right: string[]) => {
+  if (left.length !== right.length) {
+    return false;
+  }
+  const rightValues = new Set(right);
+  return left.every((item) => rightValues.has(item));
+};
+
+const derivedConfigurationRefFor = (value: {
+  variantProjectId: string;
+  originProjectId: string;
+  originDocumentId: string;
+  originVersionId: string;
+}) =>
+  doc(
+    db,
+    "derivedConfigurations",
+    buildDerivationLineKey({
+      variantProjectId: value.variantProjectId,
+      originProjectId: value.originProjectId,
+      originDocumentId: value.originDocumentId,
+      originVersionId: value.originVersionId,
+    }),
+  );
+
+const validateChangeRequestAcceptable = async (value: {
+  documentData: DocumentSummary;
+  projectId: string;
+}) => {
+  const baseProjectId = value.documentData.baseProjectId ?? "";
+  const baseDocId = value.documentData.baseDocId ?? "";
+  const baseVersionId = value.documentData.baseVersionId ?? "";
+  if (!baseProjectId || !baseDocId || !baseVersionId) {
+    return {
+      message: "Invalid change request data: baseProjectId, baseDocId and baseVersionId are required.",
+    };
+  }
+  const configRef = derivedConfigurationRefFor({
+    variantProjectId: value.projectId,
+    originProjectId: baseProjectId,
+    originDocumentId: baseDocId,
+    originVersionId: baseVersionId,
+  });
+  const configSnapshot = await getDoc(configRef);
+  const configData = configSnapshot.exists() ? configSnapshot.data() : {};
+  if (configData.status === "Accepted") {
+    return { message: ACCEPTED_DERIVED_DOCUMENT_MESSAGE };
+  }
+  if (configData.generationStatus === "generating") {
+    return { message: DERIVED_GENERATION_IN_PROGRESS_MESSAGE };
+  }
+  return {
+    configRef,
+    activeChangeRequestVersionIds: asStringArray(configData.activeChangeRequestVersionIds),
+    message: null,
+  };
+};
+
+const validateDerivedDocumentAcceptable = async (value: {
+  documentData: DocumentSummary;
+  projectId: string;
+}) => {
+  const originProjectId = value.documentData.originProjectId ?? "";
+  const originDocumentId = value.documentData.originDocumentId ?? "";
+  const originVersionId = value.documentData.originVersionId ?? "";
+  if (!originProjectId || !originDocumentId || !originVersionId) {
+    return "Invalid derived document data: originProjectId, originDocumentId and originVersionId are required.";
+  }
+  const configSnapshot = await getDoc(
+    derivedConfigurationRefFor({
+      variantProjectId: value.projectId,
+      originProjectId,
+      originDocumentId,
+      originVersionId,
+    }),
+  );
+  const configData = configSnapshot.exists() ? configSnapshot.data() : {};
+  const activeChangeRequestVersionIds = asStringArray(configData.activeChangeRequestVersionIds);
+  const incorporatedChangeRequestVersionIds = value.documentData.incorporatedChangeRequestVersionIds ?? [];
+  if (!areStringSetsEqual(activeChangeRequestVersionIds, incorporatedChangeRequestVersionIds)) {
+    return STALE_DERIVED_DOCUMENT_MESSAGE;
+  }
+  return null;
+};
+
 const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
   const handleAcceptLatestVersion = async () => {
     const {
@@ -94,6 +190,28 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
     setSuccessMessage(null);
     setIsBusy(true);
     try {
+      const changeRequestAcceptValidation = documentData?.type === "changeRequest"
+        ? await validateChangeRequestAcceptable({
+            documentData,
+            projectId,
+          })
+        : null;
+      if (changeRequestAcceptValidation?.message) {
+        setError(changeRequestAcceptValidation.message);
+        logBlockedVersionDecision("accept", changeRequestAcceptValidation.message);
+        return;
+      }
+      const derivedDocumentAcceptValidation = documentData?.type === "derivedDocument"
+        ? await validateDerivedDocumentAcceptable({
+            documentData,
+            projectId,
+          })
+        : null;
+      if (derivedDocumentAcceptValidation) {
+        setError(derivedDocumentAcceptValidation);
+        logBlockedVersionDecision("accept", derivedDocumentAcceptValidation);
+        return;
+      }
       const promotedNumber = (Math.floor(latestVersion.number / 100) + 1) * 100;
       const previousAccepted = versions.find(
         (versionItem) =>
@@ -120,6 +238,61 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
         },
         { merge: true },
       );
+      if (
+        documentData?.type === "changeRequest" &&
+        changeRequestAcceptValidation?.configRef
+      ) {
+        batch.set(
+          changeRequestAcceptValidation.configRef,
+          {
+            key: buildDerivationLineKey({
+              variantProjectId: projectId,
+              originProjectId: documentData.baseProjectId ?? "",
+              originDocumentId: documentData.baseDocId ?? "",
+              originVersionId: documentData.baseVersionId ?? "",
+            }),
+            projectId,
+            originProjectId: documentData.baseProjectId ?? "",
+            originDocumentId: documentData.baseDocId ?? "",
+            originVersionId: documentData.baseVersionId ?? "",
+            activeChangeRequestVersionIds: [
+              ...new Set([
+                ...changeRequestAcceptValidation.activeChangeRequestVersionIds,
+                latestVersion.id,
+              ]),
+            ].sort(),
+            status: "Open",
+            generationStatus: "open",
+            updatedAt: serverTimestamp(),
+            updatedBy: userId,
+          },
+          { merge: true },
+        );
+      }
+      if (
+        documentData?.type === "derivedDocument" &&
+        documentData.originProjectId &&
+        documentData.originDocumentId &&
+        documentData.originVersionId
+      ) {
+        batch.set(
+          derivedConfigurationRefFor({
+            variantProjectId: projectId,
+            originProjectId: documentData.originProjectId,
+            originDocumentId: documentData.originDocumentId,
+            originVersionId: documentData.originVersionId,
+          }),
+          {
+            status: "Accepted",
+            generationStatus: "accepted",
+            acceptedDerivedDocumentId: documentData.id,
+            acceptedDerivedVersionId: latestVersion.id,
+            updatedAt: serverTimestamp(),
+            updatedBy: userId,
+          },
+          { merge: true },
+        );
+      }
       if (
         previousAccepted &&
         (isLeader || isAdmin || previousAccepted.createdBy === userId)
