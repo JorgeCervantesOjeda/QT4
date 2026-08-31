@@ -68,8 +68,12 @@ const createFakeDb = (docsByPath) => {
       }
     },
     async runTransaction(callback) {
+      let hasWritten = false
       return callback( {
         get: async (ref) => {
+          if( hasWritten ) {
+            throw new Error( "Firestore transactions require all reads to be executed before all writes." )
+          }
           if( ref.collectionName ) {
             return db.getQuery( ref.collectionName, ref.filters )
           }
@@ -77,9 +81,11 @@ const createFakeDb = (docsByPath) => {
           return db.getDocument( collectionName, id )
         },
         set: (ref, data, options) => {
+          hasWritten = true
           writes.push( { type: "set", ref, data, options } )
         },
         update: (ref, data) => {
+          hasWritten = true
           writes.push( { type: "update", ref, data } )
         },
       } )
@@ -186,6 +192,62 @@ test( "accepting a version replaces every other accepted version for the documen
       .map( (write) => write.ref.path )
       .sort(),
     [ "versions/accepted-100", "versions/accepted-200" ],
+  )
+} )
+
+test( "accepting a change request records the active derived configuration inside one transaction", async () => {
+  const db = createFakeDb( {
+    "documents/change-request-doc": {
+      projectId: "target-project",
+      type: "changeRequest",
+      createdBy: "author-1",
+      baseProjectId: "origin-project",
+      baseDocId: "origin-doc",
+      baseVersionId: "origin-version",
+    },
+    "versions/change-request-version": {
+      ...readyReviewVersion,
+      docId: "change-request-doc",
+    },
+    "derivedConfigurations/target-project|origin-project|origin-doc|origin-version": {
+      projectId: "target-project",
+      originProjectId: "origin-project",
+      originDocumentId: "origin-doc",
+      originVersionId: "origin-version",
+      status: "Open",
+      generationStatus: "open",
+      activeChangeRequestVersionIds: [],
+    },
+    "projectMembers/target-project_author-1": {
+      projectId: "target-project",
+      userId: "author-1",
+      role: "member",
+    },
+  } )
+
+  const result = await decideVersion( {
+    admin: adminFor( db ),
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+    uid: "author-1",
+    email: "author@example.com",
+    body: {
+      decision: "accept",
+      projectId: "target-project",
+      docId: "change-request-doc",
+      versionId: "change-request-version",
+    },
+  } )
+
+  assert.equal( result.ok, true )
+  assert.equal(
+    db.writes.some( (write) =>
+      write.type === "set"
+      && write.ref.path === "derivedConfigurations/target-project|origin-project|origin-doc|origin-version"
+      && write.data.status === "Open"
+      && write.data.generationStatus === "open"
+      && write.data.activeChangeRequestVersionIds.includes( "change-request-version" ),
+    ),
+    true,
   )
 } )
 

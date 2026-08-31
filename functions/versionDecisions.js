@@ -141,13 +141,12 @@ const acceptedVersionSnapshots = ({ versionsSnapshot, request }) =>
       && isIntegerVersionNumber( data.number )
   } )
 
-const validateAndStageChangeRequestAccept = async ({
+const prepareChangeRequestAccept = async ({
   db,
   transaction,
   request,
   documentData,
   versionId,
-  timestamp,
 }) => {
   const baseProjectId = normalizeString( documentData.baseProjectId )
   const baseDocId = normalizeString( documentData.baseDocId )
@@ -179,13 +178,29 @@ const validateAndStageChangeRequestAccept = async ({
       versionId,
     ] ),
   ].sort()
-  transaction.set( configRef, {
-    key: configId,
-    projectId: request.projectId,
-    originProjectId: baseProjectId,
-    originDocumentId: baseDocId,
-    originVersionId: baseVersionId,
+  return {
+    configRef,
+    configId,
     activeChangeRequestVersionIds,
+    baseProjectId,
+    baseDocId,
+    baseVersionId,
+  }
+}
+
+const stageChangeRequestAccept = ({
+  transaction,
+  prepared,
+  request,
+  timestamp,
+}) => {
+  transaction.set( prepared.configRef, {
+    key: prepared.configId,
+    projectId: request.projectId,
+    originProjectId: prepared.baseProjectId,
+    originDocumentId: prepared.baseDocId,
+    originVersionId: prepared.baseVersionId,
+    activeChangeRequestVersionIds: prepared.activeChangeRequestVersionIds,
     status: "Open",
     generationStatus: "open",
     updatedAt: timestamp,
@@ -193,13 +208,11 @@ const validateAndStageChangeRequestAccept = async ({
   }, { merge: true } )
 }
 
-const validateAndStageDerivedDocumentAccept = async ({
+const prepareDerivedDocumentAccept = async ({
   db,
   transaction,
   request,
   documentData,
-  versionId,
-  timestamp,
 }) => {
   const originProjectId = normalizeString( documentData.originProjectId )
   const originDocumentId = normalizeString( documentData.originDocumentId )
@@ -226,14 +239,7 @@ const validateAndStageDerivedDocumentAccept = async ({
   if( !areStringSetsEqual( activeChangeRequestVersionIds, incorporatedChangeRequestVersionIds ) ) {
     throw new VersionDecisionError( STALE_DERIVED_DOCUMENT_MESSAGE, 409 )
   }
-  transaction.set( configRef, {
-    status: "Accepted",
-    generationStatus: "accepted",
-    acceptedDerivedDocumentId: request.docId,
-    acceptedDerivedVersionId: versionId,
-    updatedAt: timestamp,
-    updatedBy: request.uid,
-  }, { merge: true } )
+  const changeRequestVersionRefsToReplace = []
   for( const changeRequestVersionId of incorporatedChangeRequestVersionIds ) {
     const changeRequestVersionRef = db.collection( "versions" ).doc( changeRequestVersionId )
     const changeRequestVersionSnapshot = await transaction.get( changeRequestVersionRef )
@@ -242,14 +248,38 @@ const validateAndStageDerivedDocumentAccept = async ({
     }
     const changeRequestVersionData = changeRequestVersionSnapshot.data() || {}
     if( changeRequestVersionData.status === "Accepted" ) {
-      transaction.update( changeRequestVersionRef, {
-        status: "Replaced",
-        activityAt: timestamp,
-        updatedAt: timestamp,
-        updatedBy: request.uid,
-      } )
+      changeRequestVersionRefsToReplace.push( changeRequestVersionRef )
     }
   }
+  return {
+    configRef,
+    changeRequestVersionRefsToReplace,
+  }
+}
+
+const stageDerivedDocumentAccept = ({
+  transaction,
+  prepared,
+  request,
+  versionId,
+  timestamp,
+}) => {
+  transaction.set( prepared.configRef, {
+    status: "Accepted",
+    generationStatus: "accepted",
+    acceptedDerivedDocumentId: request.docId,
+    acceptedDerivedVersionId: versionId,
+    updatedAt: timestamp,
+    updatedBy: request.uid,
+  }, { merge: true } )
+  prepared.changeRequestVersionRefsToReplace.forEach( (changeRequestVersionRef) => {
+    transaction.update( changeRequestVersionRef, {
+      status: "Replaced",
+      activityAt: timestamp,
+      updatedAt: timestamp,
+      updatedBy: request.uid,
+    } )
+  } )
 }
 
 const stageAuditLog = ({ db, transaction, request, email, decision, timestamp }) => {
@@ -312,6 +342,23 @@ const decideVersion = async ({ admin, logger, uid, email = "", body }) => {
     const promotedNumber = request.decision === "accept"
       ? promotedNumberFor( versionNumber( versionData ) )
       : null
+    const changeRequestAccept = request.decision === "accept" && documentData.type === "changeRequest"
+      ? await prepareChangeRequestAccept( {
+          db,
+          transaction,
+          request,
+          documentData,
+          versionId: request.versionId,
+        } )
+      : null
+    const derivedDocumentAccept = request.decision === "accept" && documentData.type === "derivedDocument"
+      ? await prepareDerivedDocumentAccept( {
+          db,
+          transaction,
+          request,
+          documentData,
+        } )
+      : null
 
     transaction.update( refs.versionRef, {
       status: nextStatus,
@@ -329,22 +376,19 @@ const decideVersion = async ({ admin, logger, uid, email = "", body }) => {
         previousVersionId: request.versionId,
       }, { merge: true } )
 
-      if( documentData.type === "changeRequest" ) {
-        await validateAndStageChangeRequestAccept( {
-          db,
+      if( changeRequestAccept ) {
+        stageChangeRequestAccept( {
           transaction,
           request,
-          documentData,
-          versionId: request.versionId,
+          prepared: changeRequestAccept,
           timestamp,
         } )
       }
-      if( documentData.type === "derivedDocument" ) {
-        await validateAndStageDerivedDocumentAccept( {
-          db,
+      if( derivedDocumentAccept ) {
+        stageDerivedDocumentAccept( {
           transaction,
           request,
-          documentData,
+          prepared: derivedDocumentAccept,
           versionId: request.versionId,
           timestamp,
         } )
@@ -415,10 +459,16 @@ const createVersionDecisionHandler = ({ admin, logger, verifyBearerToken, setCor
   } catch( err ) {
     const statusCode = err instanceof VersionDecisionError ? err.statusCode : 500
     const message = err instanceof Error ? err.message : "Unexpected error"
-    logger.warn( "versionDecision failed", {
+    const payload = {
       statusCode,
-      message,
-    } )
+      errorMessage: message,
+      stack: err instanceof Error ? err.stack || "" : "",
+    }
+    if( err instanceof VersionDecisionError ) {
+      logger.warn( "versionDecision failed", payload )
+    } else {
+      logger.error( "versionDecision failed", payload )
+    }
     res.status( statusCode ).json( {
       error: statusCode === 500 ? "Internal server error" : message,
     } )
