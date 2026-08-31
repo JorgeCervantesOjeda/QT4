@@ -6,11 +6,8 @@ import {
   getDoc,
   getDocs,
   query,
-  serverTimestamp,
   where,
-  writeBatch,
 } from "firebase/firestore";
-import { isIntegerVersionNumber } from "../../domain/types";
 import { logAudit } from "../../lib/audit";
 import {
   ACCEPTED_DERIVED_DOCUMENT_MESSAGE,
@@ -19,6 +16,7 @@ import {
 } from "../../lib/documentDerivation";
 import { db } from "../../lib/firebase";
 import { measureSlowUiAction } from "../../lib/slowUiAction";
+import { requestVersionDecision } from "../../lib/versionDecisions";
 import type { DocumentSummary, VersionSummary } from "./types";
 
 type ReportVersionsError = (
@@ -162,8 +160,6 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
       canAcceptOrReject,
       docId,
       documentData,
-      isAdmin,
-      isLeader,
       latestVersion,
       loadDocumentAndVersions,
       logBlockedVersionDecision,
@@ -174,7 +170,6 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
       setSuccessMessage,
       userEmail,
       userId,
-      versions,
     } = params;
 
     if (!docId || !userId || !latestVersion) {
@@ -215,98 +210,6 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
         logBlockedVersionDecision("accept", derivedDocumentAcceptValidation);
         return;
       }
-      const promotedNumber = (Math.floor(latestVersion.number / 100) + 1) * 100;
-      const previousAccepted = versions.find(
-        (versionItem) =>
-          versionItem.id !== latestVersion.id &&
-          versionItem.status === "Accepted" &&
-          isIntegerVersionNumber(versionItem.number),
-      );
-      const batch = writeBatch(db);
-      const counterRef = doc(db, "counters", `versions_${docId}`);
-      batch.update(doc(db, "versions", latestVersion.id), {
-        number: promotedNumber,
-        status: "Accepted",
-        activityAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        updatedBy: userId,
-      });
-      batch.set(
-        counterRef,
-        {
-          nextNumber: promotedNumber + 1,
-          docId,
-          projectId,
-          previousVersionId: latestVersion.id,
-        },
-        { merge: true },
-      );
-      if (
-        documentData?.type === "changeRequest" &&
-        changeRequestAcceptValidation?.configRef
-      ) {
-        batch.set(
-          changeRequestAcceptValidation.configRef,
-          {
-            key: buildDerivationLineKey({
-              variantProjectId: projectId,
-              originProjectId: documentData.baseProjectId ?? "",
-              originDocumentId: documentData.baseDocId ?? "",
-              originVersionId: documentData.baseVersionId ?? "",
-            }),
-            projectId,
-            originProjectId: documentData.baseProjectId ?? "",
-            originDocumentId: documentData.baseDocId ?? "",
-            originVersionId: documentData.baseVersionId ?? "",
-            activeChangeRequestVersionIds: [
-              ...new Set([
-                ...changeRequestAcceptValidation.activeChangeRequestVersionIds,
-                latestVersion.id,
-              ]),
-            ].sort(),
-            status: "Open",
-            generationStatus: "open",
-            updatedAt: serverTimestamp(),
-            updatedBy: userId,
-          },
-          { merge: true },
-        );
-      }
-      if (
-        documentData?.type === "derivedDocument" &&
-        documentData.originProjectId &&
-        documentData.originDocumentId &&
-        documentData.originVersionId
-      ) {
-        batch.set(
-          derivedConfigurationRefFor({
-            variantProjectId: projectId,
-            originProjectId: documentData.originProjectId,
-            originDocumentId: documentData.originDocumentId,
-            originVersionId: documentData.originVersionId,
-          }),
-          {
-            status: "Accepted",
-            generationStatus: "accepted",
-            acceptedDerivedDocumentId: documentData.id,
-            acceptedDerivedVersionId: latestVersion.id,
-            updatedAt: serverTimestamp(),
-            updatedBy: userId,
-          },
-          { merge: true },
-        );
-      }
-      if (
-        previousAccepted &&
-        (isLeader || isAdmin || previousAccepted.createdBy === userId)
-      ) {
-        batch.update(doc(db, "versions", previousAccepted.id), {
-          status: "Replaced",
-          activityAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          updatedBy: userId,
-        });
-      }
       await measureSlowUiAction(
         {
           action: "versions.acceptLatestVersion",
@@ -316,21 +219,15 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
           docId,
           versionId: latestVersion.id,
         },
-        () => batch.commit(),
+        () =>
+          requestVersionDecision({
+            decision: "accept",
+            projectId,
+            docId,
+            versionId: latestVersion.id,
+          }),
       );
       setSuccessMessage("Latest version accepted successfully.");
-      logAudit({
-        actorId: userId,
-        actorEmail: userEmail ?? null,
-        action: "acceptVersion",
-        entityType: "version",
-        entityId: latestVersion.id,
-        projectId,
-        docId,
-        versionId: latestVersion.id,
-      }).catch((err) => {
-        console.warn("Audit log failed (accept version):", err);
-      });
       const baseVersionId = documentData?.baseVersionId ?? null;
       if (documentData?.type === "errorReport" && baseVersionId) {
         logAcceptedErrorReportTasks({
@@ -346,7 +243,7 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
       loadDocumentAndVersions();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unexpected error";
-      reportVersionsError(err, "versions.acceptLatestVersion", "firestore", {
+      reportVersionsError(err, "versions.acceptLatestVersion", "network", {
         versionId: latestVersion.id,
       });
       setError(message);
@@ -359,8 +256,6 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
     const {
       canAcceptOrReject,
       docId,
-      isAdmin,
-      isLeader,
       latestVersion,
       loadDocumentAndVersions,
       logBlockedVersionDecision,
@@ -369,9 +264,7 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
       setError,
       setIsBusy,
       setSuccessMessage,
-      userEmail,
       userId,
-      versions,
     } = params;
 
     if (!docId || !userId || !latestVersion) {
@@ -389,30 +282,6 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
     setSuccessMessage(null);
     setIsBusy(true);
     try {
-      const previousAccepted = versions.find(
-        (versionItem) =>
-          versionItem.id !== latestVersion.id &&
-          versionItem.status === "Accepted" &&
-          isIntegerVersionNumber(versionItem.number),
-      );
-      const batch = writeBatch(db);
-      batch.update(doc(db, "versions", latestVersion.id), {
-        status: "Rejected",
-        activityAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        updatedBy: userId,
-      });
-      if (
-        previousAccepted &&
-        (isLeader || isAdmin || previousAccepted.createdBy === userId)
-      ) {
-        batch.update(doc(db, "versions", previousAccepted.id), {
-          status: "Replaced",
-          activityAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          updatedBy: userId,
-        });
-      }
       await measureSlowUiAction(
         {
           action: "versions.rejectLatestVersion",
@@ -422,25 +291,19 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
           docId,
           versionId: latestVersion.id,
         },
-        () => batch.commit(),
+        () =>
+          requestVersionDecision({
+            decision: "reject",
+            projectId,
+            docId,
+            versionId: latestVersion.id,
+          }),
       );
       setSuccessMessage("Latest version rejected successfully.");
-      logAudit({
-        actorId: userId,
-        actorEmail: userEmail ?? null,
-        action: "rejectVersion",
-        entityType: "version",
-        entityId: latestVersion.id,
-        projectId,
-        docId,
-        versionId: latestVersion.id,
-      }).catch((err) => {
-        console.warn("Audit log failed (reject version):", err);
-      });
       loadDocumentAndVersions();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unexpected error";
-      reportVersionsError(err, "versions.rejectLatestVersion", "firestore", {
+      reportVersionsError(err, "versions.rejectLatestVersion", "network", {
         versionId: latestVersion.id,
       });
       setError(message);

@@ -19,6 +19,10 @@ const auditMocks = vi.hoisted( () => ( {
   logAudit: vi.fn<() => Promise<void>>(),
 } ) )
 
+const versionDecisionMocks = vi.hoisted( () => ( {
+  requestVersionDecision: vi.fn<() => Promise<unknown>>(),
+} ) )
+
 vi.mock( 'firebase/firestore', () => ( {
   collection: vi.fn( ( ...segments: unknown[] ) => ( { segments } ) ),
   doc: firestoreMocks.doc,
@@ -44,6 +48,10 @@ vi.mock( '../../lib/firebase', () => ( {
 
 vi.mock( '../../lib/slowUiAction', () => ( {
   measureSlowUiAction: async ( _metadata: unknown, callback: () => Promise<void> ) => callback(),
+} ) )
+
+vi.mock( '../../lib/versionDecisions', () => ( {
+  requestVersionDecision: versionDecisionMocks.requestVersionDecision,
 } ) )
 
 import { createVersionDecisionActions } from './versionDecisionActions'
@@ -120,6 +128,15 @@ describe( 'createVersionDecisionActions', () => {
     vi.clearAllMocks()
     firestoreMocks.batchCommit.mockResolvedValue( undefined )
     auditMocks.logAudit.mockResolvedValue( undefined )
+    versionDecisionMocks.requestVersionDecision.mockResolvedValue( {
+      ok: true,
+      decision: 'accept',
+      projectId: 'target-project',
+      docId: 'change-request-1',
+      versionId: 'change-request-version-1',
+      promotedNumber: 100,
+      replacedVersionIds: [],
+    } )
     firestoreMocks.getDoc.mockResolvedValue( {
       exists: () => true,
       data: () => ( {
@@ -141,11 +158,10 @@ describe( 'createVersionDecisionActions', () => {
     await actions.handleAcceptLatestVersion()
 
     expect( setError ).toHaveBeenCalledWith( ACCEPTED_DERIVED_DOCUMENT_MESSAGE )
-    expect( firestoreMocks.batchUpdate ).not.toHaveBeenCalled()
-    expect( firestoreMocks.batchCommit ).not.toHaveBeenCalled()
+    expect( versionDecisionMocks.requestVersionDecision ).not.toHaveBeenCalled()
   } )
 
-  it( 'records an accepted change request in the deterministic derived configuration when the line is open', async () => {
+  it( 'requests a backend accept decision when the change request line is open', async () => {
     firestoreMocks.getDoc.mockResolvedValueOnce( {
       exists: () => false,
       data: () => ( {} ),
@@ -154,16 +170,12 @@ describe( 'createVersionDecisionActions', () => {
 
     await actions.handleAcceptLatestVersion()
 
-    expect( firestoreMocks.batchSet ).toHaveBeenCalledWith(
-      { segments: [{ app: 'test' }, 'derivedConfigurations', 'target-project|base-project|base-document|base-version'] },
-      expect.objectContaining( {
-        activeChangeRequestVersionIds: ['change-request-version-1'],
-        generationStatus: 'open',
-        status: 'Open',
-      } ),
-      { merge: true },
-    )
-    expect( firestoreMocks.batchCommit ).toHaveBeenCalledOnce()
+    expect( versionDecisionMocks.requestVersionDecision ).toHaveBeenCalledWith( {
+      decision: 'accept',
+      projectId: 'target-project',
+      docId: 'change-request-1',
+      versionId: 'change-request-version-1',
+    } )
   } )
 
   it( 'blocks accepting a derived variant when new active change requests are not incorporated', async () => {
@@ -197,7 +209,19 @@ describe( 'createVersionDecisionActions', () => {
     expect( setError ).toHaveBeenCalledWith(
       'This derived variant no longer matches the active accepted change requests. Create a new derived variant before accepting.',
     )
-    expect( firestoreMocks.batchUpdate ).not.toHaveBeenCalled()
-    expect( firestoreMocks.batchCommit ).not.toHaveBeenCalled()
+    expect( versionDecisionMocks.requestVersionDecision ).not.toHaveBeenCalled()
+  } )
+
+  it( 'requests a backend reject decision', async () => {
+    const actions = buildActions()
+
+    await actions.handleRejectLatestVersion()
+
+    expect( versionDecisionMocks.requestVersionDecision ).toHaveBeenCalledWith( {
+      decision: 'reject',
+      projectId: 'target-project',
+      docId: 'change-request-1',
+      versionId: 'change-request-version-1',
+    } )
   } )
 } )

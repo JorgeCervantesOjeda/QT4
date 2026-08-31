@@ -48,7 +48,7 @@ describeWithFirestoreEmulator( 'firestore.rules slow UI actions', () => {
         rules: firestoreRules,
       },
     } )
-  }, 30000 )
+  }, 90000 )
 
   beforeEach( async () => {
     await testEnv.clearFirestore()

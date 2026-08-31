@@ -613,6 +613,39 @@ service cloud.firestore {
         );
     }
 
+    function isDerivedConfigurationIdentityPreserved() {
+      return request.resource.data.projectId == resource.data.projectId
+        && request.resource.data.originProjectId == resource.data.originProjectId
+        && request.resource.data.originDocumentId == resource.data.originDocumentId
+        && request.resource.data.originVersionId == resource.data.originVersionId
+        && request.resource.data.activeChangeRequestVersionIds == resource.data.activeChangeRequestVersionIds
+        && (
+          !resource.data.keys().hasAny(['key'])
+          || request.resource.data.key == resource.data.key
+        );
+    }
+
+    function isDerivedConfigurationClientUpdateAllowed() {
+      return isProjectMember(resource.data.projectId)
+        && isDerivedConfigurationIdentityPreserved()
+        && request.resource.data.status in ['Open', 'Generated']
+        && request.resource.data.generationStatus in ['open', 'generating', 'generated']
+        && !request.resource.data.keys().hasAny([
+          'acceptedDerivedDocumentId',
+          'acceptedDerivedVersionId'
+        ])
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'derivedDocumentId',
+          'derivedVersionId',
+          'status',
+          'generationStatus',
+          'createdAt',
+          'createdBy',
+          'updatedAt',
+          'updatedBy'
+        ]);
+    }
+
     match /userProfiles/{userId} {
       allow read: if isSelf(userId) || isAdmin();
       allow create: if isSelf(userId)
@@ -849,9 +882,6 @@ service cloud.firestore {
             isSameStatusUpdateAllowed()
             || isStartReviewTransition()
             || isReviewedTransition()
-            || isAcceptTransition()
-            || isRejectTransition()
-            || isReplacedTransition()
           )
         )
         || isReviewStatsOnlyUpdate(versionId)
@@ -936,9 +966,9 @@ service cloud.firestore {
         && request.resource.data.originVersionId is string
         && request.resource.data.originVersionId.size() > 0
         && request.resource.data.activeChangeRequestVersionIds is list
-        && request.resource.data.status in ['Open', 'Generated', 'Accepted']
-        && request.resource.data.generationStatus in ['open', 'generating', 'generated', 'accepted'];
-      allow update: if isProjectMember(resource.data.projectId) || isAdmin();
+        && request.resource.data.status in ['Open', 'Generated']
+        && request.resource.data.generationStatus in ['open', 'generating', 'generated'];
+      allow update: if isDerivedConfigurationClientUpdateAllowed();
       allow delete: if false;
     }
 

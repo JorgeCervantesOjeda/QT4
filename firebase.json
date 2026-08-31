@@ -39,6 +39,10 @@
           "function": "aiAssist"
         },
         {
+          "source": "/version-decision",
+          "function": "versionDecision"
+        },
+        {
           "source": "**",
           "destination": "/index.html"
         }
@@ -56,6 +60,10 @@
         {
           "source": "/ai-assist",
           "function": "aiAssist"
+        },
+        {
+          "source": "/version-decision",
+          "function": "versionDecision"
         },
         {
           "source": "**",

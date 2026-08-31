@@ -125,7 +125,7 @@ describeWithFirestoreEmulator( 'firestore.rules change-request documents', () =>
       rules: firestoreRules,
     },
   } )
-  }, 30000 )
+  }, 90000 )
 
   beforeEach( async () => {
     await testEnv.clearFirestore()

@@ -8,6 +8,7 @@ const crypto = require( "node:crypto" )
 const { createAiAssistHandler } = require( "./aiAssist" )
 const { createPropagateAcceptedErrorReportHandler } = require( "./propagatedErrorReports" )
 const { createSlowUiActionDigestJob } = require( "./slowUiDigest" )
+const { createVersionDecisionHandler } = require( "./versionDecisions" )
 
 if( admin.apps.length === 0 ) {
   admin.initializeApp()
@@ -562,4 +563,9 @@ exports.propagateAcceptedErrorReport = onDocumentUpdated(
 exports.aiAssist = onRequest(
   { cors: false, maxInstances: 10, invoker: "public", secrets: [ "GEMINI_API_KEY" ] },
   createAiAssistHandler( { admin, logger, verifyBearerToken, setCorsHeaders } ),
+)
+
+exports.versionDecision = onRequest(
+  { cors: false, maxInstances: 10, invoker: "public" },
+  createVersionDecisionHandler( { admin, logger, verifyBearerToken, setCorsHeaders } ),
 )
