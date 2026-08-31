@@ -1,5 +1,6 @@
 // src/lib/changeRequests.ts
 // Defines reusable client-side rules for creating cross-project change requests.
+import { versionNumberToString } from '../domain/types'
 type ChangeRequestCreationInput = {
   targetProjectId: string
   baseProjectId: string
@@ -17,9 +18,12 @@ type ChangeRequestCreationValidationResult =
 const SAME_PROJECT_CHANGE_REQUEST_MESSAGE =
   'For changes to accepted requirements inside this same project, create an error report instead.'
 
-const buildChangeRequestTitle = (baseTitle: string) => {
+const buildChangeRequestTitle = (baseTitle: string, baseVersionNumber?: number | null) => {
   const trimmedTitle = baseTitle.trim()
-  return `Change request - ${trimmedTitle || 'Untitled document'}`
+  const versionLabel = Number.isFinite( baseVersionNumber )
+    ? `v${versionNumberToString( Number( baseVersionNumber ) )} - `
+    : ''
+  return `Change request - ${versionLabel}${trimmedTitle || 'Untitled document'}`
 }
 
 const validateChangeRequestCreation = (

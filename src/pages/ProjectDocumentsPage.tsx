@@ -96,6 +96,9 @@ type DocumentFilter = 'all' | 'mine'
 
 const FIRESTORE_IN_FILTER_LIMIT = 10
 
+const baseDocumentReferenceKey = (docId?: string | null, versionId?: string | null) =>
+  `${docId ?? ''}|${versionId ?? ''}`
+
 const isLikelyEmail = (value: string) => /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test( value )
 
 const chunkValues = <T,>(values: T[], size: number): T[][] => {
@@ -408,7 +411,9 @@ function ProjectDocumentsPage() {
         title: baseDoc?.title ?? 'Unknown',
       } )
     }
-    const externalBaseDoc = baseDocumentReferences[documentItem.baseDocId]
+    const externalBaseDoc = baseDocumentReferences[
+      baseDocumentReferenceKey( documentItem.baseDocId, documentItem.baseVersionId )
+    ]
     if( externalBaseDoc ) {
       return formatShortDocumentReference( {
         projectShortId: externalBaseDoc.projectShortId,
@@ -421,7 +426,9 @@ function ProjectDocumentsPage() {
   }, [ baseDocumentById, baseDocumentReferences, project?.shortId ] )
 
   const formatActiveConfigurationLine = useCallback( (line: ActiveConfigurationLine) => {
-    const baseReference = baseDocumentReferences[line.originDocumentId]
+    const baseReference = baseDocumentReferences[
+      baseDocumentReferenceKey( line.originDocumentId, line.originVersionId )
+    ]
     if( baseReference ) {
       return formatShortDocumentReference( {
         projectShortId: baseReference.projectShortId,
@@ -778,31 +785,36 @@ function ProjectDocumentsPage() {
       } )
       step = 'base-references'
       const currentDocumentIds = new Set( baseDocuments.map( ( documentItem ) => documentItem.id ) )
-      const externalBaseDocIds = Array.from(
-        new Set(
+      const externalBaseReferences = Array.from(
+        new Map(
           baseDocuments
-            .flatMap( ( documentItem ) => [documentItem.baseDocId, documentItem.originDocumentId] )
-            .filter( ( referenceDocId ): referenceDocId is string =>
-              typeof referenceDocId === 'string' && referenceDocId.length > 0 && !currentDocumentIds.has( referenceDocId ),
-            ),
-        ),
+            .flatMap( ( documentItem ) => [
+              { docId: documentItem.baseDocId, versionId: documentItem.baseVersionId ?? null },
+              { docId: documentItem.originDocumentId, versionId: documentItem.originVersionId ?? null },
+            ] )
+            .filter( ( reference ): reference is { docId: string; versionId: string | null } =>
+              typeof reference.docId === 'string'
+              && reference.docId.length > 0
+              && !currentDocumentIds.has( reference.docId ),
+            )
+            .map( ( reference ) => [
+              baseDocumentReferenceKey( reference.docId, reference.versionId ),
+              reference,
+            ] ),
+        ).values(),
       )
       const nextBaseDocumentReferences: Record<string, BaseDocumentReference> = {}
       await Promise.all(
-        externalBaseDocIds.map( async ( baseDocId ) => {
+        externalBaseReferences.map( async ( reference ) => {
           try {
+            const baseDocId = reference.docId
             const baseDocSnapshot = await getDoc( doc( db, 'documents', baseDocId ) )
             if( baseDocSnapshot.exists() ) {
               const baseDocData = baseDocSnapshot.data()
               const baseProjectId = ( baseDocData.projectId as string | undefined ) ?? ''
-              const baseVersionId = baseDocuments.find( ( documentItem ) =>
-                documentItem.baseDocId === baseDocId || documentItem.originDocumentId === baseDocId,
-              )?.baseVersionId ?? baseDocuments.find( ( documentItem ) =>
-                documentItem.originDocumentId === baseDocId,
-              )?.originVersionId ?? ''
               const [ baseProjectSnapshot, baseVersionSnapshot ] = await Promise.all( [
                 baseProjectId ? getDoc( doc( db, 'projects', baseProjectId ) ) : Promise.resolve( null ),
-                baseVersionId ? getDoc( doc( db, 'versions', baseVersionId ) ) : Promise.resolve( null ),
+                reference.versionId ? getDoc( doc( db, 'versions', reference.versionId ) ) : Promise.resolve( null ),
               ] )
               const baseProjectData = baseProjectSnapshot?.exists()
                 ? baseProjectSnapshot.data()
@@ -810,7 +822,7 @@ function ProjectDocumentsPage() {
               const baseVersionData = baseVersionSnapshot?.exists()
                 ? baseVersionSnapshot.data()
                 : null
-              nextBaseDocumentReferences[baseDocId] = {
+              nextBaseDocumentReferences[baseDocumentReferenceKey( baseDocId, reference.versionId )] = {
                 projectShortId: Number.isFinite( baseProjectData?.shortId ) ? Number( baseProjectData?.shortId ) : null,
                 title: ( baseDocData.title as string | undefined ) ?? 'Untitled document',
                 shortId: Number.isFinite( baseDocData.shortId ) ? Number( baseDocData.shortId ) : null,
@@ -820,7 +832,7 @@ function ProjectDocumentsPage() {
           } catch( err ) {
             console.warn( 'Project document base reference lookup skipped:', {
               projectId,
-              baseDocId,
+              baseDocId: reference.docId,
               reason: err,
             } )
           }
@@ -1036,7 +1048,9 @@ function ProjectDocumentsPage() {
         return acceptedVersions[0]?.versionId ?? ''
       } )
       if( acceptedVersions.length > 0 && changeRequestTitle.trim().length === 0 ) {
-        setChangeRequestTitle( buildChangeRequestTitle( acceptedVersions[0].docTitle ) )
+        setChangeRequestTitle(
+          buildChangeRequestTitle( acceptedVersions[0].docTitle, acceptedVersions[0].versionNumber ),
+        )
       }
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
@@ -1695,7 +1709,9 @@ function ProjectDocumentsPage() {
                               ( versionItem ) => versionItem.versionId === nextVersionId,
                             )
                             if( nextBaseVersion ) {
-                              setChangeRequestTitle( buildChangeRequestTitle( nextBaseVersion.docTitle ) )
+                              setChangeRequestTitle(
+                                buildChangeRequestTitle( nextBaseVersion.docTitle, nextBaseVersion.versionNumber ),
+                              )
                             }
                           }}
                           disabled={

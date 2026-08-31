@@ -58,4 +58,9 @@ describe( 'lib/changeRequests', () => {
   it( 'builds the default title from the base document title', () => {
     expect( buildChangeRequestTitle( 'Core requirements' ) ).toBe( 'Change request - Core requirements' )
   } )
+
+  it( 'includes the selected accepted base version in the default title', () => {
+    expect( buildChangeRequestTitle( 'Core requirements', 200 ) )
+      .toBe( 'Change request - v2.00 - Core requirements' )
+  } )
 } )

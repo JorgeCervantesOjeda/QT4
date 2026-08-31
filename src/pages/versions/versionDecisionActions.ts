@@ -168,6 +168,7 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
       setError,
       setIsBusy,
       setSuccessMessage,
+      setVersionDecisionModal,
       userEmail,
       userId,
     } = params;
@@ -195,6 +196,7 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
           })
         : null;
       if (changeRequestAcceptValidation?.message) {
+        setVersionDecisionModal(null);
         setError(changeRequestAcceptValidation.message);
         logBlockedVersionDecision("accept", changeRequestAcceptValidation.message);
         return;
@@ -206,6 +208,7 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
           })
         : null;
       if (derivedDocumentAcceptValidation) {
+        setVersionDecisionModal(null);
         setError(derivedDocumentAcceptValidation);
         logBlockedVersionDecision("accept", derivedDocumentAcceptValidation);
         return;
@@ -227,6 +230,7 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
             versionId: latestVersion.id,
           }),
       );
+      setVersionDecisionModal(null);
       setSuccessMessage("Latest version accepted successfully.");
       const baseVersionId = documentData?.baseVersionId ?? null;
       if (documentData?.type === "errorReport" && baseVersionId) {
@@ -246,6 +250,7 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
       reportVersionsError(err, "versions.acceptLatestVersion", "network", {
         versionId: latestVersion.id,
       });
+      setVersionDecisionModal(null);
       setError(message);
     } finally {
       setIsBusy(false);
@@ -264,6 +269,7 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
       setError,
       setIsBusy,
       setSuccessMessage,
+      setVersionDecisionModal,
       userId,
     } = params;
 
@@ -299,6 +305,7 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
             versionId: latestVersion.id,
           }),
       );
+      setVersionDecisionModal(null);
       setSuccessMessage("Latest version rejected successfully.");
       loadDocumentAndVersions();
     } catch (err) {
@@ -306,6 +313,7 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
       reportVersionsError(err, "versions.rejectLatestVersion", "network", {
         versionId: latestVersion.id,
       });
+      setVersionDecisionModal(null);
       setError(message);
     } finally {
       setIsBusy(false);
@@ -314,12 +322,10 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
 
   const handleConfirmVersionDecision = async () => {
     if (params.versionDecisionModal === "accept") {
-      params.setVersionDecisionModal(null);
       await handleAcceptLatestVersion();
       return;
     }
     if (params.versionDecisionModal === "reject") {
-      params.setVersionDecisionModal(null);
       await handleRejectLatestVersion();
     }
   };

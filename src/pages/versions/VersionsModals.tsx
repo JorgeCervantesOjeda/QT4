@@ -1,4 +1,5 @@
-// Central modal presenter for confirmations, document title edits, success messages, and error reporting context.
+// src/pages/versions/VersionsModals.tsx
+// Presents confirmations, document title edits, success messages, and error reporting context.
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import ErrorChecklistModal, {
   type ChecklistItem,
@@ -102,6 +103,22 @@ function VersionsModals(props: VersionsModalsProps) {
     onCloseError,
     errorReportContext,
   } = props;
+  const versionDecisionProgressTitle =
+    versionDecisionModal === "accept"
+      ? "Accepting latest version"
+      : "Rejecting latest version";
+  const versionDecisionConfirmationTitle =
+    versionDecisionModal === "accept"
+      ? "Accept latest version"
+      : "Reject latest version";
+  const versionDecisionProgressMessage =
+    versionDecisionModal === "accept"
+      ? "Applying acceptance to the latest version..."
+      : "Applying rejection to the latest version...";
+  const versionDecisionConfirmationMessage =
+    versionDecisionModal === "accept"
+      ? "Confirm acceptance of the latest version. This will update its status to Accepted."
+      : "Confirm rejection of the latest version. This will update its status to Rejected.";
 
   return (
     <>
@@ -175,34 +192,32 @@ function VersionsModals(props: VersionsModalsProps) {
         </ModalDialog>
       ) : null}
       {versionDecisionModal ? (
-        <ModalDialog onClose={onCloseVersionDecisionModal}>
+        <ModalDialog onClose={isBusy ? undefined : onCloseVersionDecisionModal}>
           <h3>
-            {versionDecisionModal === "accept"
-              ? "Accept latest version"
-              : "Reject latest version"}
+            {isBusy ? versionDecisionProgressTitle : versionDecisionConfirmationTitle}
           </h3>
           <GiphyInline reason="thinking" mode="inline" />
           <p className="muted">
-            {versionDecisionModal === "accept"
-              ? "Confirm acceptance of the latest version. This will update its status to Accepted."
-              : "Confirm rejection of the latest version. This will update its status to Rejected."}
+            {isBusy ? versionDecisionProgressMessage : versionDecisionConfirmationMessage}
           </p>
-          <div className="actions">
-            <button
-              type="button"
-              onClick={onCloseVersionDecisionModal}
-              disabled={isBusy}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={onConfirmVersionDecision}
-              disabled={isBusy}
-            >
-              Confirm
-            </button>
-          </div>
+          {!isBusy ? (
+            <div className="actions">
+              <button
+                type="button"
+                onClick={onCloseVersionDecisionModal}
+                disabled={isBusy}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={onConfirmVersionDecision}
+                disabled={isBusy}
+              >
+                Confirm
+              </button>
+            </div>
+          ) : null}
         </ModalDialog>
       ) : null}
       {pendingVersionAction ? (

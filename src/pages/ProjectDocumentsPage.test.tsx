@@ -522,11 +522,11 @@ describe( 'pages/ProjectDocumentsPage', () => {
       if( collectionName === 'versions' && requestedProjectId === 'project-2' ) {
         return createQuerySnapshot( [
           {
-            id: 'base-version-1',
+            id: 'base-version-2',
             data: {
               projectId: 'project-2',
               docId: 'base-document-1',
-              number: 100,
+              number: 200,
               status: 'Accepted',
               createdBy: 'user-member-1',
               reviewerIds: [],
@@ -595,11 +595,9 @@ describe( 'pages/ProjectDocumentsPage', () => {
     const baseProjectSelect = await screen.findByLabelText( 'Base project', {}, { timeout: 10000 } )
     expect( baseProjectSelect.textContent ).toContain( '84 - Beta Project' )
     expect( baseProjectSelect.textContent ).not.toContain( '42 - Alpha Project' )
-    expect( await screen.findByText( 'P84 / D9 / v1.00 - Shared Requirements' ) ).toBeTruthy()
-
-    fireEvent.change( screen.getByLabelText( 'Change request title' ), {
-      target: { value: 'Beta client requirements' },
-    } )
+    expect( await screen.findByText( 'P84 / D9 / v2.00 - Shared Requirements' ) ).toBeTruthy()
+    expect( ( screen.getByLabelText( 'Change request title' ) as HTMLInputElement ).value )
+      .toBe( 'Change request - v2.00 - Shared Requirements' )
     fireEvent.click( screen.getByRole( 'button', { name: 'Create change request' } ) )
 
     await waitFor( () => {
@@ -611,10 +609,140 @@ describe( 'pages/ProjectDocumentsPage', () => {
         && payload.projectId === 'project-1'
         && payload.baseProjectId === 'project-2'
         && payload.baseDocId === 'base-document-1'
-        && payload.baseVersionId === 'base-version-1'
-        && payload.title === 'Beta client requirements'
+        && payload.baseVersionId === 'base-version-2'
+        && payload.title === 'Change request - v2.00 - Shared Requirements'
     } ) ).toBe( true )
     expect( navigateMock ).toHaveBeenCalledWith( '/documents/generated-doc/versions?projectId=project-1' )
+  }, 15000 )
+
+  it( 'keeps separate external base version labels for change requests to the same base document', async () => {
+    versionRecords = [
+      {
+        id: 'old-change-request-version',
+        data: {
+          projectId: 'project-1',
+          docId: 'old-change-request',
+          number: 100,
+          status: 'Accepted',
+          createdBy: 'user-member-1',
+          createdAt: new Date( '2026-04-02T10:00:00.000Z' ),
+        },
+      },
+      {
+        id: 'new-change-request-version',
+        data: {
+          projectId: 'project-1',
+          docId: 'new-change-request',
+          number: 1,
+          status: 'In Creation',
+          createdBy: 'user-member-1',
+          createdAt: new Date( '2026-04-03T10:00:00.000Z' ),
+        },
+      },
+    ]
+    onSnapshotMock.mockImplementation( (
+      _query: unknown,
+      onNext: (snapshot: ReturnType<typeof createQuerySnapshot>) => void,
+    ) => {
+      onNext(
+        createQuerySnapshot( [
+          {
+            id: 'old-change-request',
+            data: {
+              projectId: 'project-1',
+              title: 'Change request - v1.00 - Shared Requirements',
+              type: 'changeRequest',
+              shortId: 31,
+              createdBy: 'user-member-1',
+              baseProjectId: 'project-2',
+              baseDocId: 'base-document-1',
+              baseVersionId: 'base-version-1',
+            },
+          },
+          {
+            id: 'new-change-request',
+            data: {
+              projectId: 'project-1',
+              title: 'Change request - v2.00 - Shared Requirements',
+              type: 'changeRequest',
+              shortId: 32,
+              createdBy: 'user-member-1',
+              baseProjectId: 'project-2',
+              baseDocId: 'base-document-1',
+              baseVersionId: 'base-version-2',
+            },
+          },
+        ] ),
+      )
+      return () => undefined
+    } )
+    getDocMock.mockImplementation( async ( docRef: { collection: string; id: string } ) => {
+      if( docRef.collection === 'projects' && docRef.id === 'project-1' ) {
+        return createDocSnapshot( {
+          id: 'project-1',
+          data: {
+            shortId: 42,
+            name: 'Alpha Project',
+            leaderId: 'user-member-1',
+          },
+        } )
+      }
+      if( docRef.collection === 'projects' && docRef.id === 'project-2' ) {
+        return createDocSnapshot( {
+          id: 'project-2',
+          data: {
+            shortId: 84,
+            name: 'Beta Project',
+          },
+        } )
+      }
+      if( docRef.collection === 'documents' && docRef.id === 'base-document-1' ) {
+        return createDocSnapshot( {
+          id: 'base-document-1',
+          data: {
+            projectId: 'project-2',
+            title: 'Shared Requirements',
+            shortId: 9,
+          },
+        } )
+      }
+      if( docRef.collection === 'versions' && docRef.id === 'base-version-1' ) {
+        return createDocSnapshot( {
+          id: 'base-version-1',
+          data: {
+            projectId: 'project-2',
+            docId: 'base-document-1',
+            number: 100,
+            status: 'Accepted',
+          },
+        } )
+      }
+      if( docRef.collection === 'versions' && docRef.id === 'base-version-2' ) {
+        return createDocSnapshot( {
+          id: 'base-version-2',
+          data: {
+            projectId: 'project-2',
+            docId: 'base-document-1',
+            number: 200,
+            status: 'Accepted',
+          },
+        } )
+      }
+      return createMissingSnapshot( docRef.id )
+    } )
+
+    render( <ProjectDocumentsPage /> )
+
+    expect( await screen.findByText(
+      (_, element) => element?.textContent === 'For document: P84 / D9 / v1.00 - Shared Requirements',
+      {},
+      { timeout: 10000 },
+    ) ).toBeTruthy()
+    expect( await screen.findByText(
+      (_, element) => element?.textContent === 'For document: P84 / D9 / v2.00 - Shared Requirements',
+      {},
+      { timeout: 10000 },
+    ) ).toBeTruthy()
   }, 15000 )
 
   it( 'creates a derived variant from accepted change requests over the same external base', async () => {

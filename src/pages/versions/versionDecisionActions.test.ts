@@ -178,6 +178,38 @@ describe( 'createVersionDecisionActions', () => {
     } )
   } )
 
+  it( 'keeps the accept confirmation modal open until the backend decision finishes', async () => {
+    firestoreMocks.getDoc.mockResolvedValueOnce( {
+      exists: () => false,
+      data: () => ( {} ),
+    } )
+    const calls: string[] = []
+    const setVersionDecisionModal = vi.fn( ( value: 'accept' | 'reject' | null ) => {
+      calls.push( `modal:${value ?? 'null'}` )
+    } )
+    versionDecisionMocks.requestVersionDecision.mockImplementationOnce( async () => {
+      calls.push( 'request' )
+      return {
+        ok: true,
+        decision: 'accept',
+        projectId: 'target-project',
+        docId: 'change-request-1',
+        versionId: 'change-request-version-1',
+        promotedNumber: 100,
+        replacedVersionIds: [],
+      }
+    } )
+    const actions = buildActions( {
+      setVersionDecisionModal,
+      versionDecisionModal: 'accept',
+    } )
+
+    await actions.handleConfirmVersionDecision()
+
+    expect( calls[0] ).toBe( 'request' )
+    expect( calls[calls.length - 1] ).toBe( 'modal:null' )
+  } )
+
   it( 'blocks accepting a derived variant when new active change requests are not incorporated', async () => {
     firestoreMocks.getDoc.mockResolvedValueOnce( {
       exists: () => true,
