@@ -415,6 +415,8 @@ const ReviewIssuesArea = (props: VersionsPageViewProps) => (
     ) : null}
     {props.selectedVersion ? (
       <ReviewIssuesPanel
+        projectId={props.projectId}
+        docId={props.docId}
         selectedVersion={props.selectedVersion}
         reviewIssuesPanelRef={props.reviewIssuesPanelRef}
         formatUserLabel={props.formatUserLabel}

@@ -9,6 +9,7 @@ import {
 import { logAudit } from "../../lib/audit";
 import { db } from "../../lib/firebase";
 import { canAddCommentInWindow } from "../../lib/reviewWindow";
+import { measureSlowUiAction } from "../../lib/slowUiAction";
 import { notifyCommentParticipants } from "./commentNotification";
 import {
   THREAD_STATUS_CONFLICT_MESSAGE,
@@ -100,41 +101,51 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
       const threadTitle = normalizeIssueTitleInput(
         params.newThreadTitle,
       ).trim();
-      await runTransaction(db, async (transaction) => {
-        const versionSnap = await transaction.get(versionRef);
-        if (!versionSnap.exists()) throw new Error("Version not found.");
-        const versionData = versionSnap.data();
-        const currentStats = readVersionStats(versionData);
-        transaction.set(threadRef, {
+      await measureSlowUiAction(
+        {
+          action: "versions.createThread",
+          page: "Document Versions",
+          userId,
           projectId,
           docId,
           versionId: selectedVersion.id,
-          status: "open",
-          title: threadTitle,
-          createdBy: userId,
-          commentCount: 0,
-          lastCommentAt: null,
-          lastCommentBy: null,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          updatedBy: userId,
-        });
-        transaction.update(versionRef, {
-          stats: {
-            ...currentStats,
+        },
+        () => runTransaction(db, async (transaction) => {
+          const versionSnap = await transaction.get(versionRef);
+          if (!versionSnap.exists()) throw new Error("Version not found.");
+          const versionData = versionSnap.data();
+          const currentStats = readVersionStats(versionData);
+          transaction.set(threadRef, {
+            projectId,
+            docId,
+            versionId: selectedVersion.id,
+            status: "open",
+            title: threadTitle,
+            createdBy: userId,
+            commentCount: 0,
+            lastCommentAt: null,
+            lastCommentBy: null,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            updatedBy: userId,
+          });
+          transaction.update(versionRef, {
+            stats: {
+              ...currentStats,
+              numThreads: currentStats.numThreads + 1,
+              numOpenThreads: currentStats.numOpenThreads + 1,
+            },
             numThreads: currentStats.numThreads + 1,
             numOpenThreads: currentStats.numOpenThreads + 1,
-          },
-          numThreads: currentStats.numThreads + 1,
-          numOpenThreads: currentStats.numOpenThreads + 1,
-          numComments: currentStats.numComments,
-          numThreadsWithTwoPlusComments:
-            currentStats.numThreadsWithTwoPlusComments,
-          activityAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          updatedBy: userId,
-        });
-      });
+            numComments: currentStats.numComments,
+            numThreadsWithTwoPlusComments:
+              currentStats.numThreadsWithTwoPlusComments,
+            activityAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            updatedBy: userId,
+          });
+        }),
+      );
       params.setNewThreadTitle("");
       params.setSelectedThreadId(threadRef.id);
       params.setSuccessMessage("Issue created successfully.");
@@ -197,68 +208,79 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
       const commentRef = doc(collection(db, "comments"));
       const versionRef = doc(db, "versions", selectedVersion.id);
       const threadRef = doc(db, "threads", selectedThread.id);
-      await runTransaction(db, async (transaction) => {
-        const [versionSnap, threadSnap] = await Promise.all([
-          transaction.get(versionRef),
-          transaction.get(threadRef),
-        ]);
-        if (!versionSnap.exists() || !threadSnap.exists())
-          throw new Error("Version or issue not found.");
-        const versionData = versionSnap.data();
-        const threadData = threadSnap.data();
-        if (
-          !canAddCommentInWindow({
-            versionStatus: versionData.status ?? "",
-            reviewEndAt: toTimestampDate(versionData.reviewEndAt),
-            threadStatus: threadData.status ?? "open",
-            lastThreadCommentAt: toTimestampDate(threadData.lastCommentAt),
-            canParticipate: params.canParticipateReview,
-            hasBody: commentBody.length > 0,
-          })
-        ) {
-          throw new Error("Comment window expired for this issue.");
-        }
-        const currentStats = readVersionStats(versionData);
-        const previousThreadCommentCount = Number(threadData.commentCount ?? 0);
-        const nextThreadCommentCount = previousThreadCommentCount + 1;
-        const incrementTwoPlusCounter =
-          previousThreadCommentCount < 2 && nextThreadCommentCount >= 2 ? 1 : 0;
-        transaction.set(commentRef, {
+      await measureSlowUiAction(
+        {
+          action: "versions.addComment",
+          page: "Document Versions",
+          userId,
           projectId,
           docId,
           versionId: selectedVersion.id,
           threadId: selectedThread.id,
-          body: commentBody,
-          createdBy: userId,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-        transaction.update(threadRef, {
-          commentCount: nextThreadCommentCount,
-          lastCommentAt: serverTimestamp(),
-          lastCommentBy: userId,
-          updatedAt: serverTimestamp(),
-          updatedBy: userId,
-        });
-        transaction.update(versionRef, {
-          stats: {
-            ...currentStats,
+        },
+        () => runTransaction(db, async (transaction) => {
+          const [versionSnap, threadSnap] = await Promise.all([
+            transaction.get(versionRef),
+            transaction.get(threadRef),
+          ]);
+          if (!versionSnap.exists() || !threadSnap.exists())
+            throw new Error("Version or issue not found.");
+          const versionData = versionSnap.data();
+          const threadData = threadSnap.data();
+          if (
+            !canAddCommentInWindow({
+              versionStatus: versionData.status ?? "",
+              reviewEndAt: toTimestampDate(versionData.reviewEndAt),
+              threadStatus: threadData.status ?? "open",
+              lastThreadCommentAt: toTimestampDate(threadData.lastCommentAt),
+              canParticipate: params.canParticipateReview,
+              hasBody: commentBody.length > 0,
+            })
+          ) {
+            throw new Error("Comment window expired for this issue.");
+          }
+          const currentStats = readVersionStats(versionData);
+          const previousThreadCommentCount = Number(threadData.commentCount ?? 0);
+          const nextThreadCommentCount = previousThreadCommentCount + 1;
+          const incrementTwoPlusCounter =
+            previousThreadCommentCount < 2 && nextThreadCommentCount >= 2 ? 1 : 0;
+          transaction.set(commentRef, {
+            projectId,
+            docId,
+            versionId: selectedVersion.id,
+            threadId: selectedThread.id,
+            body: commentBody,
+            createdBy: userId,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+          transaction.update(threadRef, {
+            commentCount: nextThreadCommentCount,
+            lastCommentAt: serverTimestamp(),
+            lastCommentBy: userId,
+            updatedAt: serverTimestamp(),
+            updatedBy: userId,
+          });
+          transaction.update(versionRef, {
+            stats: {
+              ...currentStats,
+              numComments: currentStats.numComments + 1,
+              numThreadsWithTwoPlusComments:
+                currentStats.numThreadsWithTwoPlusComments +
+                incrementTwoPlusCounter,
+            },
+            numThreads: currentStats.numThreads,
+            numOpenThreads: currentStats.numOpenThreads,
             numComments: currentStats.numComments + 1,
             numThreadsWithTwoPlusComments:
               currentStats.numThreadsWithTwoPlusComments +
               incrementTwoPlusCounter,
-          },
-          numThreads: currentStats.numThreads,
-          numOpenThreads: currentStats.numOpenThreads,
-          numComments: currentStats.numComments + 1,
-          numThreadsWithTwoPlusComments:
-            currentStats.numThreadsWithTwoPlusComments +
-            incrementTwoPlusCounter,
-          activityAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          updatedBy: userId,
-        });
-      });
+            activityAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            updatedBy: userId,
+          });
+        }),
+      );
       params.setNewCommentBody("");
       logAudit({
         actorId: userId,
@@ -338,43 +360,54 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
     try {
       const versionRef = doc(db, "versions", params.selectedVersion.id);
       const threadRef = doc(db, "threads", thread.id);
-      await runTransaction(db, async (transaction) => {
-        const [versionSnap, threadSnap] = await Promise.all([
-          transaction.get(versionRef),
-          transaction.get(threadRef),
-        ]);
-        if (!versionSnap.exists() || !threadSnap.exists())
-          throw new Error("Version or issue not found.");
-        const versionData = versionSnap.data();
-        const currentThreadStatus = threadSnap.data().status ?? "open";
-        if (currentThreadStatus !== requestedThreadStatus)
-          throw new Error(THREAD_STATUS_CONFLICT_MESSAGE);
-        const isClosing = currentThreadStatus === "open";
-        const currentStats = readVersionStats(versionData);
-        const nextOpenThreads = isClosing
-          ? Math.max(0, currentStats.numOpenThreads - 1)
-          : currentStats.numOpenThreads + 1;
-        transaction.update(threadRef, {
-          status: isClosing ? "closed" : "open",
-          closedBy: isClosing ? params.userId : null,
-          closedAt: isClosing ? serverTimestamp() : null,
-          reopenedBy: isClosing ? null : params.userId,
-          reopenedAt: isClosing ? null : serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          updatedBy: params.userId,
-        });
-        transaction.update(versionRef, {
-          stats: { ...currentStats, numOpenThreads: nextOpenThreads },
-          numThreads: currentStats.numThreads,
-          numOpenThreads: nextOpenThreads,
-          numComments: currentStats.numComments,
-          numThreadsWithTwoPlusComments:
-            currentStats.numThreadsWithTwoPlusComments,
-          activityAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          updatedBy: params.userId,
-        });
-      });
+      await measureSlowUiAction(
+        {
+          action: requestedIsClosing ? "versions.closeThread" : "versions.reopenThread",
+          page: "Document Versions",
+          userId: params.userId,
+          projectId: params.projectId,
+          docId: params.docId,
+          versionId: params.selectedVersion.id,
+          threadId: thread.id,
+        },
+        () => runTransaction(db, async (transaction) => {
+          const [versionSnap, threadSnap] = await Promise.all([
+            transaction.get(versionRef),
+            transaction.get(threadRef),
+          ]);
+          if (!versionSnap.exists() || !threadSnap.exists())
+            throw new Error("Version or issue not found.");
+          const versionData = versionSnap.data();
+          const currentThreadStatus = threadSnap.data().status ?? "open";
+          if (currentThreadStatus !== requestedThreadStatus)
+            throw new Error(THREAD_STATUS_CONFLICT_MESSAGE);
+          const isClosing = currentThreadStatus === "open";
+          const currentStats = readVersionStats(versionData);
+          const nextOpenThreads = isClosing
+            ? Math.max(0, currentStats.numOpenThreads - 1)
+            : currentStats.numOpenThreads + 1;
+          transaction.update(threadRef, {
+            status: isClosing ? "closed" : "open",
+            closedBy: isClosing ? params.userId : null,
+            closedAt: isClosing ? serverTimestamp() : null,
+            reopenedBy: isClosing ? null : params.userId,
+            reopenedAt: isClosing ? null : serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            updatedBy: params.userId,
+          });
+          transaction.update(versionRef, {
+            stats: { ...currentStats, numOpenThreads: nextOpenThreads },
+            numThreads: currentStats.numThreads,
+            numOpenThreads: nextOpenThreads,
+            numComments: currentStats.numComments,
+            numThreadsWithTwoPlusComments:
+              currentStats.numThreadsWithTwoPlusComments,
+            activityAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            updatedBy: params.userId,
+          });
+        }),
+      );
       params.setSuccessMessage(
         requestedIsClosing
           ? "Issue closed successfully."

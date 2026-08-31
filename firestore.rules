@@ -978,6 +978,73 @@ service cloud.firestore {
       }
     }
 
+    match /slowUiActions/{eventId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasOnly([
+          'action',
+          'page',
+          'route',
+          'hasModal',
+          'userId',
+          'projectId',
+          'docId',
+          'versionId',
+          'threadId',
+          'durationMs',
+          'thresholdMs',
+          'startedAt',
+          'endedAt',
+          'createdAt',
+          'reportedAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'action',
+          'page',
+          'route',
+          'hasModal',
+          'userId',
+          'projectId',
+          'docId',
+          'versionId',
+          'threadId',
+          'durationMs',
+          'thresholdMs',
+          'startedAt',
+          'endedAt',
+          'createdAt',
+          'reportedAt'
+        ])
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.action is string
+        && request.resource.data.action.matches('.*\\S.*')
+        && request.resource.data.action.size() <= 120
+        && request.resource.data.page is string
+        && request.resource.data.page.matches('.*\\S.*')
+        && request.resource.data.page.size() <= 120
+        && request.resource.data.route is string
+        && request.resource.data.route.size() <= 240
+        && request.resource.data.projectId is string
+        && request.resource.data.projectId.size() <= 128
+        && request.resource.data.docId is string
+        && request.resource.data.docId.size() <= 128
+        && request.resource.data.versionId is string
+        && request.resource.data.versionId.size() <= 128
+        && request.resource.data.threadId is string
+        && request.resource.data.threadId.size() <= 128
+        && request.resource.data.hasModal == false
+        && request.resource.data.durationMs is int
+        && request.resource.data.durationMs > 1000
+        && request.resource.data.durationMs <= 600000
+        && request.resource.data.thresholdMs == 1000
+        && request.resource.data.startedAt is timestamp
+        && request.resource.data.endedAt is timestamp
+        && request.resource.data.endedAt >= request.resource.data.startedAt
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.reportedAt == null;
+      allow update, delete: if false;
+    }
+
     match /auditLogs/{logId} {
       allow read: if isAdmin() || resource.data.actorId == request.auth.uid;
       allow create: if isSignedIn()

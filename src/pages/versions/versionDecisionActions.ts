@@ -18,6 +18,7 @@ import {
   buildDerivationLineKey,
 } from "../../lib/documentDerivation";
 import { db } from "../../lib/firebase";
+import { measureSlowUiAction } from "../../lib/slowUiAction";
 import type { DocumentSummary, VersionSummary } from "./types";
 
 type ReportVersionsError = (
@@ -96,6 +97,7 @@ const derivedConfigurationRefFor = (value: {
 
 const validateChangeRequestAcceptable = async (value: {
   documentData: DocumentSummary;
+  latestVersion: VersionSummary;
   projectId: string;
 }) => {
   const baseProjectId = value.documentData.baseProjectId ?? "";
@@ -193,6 +195,7 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
       const changeRequestAcceptValidation = documentData?.type === "changeRequest"
         ? await validateChangeRequestAcceptable({
             documentData,
+            latestVersion,
             projectId,
           })
         : null;
@@ -304,7 +307,17 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
           updatedBy: userId,
         });
       }
-      await batch.commit();
+      await measureSlowUiAction(
+        {
+          action: "versions.acceptLatestVersion",
+          page: "Document Versions",
+          userId,
+          projectId,
+          docId,
+          versionId: latestVersion.id,
+        },
+        () => batch.commit(),
+      );
       setSuccessMessage("Latest version accepted successfully.");
       logAudit({
         actorId: userId,
@@ -400,7 +413,17 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
           updatedBy: userId,
         });
       }
-      await batch.commit();
+      await measureSlowUiAction(
+        {
+          action: "versions.rejectLatestVersion",
+          page: "Document Versions",
+          userId,
+          projectId,
+          docId,
+          versionId: latestVersion.id,
+        },
+        () => batch.commit(),
+      );
       setSuccessMessage("Latest version rejected successfully.");
       logAudit({
         actorId: userId,

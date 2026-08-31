@@ -20,7 +20,10 @@ describe( 'ReviewDurationPanel', () => {
     const input = screen.getByLabelText( 'Review duration days' ) as HTMLInputElement
 
     expect( screen.getByRole( 'heading', { name: 'Review Duration' } ) ).toBeTruthy()
-    expect( input.valueAsNumber ).toBe( 3 )
+    expect( input.type ).toBe( 'text' )
+    expect( input.inputMode ).toBe( 'numeric' )
+    expect( input.getAttribute( 'pattern' ) ).toBe( '[0-9]*' )
+    expect( input.value ).toBe( '3' )
 
     fireEvent.change( input, {
       target: { value: '5' },

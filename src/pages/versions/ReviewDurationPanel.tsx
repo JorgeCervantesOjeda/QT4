@@ -20,12 +20,16 @@ function ReviewDurationPanel( {
       <label className="field">
         <span>Review duration days</span>
         <input
-          type="number"
-          min={1}
-          max={30}
-          step={1}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
           value={reviewDurationDays}
-          onChange={( event ) => onReviewDurationDaysChange( event.target.valueAsNumber )}
+          onChange={( event ) => {
+            const rawReviewDurationDays = event.target.value.trim()
+            onReviewDurationDaysChange(
+              rawReviewDurationDays ? Number( rawReviewDurationDays ) : 1,
+            )
+          }}
           disabled={isBusy || !canConfigureReviewDuration}
         />
       </label>

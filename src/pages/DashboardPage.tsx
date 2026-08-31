@@ -1,3 +1,5 @@
+// src/pages/DashboardPage.tsx
+// Renders the dashboard, refresh workflows, and urgency analysis feedback.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { ColumnDef, SortingState } from '@tanstack/react-table'
 import {
@@ -30,6 +32,17 @@ import { formatElapsedWithDays, formatTimeAgoWithTimestamp } from '../lib/time'
 
 type DashboardSectionKey = DashboardTaskType | 'expired' | 'activeTable'
 const DASHBOARD_COLLAPSE_STORAGE_KEY = 'qt4_dashboard_collapsed_sections_v2'
+
+const waitForNextPaint = () =>
+  new Promise<void>( (resolve) => {
+    if( typeof window.requestAnimationFrame !== 'function' ) {
+      resolve()
+      return
+    }
+    window.requestAnimationFrame( () => {
+      resolve()
+    } )
+  } )
 
 function DashboardPage() {
   const { user } = useAuth()
@@ -101,6 +114,7 @@ function DashboardPage() {
     return [ { id: 'createdAtMs', desc: true } ]
   } )
   const isLoadingTasks = activeRefreshScope !== null
+  const isAnalyzingUrgency = urgencyStatus === 'loading'
   const tasks = useMemo(
     () => ( dashboardStorageVersion >= 2 && taskCollectionLoaded ? storedTasks : legacyTasks ),
     [ dashboardStorageVersion, legacyTasks, storedTasks, taskCollectionLoaded ],
@@ -423,6 +437,7 @@ function DashboardPage() {
     setUrgencyResult( '' )
     setUrgencyError( '' )
     void (async () => {
+      await waitForNextPaint()
       try {
         const response = await requestAiAssist( {
           mode: 'summarize_pending',
@@ -641,9 +656,9 @@ function DashboardPage() {
               type="button"
               className="ghost"
               onClick={analyzeUrgency}
-              disabled={isLoadingTasks || urgencyStatus === 'loading'}
+              disabled={isLoadingTasks || isAnalyzingUrgency}
             >
-              {urgencyStatus === 'loading' ? 'Analyzing urgency...' : 'Analyze urgency'}
+              {isAnalyzingUrgency ? 'Analyzing urgency...' : 'Analyze urgency'}
             </button>
             <span className="muted">Since refresh: {formatElapsed( lastRefreshByScope.all )}</span>
           </div>
@@ -652,7 +667,7 @@ function DashboardPage() {
               <div className="panel-header">
                 <h3>Urgency summary</h3>
               </div>
-              {urgencyStatus === 'loading' ? <p className="muted">Working...</p> : null}
+              {isAnalyzingUrgency ? <p className="muted">Working...</p> : null}
               {urgencyError ? <p className="error">{urgencyError}</p> : null}
               {urgencyResult ? <p className="ai-assist-result">{urgencyResult}</p> : null}
             </div>
@@ -668,11 +683,11 @@ function DashboardPage() {
             }}
           />
         ) : null}
-        {isLoadingTasks ? (
+        {isLoadingTasks || isAnalyzingUrgency ? (
           <ModalDialog cardClassName="dashboard-progress-modal">
-            <h3>Refreshing dashboard</h3>
+            <h3>{isLoadingTasks ? 'Refreshing dashboard' : 'Analyzing urgency'}</h3>
             <GiphyInline reason="teamwork" mode="inline" />
-            {refreshProgress ? (
+            {isLoadingTasks && refreshProgress ? (
               <div className="dashboard-progress">
                 <div className="dashboard-progress__track" aria-hidden="true">
                   <div
@@ -684,8 +699,10 @@ function DashboardPage() {
                   {`Step ${refreshProgress.currentStep} of ${refreshProgress.totalSteps}: ${refreshProgress.label}`}
                 </p>
               </div>
-            ) : (
+            ) : isLoadingTasks ? (
               <p className="muted">Preparing refresh...</p>
+            ) : (
+              <p className="muted">Working...</p>
             )}
           </ModalDialog>
         ) : null}

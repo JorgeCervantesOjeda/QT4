@@ -1,11 +1,13 @@
 const { onRequest } = require( "firebase-functions/v2/https" )
 const { onDocumentUpdated } = require( "firebase-functions/v2/firestore" )
+const { onSchedule } = require( "firebase-functions/v2/scheduler" )
 const { logger } = require( "firebase-functions" )
 const admin = require( "firebase-admin" )
 const nodemailer = require( "nodemailer" )
 const crypto = require( "node:crypto" )
 const { createAiAssistHandler } = require( "./aiAssist" )
 const { createPropagateAcceptedErrorReportHandler } = require( "./propagatedErrorReports" )
+const { createSlowUiActionDigestJob } = require( "./slowUiDigest" )
 
 if( admin.apps.length === 0 ) {
   admin.initializeApp()
@@ -121,6 +123,14 @@ const trimMultiline = (value, maxLength = 2000) =>
 
 const normalizeMonitorRecipients = () => normalizeRecipientList(
   getEnv( "MONITOR_ALERT_TO", "" )
+    .split( "," )
+    .map( ( item ) => item.trim() )
+    .filter( Boolean ),
+  50,
+)
+
+const normalizeSlowUiActionDigestRecipients = () => normalizeRecipientList(
+  getEnvMany( [ "SLOW_UI_DIGEST_TO", "MONITOR_ALERT_TO" ], "" )
     .split( "," )
     .map( ( item ) => item.trim() )
     .filter( Boolean ),
@@ -529,6 +539,20 @@ exports.reportClientMonitorEvent = onRequest( { cors: false, maxInstances: 10, i
     res.status( 500 ).json( { error: "Internal server error", detail: message } )
   }
 } )
+
+exports.sendSlowUiActionDigest = onSchedule(
+  {
+    schedule: getEnv( "SLOW_UI_DIGEST_SCHEDULE", "every day 08:00" ),
+    timeZone: getEnv( "SLOW_UI_DIGEST_TIME_ZONE", "America/Mexico_City" ),
+    maxInstances: 1,
+  },
+  createSlowUiActionDigestJob( {
+    admin,
+    logger,
+    getRecipients: normalizeSlowUiActionDigestRecipients,
+    sendTextEmail,
+  } ),
+)
 
 exports.propagateAcceptedErrorReport = onDocumentUpdated(
   "versions/{versionId}",

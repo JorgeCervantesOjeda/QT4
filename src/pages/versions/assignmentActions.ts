@@ -4,6 +4,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import { doc, serverTimestamp, updateDoc, writeBatch } from 'firebase/firestore'
 import { logAudit } from '../../lib/audit'
 import { db } from '../../lib/firebase'
+import { measureSlowUiAction } from '../../lib/slowUiAction'
 import type { ProjectMember, VersionSummary } from './types'
 
 type VersionsErrorReporter = (
@@ -75,11 +76,21 @@ function useAssignmentActions( {
     setIsBusy( true )
     setError( null )
     try {
-      await updateDoc( doc( db, 'versions', selectedVersion.id ), {
-        reviewerIds: nextReviewerIds,
-        updatedAt: serverTimestamp(),
-        updatedBy: userId,
-      } )
+      await measureSlowUiAction(
+        {
+          action: 'versions.updateReviewers',
+          page: 'Document Versions',
+          userId,
+          projectId,
+          docId,
+          versionId: selectedVersion.id,
+        },
+        () => updateDoc( doc( db, 'versions', selectedVersion.id ), {
+          reviewerIds: nextReviewerIds,
+          updatedAt: serverTimestamp(),
+          updatedBy: userId,
+        } ),
+      )
     } catch( err ) {
       setSelectedReviewerIds( previousReviewerIds )
       const message = err instanceof Error ? err.message : 'Unexpected error'
@@ -141,11 +152,21 @@ function useAssignmentActions( {
     setIsBusy( true )
     setError( null )
     try {
-      await updateDoc( doc( db, 'versions', selectedVersion.id ), {
-        reviewerIds: nextReviewerIds,
-        updatedAt: serverTimestamp(),
-        updatedBy: userId,
-      } )
+      await measureSlowUiAction(
+        {
+          action: 'versions.toggleAllReviewers',
+          page: 'Document Versions',
+          userId,
+          projectId,
+          docId,
+          versionId: selectedVersion.id,
+        },
+        () => updateDoc( doc( db, 'versions', selectedVersion.id ), {
+          reviewerIds: nextReviewerIds,
+          updatedAt: serverTimestamp(),
+          updatedBy: userId,
+        } ),
+      )
     } catch( err ) {
       setSelectedReviewerIds( previousReviewerIds )
       const message = err instanceof Error ? err.message : 'Unexpected error'
@@ -234,7 +255,17 @@ function useAssignmentActions( {
         updatedAt: serverTimestamp(),
         updatedBy: userId,
       } )
-      await batch.commit()
+      await measureSlowUiAction(
+        {
+          action: 'versions.assignAuthor',
+          page: 'Document Versions',
+          userId,
+          projectId,
+          docId,
+          versionId: selectedVersion.id,
+        },
+        () => batch.commit(),
+      )
     } catch( err ) {
       setSelectedAuthorId( previousAuthorId )
       setSelectedReviewerIds( previousReviewerIds )

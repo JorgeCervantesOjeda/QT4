@@ -24,6 +24,7 @@ import { useErrorChecklistModal } from '../hooks/useErrorChecklistModal'
 import { logAudit } from '../lib/audit'
 import { reportAbnormalError } from '../lib/errorMonitor'
 import { db } from '../lib/firebase'
+import { measureSlowUiAction } from '../lib/slowUiAction'
 
 type ProjectSummary = {
   id: string
@@ -411,35 +412,43 @@ function ProjectsPage() {
       const counterRef = doc( db, 'counters', 'projects' )
       const projectRef = doc( collection( db, 'projects' ) )
       const leaderMemberRef = doc( db, 'projectMembers', `${projectRef.id}_${userId}` )
-      await runTransaction( db, async ( transaction ) => {
-        const counterSnap = await transaction.get( counterRef )
-        const nextNumberRaw = counterSnap.data()?.nextNumber
-        const nextNumber = typeof nextNumberRaw === 'number' ? nextNumberRaw : 1
-        transaction.set(
-          counterRef,
-          {
-            nextNumber: nextNumber + 1,
-            lastProjectId: projectRef.id,
-          },
-          { merge: true },
-        )
-        transaction.set( projectRef, {
-          name: name.trim(),
-          leaderId: userId,
-          isActive: true,
-          shortId: nextNumber,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        } )
-        transaction.set( leaderMemberRef, {
-          projectId: projectRef.id,
+      await measureSlowUiAction(
+        {
+          action: 'projects.createProject',
+          page: 'Projects',
           userId,
-          role: 'leader',
-          email: userEmail,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        } )
-      } )
+          projectId: projectRef.id,
+        },
+        () => runTransaction( db, async ( transaction ) => {
+          const counterSnap = await transaction.get( counterRef )
+          const nextNumberRaw = counterSnap.data()?.nextNumber
+          const nextNumber = typeof nextNumberRaw === 'number' ? nextNumberRaw : 1
+          transaction.set(
+            counterRef,
+            {
+              nextNumber: nextNumber + 1,
+              lastProjectId: projectRef.id,
+            },
+            { merge: true },
+          )
+          transaction.set( projectRef, {
+            name: name.trim(),
+            leaderId: userId,
+            isActive: true,
+            shortId: nextNumber,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          } )
+          transaction.set( leaderMemberRef, {
+            projectId: projectRef.id,
+            userId,
+            role: 'leader',
+            email: userEmail,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          } )
+        } ),
+      )
       const projectRefId = projectRef.id
       setName( '' )
       pendingSuccessFocusRef.current = { type: 'projectName' }

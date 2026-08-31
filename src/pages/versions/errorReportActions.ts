@@ -10,6 +10,7 @@ import { FIRST_VERSION_NUMBER } from "../../domain/types";
 import { logAudit } from "../../lib/audit";
 import { db } from "../../lib/firebase";
 import { DEFAULT_REVIEW_DURATION_DAYS } from "../../lib/reviewWindow";
+import { measureSlowUiAction } from "../../lib/slowUiAction";
 import type { VersionSummary } from "./types";
 
 type ErrorReportActionParams = {
@@ -80,69 +81,79 @@ const createErrorReportActions = (params: ErrorReportActionParams) => {
         "counters",
         `versions_${errorReportRef.id}`,
       );
-      await runTransaction(db, async (transaction) => {
-        const nextNumberRaw = (await transaction.get(counterRef)).data()
-          ?.nextNumber;
-        const nextNumber =
-          typeof nextNumberRaw === "number" ? nextNumberRaw : 1;
-        transaction.set(
-          counterRef,
-          { nextNumber: nextNumber + 1, docId, projectId },
-          { merge: true },
-        );
-        transaction.set(errorReportRef, {
+      await measureSlowUiAction(
+        {
+          action: "versions.createErrorReport",
+          page: "Document Versions",
+          userId,
           projectId,
-          title: title.trim(),
-          type: "errorReport",
-          baseDocId: docId,
-          baseVersionId: latestVersion.id,
-          createdBy: userId,
-          authorId: userId,
-          updatedBy: userId,
-          shortId: nextNumber,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-        transaction.set(versionRef, {
-          projectId,
-          docId: errorReportRef.id,
-          number: FIRST_VERSION_NUMBER,
-          status: "In Creation",
-          createdBy: userId,
-          reviewerIds: [],
-          reviewStartAt: null,
-          reviewEndAt: null,
-          reviewDurationDays: DEFAULT_REVIEW_DURATION_DAYS,
-          hasFile: false,
-          fileRefId: null,
-          stats: {
+          docId,
+          versionId: latestVersion.id,
+        },
+        () => runTransaction(db, async (transaction) => {
+          const nextNumberRaw = (await transaction.get(counterRef)).data()
+            ?.nextNumber;
+          const nextNumber =
+            typeof nextNumberRaw === "number" ? nextNumberRaw : 1;
+          transaction.set(
+            counterRef,
+            { nextNumber: nextNumber + 1, docId, projectId },
+            { merge: true },
+          );
+          transaction.set(errorReportRef, {
+            projectId,
+            title: title.trim(),
+            type: "errorReport",
+            baseDocId: docId,
+            baseVersionId: latestVersion.id,
+            createdBy: userId,
+            authorId: userId,
+            updatedBy: userId,
+            shortId: nextNumber,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+          transaction.set(versionRef, {
+            projectId,
+            docId: errorReportRef.id,
+            number: FIRST_VERSION_NUMBER,
+            status: "In Creation",
+            createdBy: userId,
+            reviewerIds: [],
+            reviewStartAt: null,
+            reviewEndAt: null,
+            reviewDurationDays: DEFAULT_REVIEW_DURATION_DAYS,
+            hasFile: false,
+            fileRefId: null,
+            stats: {
+              numThreads: 0,
+              numOpenThreads: 0,
+              numComments: 0,
+              numThreadsWithTwoPlusComments: 0,
+            },
             numThreads: 0,
             numOpenThreads: 0,
             numComments: 0,
             numThreadsWithTwoPlusComments: 0,
-          },
-          numThreads: 0,
-          numOpenThreads: 0,
-          numComments: 0,
-          numThreadsWithTwoPlusComments: 0,
-          acceptedErrorReportId: null,
-          previousVersionId: null,
-          createdAt: serverTimestamp(),
-          activityAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          updatedBy: userId,
-        });
-        transaction.set(
-          versionCounterRef,
-          {
-            nextNumber: FIRST_VERSION_NUMBER + 1,
-            docId: errorReportRef.id,
-            projectId,
+            acceptedErrorReportId: null,
             previousVersionId: null,
-          },
-          { merge: true },
-        );
-      });
+            createdAt: serverTimestamp(),
+            activityAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            updatedBy: userId,
+          });
+          transaction.set(
+            versionCounterRef,
+            {
+              nextNumber: FIRST_VERSION_NUMBER + 1,
+              docId: errorReportRef.id,
+              projectId,
+              previousVersionId: null,
+            },
+            { merge: true },
+          );
+        }),
+      );
       logAudit({
         actorId: userId,
         actorEmail: userEmail ?? null,

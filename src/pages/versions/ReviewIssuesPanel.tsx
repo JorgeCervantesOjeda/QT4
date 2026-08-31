@@ -4,6 +4,7 @@ import type { Dispatch, ReactNode, RefObject, SetStateAction } from 'react'
 import { useState } from 'react'
 import DataTable from '../../components/DataTable'
 import { requestAiAssist } from '../../lib/aiAssist'
+import { measureSlowUiAction } from '../../lib/slowUiAction'
 import { formatTimeAgoWithTimestamp } from '../../lib/time'
 import type { CommentSummary, ThreadSummary, VersionSummary } from './types'
 import {
@@ -25,6 +26,8 @@ type AiAssistTextState = {
 }
 
 type ReviewIssuesPanelProps = {
+  projectId: string
+  docId?: string
   selectedVersion: VersionSummary
   reviewIssuesPanelRef: RefObject<HTMLElement | null>
   formatUserLabel: (userId: string) => string
@@ -166,6 +169,9 @@ function ReviewIssuesPanel( props: ReviewIssuesPanelProps ) {
       {selectedThread ? (
         <SelectedThreadComments
           selectedThread={selectedThread}
+          selectedVersion={selectedVersion}
+          projectId={props.projectId}
+          docId={props.docId}
           threadNavigationStatusLabel={threadNavigationStatusLabel}
           onSelectAdjacentThread={onSelectAdjacentThread}
           hasPreviousThread={hasPreviousThread}
@@ -298,7 +304,7 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
 }
 
 function SelectedThreadComments( props: Pick<ReviewIssuesPanelProps,
-  'selectedThread' | 'threadNavigationStatusLabel' | 'onSelectAdjacentThread' | 'hasPreviousThread' |
+  'selectedThread' | 'selectedVersion' | 'projectId' | 'docId' | 'threadNavigationStatusLabel' | 'onSelectAdjacentThread' | 'hasPreviousThread' |
   'hasNextThread' | 'requestThreadStatusChangeConfirmation' | 'isBusy' | 'commentsViewMode' |
   'setCommentsViewMode' | 'selectedThreadComments' | 'commentColumns' | 'commentsSorting' |
   'setCommentsSorting' | 'highlightedCommentId' | 'formatUserLabel' | 'commentWindowCountdownLabel' |
@@ -306,6 +312,9 @@ function SelectedThreadComments( props: Pick<ReviewIssuesPanelProps,
 > ) {
   const {
     selectedThread,
+    selectedVersion,
+    projectId,
+    docId,
     threadNavigationStatusLabel,
     onSelectAdjacentThread,
     hasPreviousThread,
@@ -341,10 +350,20 @@ function SelectedThreadComments( props: Pick<ReviewIssuesPanelProps,
     setActiveAiRequest( requestKey )
     setThreadAiState( { entityId: selectedThread.id, result: '', error: '' } )
     try {
-      const response = await requestAiAssist( {
-        mode: 'explain_thread',
-        threadId: selectedThread.id,
-      } )
+      const response = await measureSlowUiAction(
+        {
+          action: 'review.explainIssue',
+          page: 'Document Versions',
+          projectId,
+          docId,
+          versionId: selectedVersion.id,
+          threadId: selectedThread.id,
+        },
+        () => requestAiAssist( {
+          mode: 'explain_thread',
+          threadId: selectedThread.id,
+        } ),
+      )
       setThreadAiState( { entityId: selectedThread.id, result: response.result, error: '' } )
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected AI error'
@@ -362,10 +381,20 @@ function SelectedThreadComments( props: Pick<ReviewIssuesPanelProps,
       [commentId]: { entityId: commentId, result: '', error: '' },
     } ) )
     try {
-      const response = await requestAiAssist( {
-        mode: 'explain_comment',
-        commentId,
-      } )
+      const response = await measureSlowUiAction(
+        {
+          action: 'review.explainComment',
+          page: 'Document Versions',
+          projectId,
+          docId,
+          versionId: selectedVersion.id,
+          threadId: selectedThread.id,
+        },
+        () => requestAiAssist( {
+          mode: 'explain_comment',
+          commentId,
+        } ),
+      )
       setCommentAiStates( ( previous ) => ( {
         ...previous,
         [commentId]: { entityId: commentId, result: response.result, error: '' },
@@ -391,11 +420,21 @@ function SelectedThreadComments( props: Pick<ReviewIssuesPanelProps,
     setActiveAiRequest( requestKey )
     setDraftAiState( { entityId: selectedThread.id, result: '', error: '' } )
     try {
-      const response = await requestAiAssist( {
-        mode: 'improve_text',
-        text: trimmedBody,
-        threadId: selectedThread.id,
-      } )
+      const response = await measureSlowUiAction(
+        {
+          action: 'review.improveWriting',
+          page: 'Document Versions',
+          projectId,
+          docId,
+          versionId: selectedVersion.id,
+          threadId: selectedThread.id,
+        },
+        () => requestAiAssist( {
+          mode: 'improve_text',
+          text: trimmedBody,
+          threadId: selectedThread.id,
+        } ),
+      )
       setDraftAiState( { entityId: selectedThread.id, result: response.result, error: '' } )
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected AI error'

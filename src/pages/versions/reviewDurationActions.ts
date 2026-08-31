@@ -5,6 +5,7 @@ import { doc, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { logAudit } from '../../lib/audit'
 import { db } from '../../lib/firebase'
 import { numOfReviewDurationDays } from '../../lib/reviewWindow'
+import { measureSlowUiAction } from '../../lib/slowUiAction'
 import type { VersionSummary } from './types'
 
 type VersionsErrorReporter = (
@@ -55,11 +56,21 @@ const createReviewDurationActions = (params: ReviewDurationActionParams) => {
     )
     params.setIsBusy( true )
     try {
-      await updateDoc( doc( db, 'versions', selectedVersion.id ), {
-        reviewDurationDays: nextReviewDurationDays,
-        updatedAt: serverTimestamp(),
-        updatedBy: params.userId,
-      } )
+      await measureSlowUiAction(
+        {
+          action: 'versions.updateReviewDuration',
+          page: 'Document Versions',
+          userId: params.userId,
+          projectId: params.projectId,
+          docId: params.docId,
+          versionId: selectedVersion.id,
+        },
+        () => updateDoc( doc( db, 'versions', selectedVersion.id ), {
+          reviewDurationDays: nextReviewDurationDays,
+          updatedAt: serverTimestamp(),
+          updatedBy: params.userId,
+        } ),
+      )
     } catch( err ) {
       params.setVersions( ( currentVersions ) =>
         currentVersions.map( ( version ) =>

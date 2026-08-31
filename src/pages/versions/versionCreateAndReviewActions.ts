@@ -20,6 +20,7 @@ import {
   DEFAULT_REVIEW_DURATION_DAYS,
   numOfReviewDurationDays,
 } from "../../lib/reviewWindow";
+import { measureSlowUiAction } from "../../lib/slowUiAction";
 import type { DocumentSummary, VersionSummary } from "./types";
 
 type ReportVersionsError = (
@@ -117,64 +118,74 @@ const createVersionCreateAndReviewActions = (
     try {
       const counterRef = doc(db, "counters", `versions_${docId}`);
       const versionRef = doc(collection(db, "versions"));
-      await runTransaction(db, async (transaction) => {
-        const counterSnap = await transaction.get(counterRef);
-        const txFallbackNext =
-          versions.length > 0 ? versions[0].number + 1 : FIRST_VERSION_NUMBER;
-        const txNextNumberRaw = counterSnap.data()?.nextNumber;
-        const txNextNumber =
-          typeof txNextNumberRaw === "number" &&
-          txNextNumberRaw >= txFallbackNext
-            ? txNextNumberRaw
-            : txFallbackNext;
-
-        transaction.set(
-          counterRef,
-          {
-            nextNumber: txNextNumber + 1,
-            docId,
-            projectId,
-            previousVersionId: latestVersion?.id ?? null,
-          },
-          { merge: true },
-        );
-        transaction.set(versionRef, {
+      await measureSlowUiAction(
+        {
+          action: "versions.createVersion",
+          page: "Document Versions",
+          userId,
           projectId,
           docId,
-          number: txNextNumber,
-          status: "In Creation",
-          createdBy: userId,
-          reviewerIds: [],
-          reviewStartAt: null,
-          reviewEndAt: null,
-          reviewDurationDays: DEFAULT_REVIEW_DURATION_DAYS,
-          hasFile: false,
-          fileRefId: null,
-          stats: {
+          versionId: latestVersion?.id ?? "",
+        },
+        () => runTransaction(db, async (transaction) => {
+          const counterSnap = await transaction.get(counterRef);
+          const txFallbackNext =
+            versions.length > 0 ? versions[0].number + 1 : FIRST_VERSION_NUMBER;
+          const txNextNumberRaw = counterSnap.data()?.nextNumber;
+          const txNextNumber =
+            typeof txNextNumberRaw === "number" &&
+            txNextNumberRaw >= txFallbackNext
+              ? txNextNumberRaw
+              : txFallbackNext;
+
+          transaction.set(
+            counterRef,
+            {
+              nextNumber: txNextNumber + 1,
+              docId,
+              projectId,
+              previousVersionId: latestVersion?.id ?? null,
+            },
+            { merge: true },
+          );
+          transaction.set(versionRef, {
+            projectId,
+            docId,
+            number: txNextNumber,
+            status: "In Creation",
+            createdBy: userId,
+            reviewerIds: [],
+            reviewStartAt: null,
+            reviewEndAt: null,
+            reviewDurationDays: DEFAULT_REVIEW_DURATION_DAYS,
+            hasFile: false,
+            fileRefId: null,
+            stats: {
+              numThreads: 0,
+              numOpenThreads: 0,
+              numComments: 0,
+              numThreadsWithTwoPlusComments: 0,
+            },
             numThreads: 0,
             numOpenThreads: 0,
             numComments: 0,
             numThreadsWithTwoPlusComments: 0,
-          },
-          numThreads: 0,
-          numOpenThreads: 0,
-          numComments: 0,
-          numThreadsWithTwoPlusComments: 0,
-          acceptedErrorReportId: null,
-          previousVersionId: latestVersion?.id ?? null,
-          createdAt: serverTimestamp(),
-          activityAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          updatedBy: userId,
-        });
-        if (latestVersion?.status === "In Review") {
-          transaction.update(doc(db, "versions", latestVersion.id), {
-            status: "Reviewed",
+            acceptedErrorReportId: null,
+            previousVersionId: latestVersion?.id ?? null,
+            createdAt: serverTimestamp(),
+            activityAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
             updatedBy: userId,
           });
-        }
-      });
+          if (latestVersion?.status === "In Review") {
+            transaction.update(doc(db, "versions", latestVersion.id), {
+              status: "Reviewed",
+              updatedAt: serverTimestamp(),
+              updatedBy: userId,
+            });
+          }
+        }),
+      );
       setSuccessMessage("Version created successfully.");
       logAudit({
         actorId: userId,
@@ -257,7 +268,17 @@ const createVersionCreateAndReviewActions = (
         updatedAt: serverTimestamp(),
         updatedBy: userId,
       });
-      await batch.commit();
+      await measureSlowUiAction(
+        {
+          action: "versions.startReview",
+          page: "Document Versions",
+          userId,
+          projectId,
+          docId,
+          versionId: latestVersion.id,
+        },
+        () => batch.commit(),
+      );
       const reviewerIds = latestVersion.reviewerIds ?? [];
       logAudit({
         actorId: userId,

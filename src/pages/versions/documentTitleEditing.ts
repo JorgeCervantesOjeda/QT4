@@ -4,6 +4,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { logAudit } from '../../lib/audit'
 import { db } from '../../lib/firebase'
+import { measureSlowUiAction } from '../../lib/slowUiAction'
 import type { DocumentSummary } from './types'
 
 type UseDocumentTitleEditingParams = {
@@ -75,11 +76,20 @@ function useDocumentTitleEditing( {
     setSuccessMessage( null )
     setIsBusy( true )
     try {
-      await updateDoc( doc( db, 'documents', docId ), {
-        title: trimmedTitle,
-        updatedAt: serverTimestamp(),
-        updatedBy: userId,
-      } )
+      await measureSlowUiAction(
+        {
+          action: 'versions.updateDocumentTitle',
+          page: 'Document Versions',
+          userId,
+          projectId,
+          docId,
+        },
+        () => updateDoc( doc( db, 'documents', docId ), {
+          title: trimmedTitle,
+          updatedAt: serverTimestamp(),
+          updatedBy: userId,
+        } ),
+      )
       setDocumentData( ( previous ) => previous ? { ...previous, title: trimmedTitle } : previous )
       setIsDocumentTitleModalOpen( false )
       setSuccessEmailRecipients( null )
