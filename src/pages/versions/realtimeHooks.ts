@@ -129,7 +129,6 @@ const useThreadsAndCommentsSubscription = (params: {
     selectedVersionId,
     projectId,
     docId,
-    threadIdFromQuery,
     commentsRetryToken,
     commentsRetryTimeoutRef,
     reportVersionsErrorRef,
@@ -171,9 +170,6 @@ const useThreadsAndCommentsSubscription = (params: {
       setPendingThreadStatusChange,
     } )
     clearCommentsRetryTimeout( commentsRetryTimeoutRef )
-    if( !threadIdFromQuery ) {
-      lastAppliedThreadQueryRef.current = null
-    }
     setIsLoadingThreads( true )
     const threadsListener = trackFirestoreListener( {
       label: 'versions.threads',
@@ -293,7 +289,6 @@ const useThreadsAndCommentsSubscription = (params: {
     selectedVersionId,
     projectId,
     docId,
-    threadIdFromQuery,
     commentsRetryToken,
     commentsRetryTimeoutRef,
     reportVersionsErrorRef,

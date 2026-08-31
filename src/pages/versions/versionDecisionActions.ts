@@ -35,7 +35,7 @@ type VersionDecisionActionParams = {
   isAdmin: boolean;
   isLeader: boolean;
   latestVersion: VersionSummary | null;
-  loadDocumentAndVersions: () => void;
+  loadDocumentAndVersions: () => Promise<void>;
   logBlockedVersionDecision: (
     decision: VersionDecision,
     message: string,
@@ -230,6 +230,7 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
             versionId: latestVersion.id,
           }),
       );
+      await loadDocumentAndVersions();
       setVersionDecisionModal(null);
       setSuccessMessage("Latest version accepted successfully.");
       const baseVersionId = documentData?.baseVersionId ?? null;
@@ -244,7 +245,6 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
           console.warn("Accepted error report task logging failed:", err);
         });
       }
-      loadDocumentAndVersions();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unexpected error";
       reportVersionsError(err, "versions.acceptLatestVersion", "network", {
@@ -305,9 +305,9 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
             versionId: latestVersion.id,
           }),
       );
+      await loadDocumentAndVersions();
       setVersionDecisionModal(null);
       setSuccessMessage("Latest version rejected successfully.");
-      loadDocumentAndVersions();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unexpected error";
       reportVersionsError(err, "versions.rejectLatestVersion", "network", {

@@ -210,6 +210,37 @@ describe( 'createVersionDecisionActions', () => {
     expect( calls[calls.length - 1] ).toBe( 'modal:null' )
   } )
 
+  it( 'waits for document and version reload before completing an accept decision', async () => {
+    firestoreMocks.getDoc.mockResolvedValueOnce( {
+      exists: () => false,
+      data: () => ( {} ),
+    } )
+    const calls: string[] = []
+    const loadDocumentAndVersions = vi.fn( async () => {
+      calls.push( 'load:start' )
+      await Promise.resolve()
+      calls.push( 'load:done' )
+    } )
+    const setIsBusy = vi.fn( ( value: boolean ) => {
+      calls.push( `busy:${String( value )}` )
+    } )
+    const actions = buildActions( {
+      loadDocumentAndVersions,
+      setIsBusy,
+      versionDecisionModal: 'accept',
+    } )
+
+    await actions.handleConfirmVersionDecision()
+
+    expect( loadDocumentAndVersions ).toHaveBeenCalledTimes( 1 )
+    expect( calls ).toEqual( [
+      'busy:true',
+      'load:start',
+      'load:done',
+      'busy:false',
+    ] )
+  } )
+
   it( 'blocks accepting a derived variant when new active change requests are not incorporated', async () => {
     firestoreMocks.getDoc.mockResolvedValueOnce( {
       exists: () => true,

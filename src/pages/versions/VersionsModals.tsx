@@ -119,6 +119,22 @@ function VersionsModals(props: VersionsModalsProps) {
     versionDecisionModal === "accept"
       ? "Confirm acceptance of the latest version. This will update its status to Accepted."
       : "Confirm rejection of the latest version. This will update its status to Rejected.";
+  const threadStatusProgressTitle =
+    pendingThreadStatusChange?.status === "open"
+      ? "Closing issue"
+      : "Reopening issue";
+  const threadStatusConfirmationTitle =
+    pendingThreadStatusChange?.status === "open"
+      ? "Close issue"
+      : "Reopen issue";
+  const threadStatusProgressMessage =
+    pendingThreadStatusChange?.status === "open"
+      ? "Applying issue closure..."
+      : "Applying issue reopening...";
+  const threadStatusConfirmationMessage =
+    pendingThreadStatusChange?.status === "open"
+      ? "Confirm closing this issue."
+      : "Confirm reopening this issue.";
 
   return (
     <>
@@ -256,34 +272,22 @@ function VersionsModals(props: VersionsModalsProps) {
         </ModalDialog>
       ) : null}
       {pendingThreadStatusChange ? (
-        <ModalDialog onClose={onClosePendingThreadStatusChange}>
-          <h3>
-            {pendingThreadStatusChange.status === "open"
-              ? "Close issue"
-              : "Reopen issue"}
-          </h3>
+        <ModalDialog onClose={isBusy ? undefined : onClosePendingThreadStatusChange}>
+          <h3>{isBusy ? threadStatusProgressTitle : threadStatusConfirmationTitle}</h3>
           <GiphyInline reason="thinking" mode="inline" />
           <p className="muted">
-            {pendingThreadStatusChange.status === "open"
-              ? "Confirm closing this issue."
-              : "Confirm reopening this issue."}
+            {isBusy ? threadStatusProgressMessage : threadStatusConfirmationMessage}
           </p>
-          <div className="actions">
-            <button
-              type="button"
-              onClick={onClosePendingThreadStatusChange}
-              disabled={isBusy}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={onConfirmThreadStatusChange}
-              disabled={isBusy}
-            >
-              Confirm
-            </button>
-          </div>
+          {!isBusy ? (
+            <div className="actions">
+              <button type="button" onClick={onClosePendingThreadStatusChange}>
+                Cancel
+              </button>
+              <button type="button" onClick={onConfirmThreadStatusChange}>
+                Confirm
+              </button>
+            </div>
+          ) : null}
         </ModalDialog>
       ) : null}
       {uploadStatus === "uploading" ? (

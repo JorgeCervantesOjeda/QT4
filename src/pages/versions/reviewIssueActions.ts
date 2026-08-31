@@ -439,8 +439,11 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
     pendingThreadStatusChange: ThreadSummary | null,
   ) => {
     if (!pendingThreadStatusChange) return;
-    params.setPendingThreadStatusChange(null);
-    await handleToggleThreadStatus(pendingThreadStatusChange);
+    try {
+      await handleToggleThreadStatus(pendingThreadStatusChange);
+    } finally {
+      params.setPendingThreadStatusChange(null);
+    }
   };
 
   return {
