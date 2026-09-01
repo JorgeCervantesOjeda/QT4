@@ -783,6 +783,7 @@
   max-width: 520px;
 }
 
+.progress-modal,
 .dashboard-progress-modal {
   max-width: 560px;
 }

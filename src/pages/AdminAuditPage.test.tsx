@@ -1,3 +1,5 @@
+// src/pages/AdminAuditPage.test.tsx
+// Verifies admin audit access, reporting, runtime configuration, and export behavior.
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -211,6 +213,65 @@ describe( 'pages/AdminAuditPage', () => {
     } )
     mockFetchOk()
   } )
+
+  it( 'shows audit report progress in a modal while the report is running', async () => {
+    let resolveAuditLogs: (snapshot: ReturnType<typeof createQuerySnapshot>) => void = () => undefined
+    const auditLogsPromise = new Promise<ReturnType<typeof createQuerySnapshot>>( (resolve) => {
+      resolveAuditLogs = resolve
+    } )
+    currentUserState.user = {
+      uid: 'user-admin-1',
+      email: 'admin@example.com',
+      displayName: 'Admin User',
+      getIdToken: vi.fn().mockResolvedValue( 'admin-token' ),
+    }
+    getDocMock.mockImplementation( async ( docRef: { collection: string; id: string } ) => {
+      if( docRef.collection === 'userProfiles' && docRef.id === 'user-admin-1' ) {
+        return createDocSnapshot( {
+          id: 'user-admin-1',
+          data: {
+            isAdmin: true,
+          },
+        } )
+      }
+      return createMissingSnapshot( docRef.id )
+    } )
+    getDocsMock.mockImplementation( async ( queryArg: unknown ) => {
+      const collectionName = getCollectionName( queryArg )
+      if( collectionName === 'userDirectory' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'user-admin-1',
+            data: {
+              userId: 'user-admin-1',
+              email: 'admin@example.com',
+              displayName: 'Admin User',
+            },
+          },
+        ] )
+      }
+      if( collectionName === 'auditLogs' ) {
+        return auditLogsPromise
+      }
+      return createQuerySnapshot( [] )
+    } )
+
+    render( <AdminAuditPage /> )
+
+    expect( await screen.findByRole( 'heading', { name: 'Admin Audit' }, { timeout: 10000 } ) ).toBeTruthy()
+    await waitFor( () => {
+      expect( ( screen.getByLabelText( 'User' ) as HTMLSelectElement ).value ).toBe( 'user-admin-1' )
+    } )
+    fireEvent.change( screen.getByLabelText( 'User' ), {
+      target: { value: '__all_users__' },
+    } )
+    fireEvent.click( screen.getByRole( 'button', { name: 'Run report' } ) )
+
+    expect( await screen.findByRole( 'dialog', {}, { timeout: 10000 } ) ).toBeTruthy()
+    expect( screen.getByRole( 'heading', { name: 'Generating report' } ) ).toBeTruthy()
+    expect( screen.getByText( 'Generating report...' ) ).toBeTruthy()
+    resolveAuditLogs( createQuerySnapshot( [] ) )
+  }, 15000 )
 
   it( 'hides admin-only sections for a non-admin user', async () => {
     render( <AdminAuditPage /> )

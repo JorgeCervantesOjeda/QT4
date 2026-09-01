@@ -13,8 +13,7 @@ import AppBrand from '../components/AppBrand'
 import BackStack from '../components/BackStack'
 import DataTable from '../components/DataTable'
 import ErrorChecklistModal from '../components/ErrorChecklistModal'
-import ModalDialog from '../components/ModalDialog'
-import { GiphyInline } from '../giphy/GiphyProvider'
+import ProgressModal from '../components/ProgressModal'
 import { useErrorChecklistModal } from '../hooks/useErrorChecklistModal'
 import { reportAbnormalError } from '../lib/errorMonitor'
 import { requestAiAssist } from '../lib/aiAssist'
@@ -684,9 +683,7 @@ function DashboardPage() {
           />
         ) : null}
         {isLoadingTasks || isAnalyzingUrgency ? (
-          <ModalDialog cardClassName="dashboard-progress-modal">
-            <h3>{isLoadingTasks ? 'Refreshing dashboard' : 'Analyzing urgency'}</h3>
-            <GiphyInline reason="loading" mode="inline" showLabel={false} />
+          <ProgressModal title={isLoadingTasks ? 'Refreshing dashboard' : 'Analyzing urgency'}>
             {isLoadingTasks && refreshProgress ? (
               <div className="dashboard-progress">
                 <div className="dashboard-progress__track" aria-hidden="true">
@@ -704,7 +701,7 @@ function DashboardPage() {
             ) : (
               <p className="muted">Working...</p>
             )}
-          </ModalDialog>
+          </ProgressModal>
         ) : null}
 
         {!isLoadingTasks ? (

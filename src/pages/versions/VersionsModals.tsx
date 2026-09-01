@@ -5,6 +5,7 @@ import ErrorChecklistModal, {
   type ChecklistItem,
 } from "../../components/ErrorChecklistModal";
 import ModalDialog from "../../components/ModalDialog";
+import ProgressModal from "../../components/ProgressModal";
 import { GiphyInline } from "../../giphy/GiphyProvider";
 import { reportUserVisibleError } from "../../lib/errorMonitor";
 import type {
@@ -466,16 +467,6 @@ function VersionsModals(props: VersionsModalsProps) {
         />
       ) : null}
     </>
-  );
-}
-
-function ProgressModal({ title, message }: { title: string; message: string }) {
-  return (
-    <ModalDialog>
-      <h3>{title}</h3>
-      <GiphyInline reason="loading" mode="inline" showLabel={false} />
-      <p className="muted">{message}</p>
-    </ModalDialog>
   );
 }
 

@@ -1,3 +1,5 @@
+// src/pages/ProjectsPage.tsx
+// Lists projects, handles project creation, and shows project-level feedback.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ColumnDef, SortingState } from '@tanstack/react-table'
 import {
@@ -19,6 +21,7 @@ import BackStack from '../components/BackStack'
 import DataTable from '../components/DataTable'
 import ErrorChecklistModal from '../components/ErrorChecklistModal'
 import ModalDialog from '../components/ModalDialog'
+import ProgressModal from '../components/ProgressModal'
 import { GiphyInline } from '../giphy/GiphyProvider'
 import { useErrorChecklistModal } from '../hooks/useErrorChecklistModal'
 import { logAudit } from '../lib/audit'
@@ -531,9 +534,7 @@ function ProjectsPage() {
         </section>
 
         {isLoadingProjects && projects.length === 0 ? (
-          <section className="panel">
-            <GiphyInline reason="loading" mode="inline" />
-          </section>
+          <ProgressModal title="Loading projects" message="Loading projects..." />
         ) : (
           <section className="panel stack">
             <div className="panel-header">

@@ -1,3 +1,5 @@
+// src/pages/ProjectDocumentsPage.test.tsx
+// Verifies project document loading, membership, and change request workflows.
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -285,6 +287,16 @@ describe( 'pages/ProjectDocumentsPage', () => {
         set: transactionSetMock,
       } )
     } )
+  } )
+
+  it( 'shows document loading progress in a modal', () => {
+    onSnapshotMock.mockImplementation( () => () => undefined )
+
+    render( <ProjectDocumentsPage /> )
+
+    expect( screen.getByRole( 'dialog' ) ).toBeTruthy()
+    expect( screen.getByRole( 'heading', { name: 'Loading documents' } ) ).toBeTruthy()
+    expect( screen.getByText( 'Loading documents...' ) ).toBeTruthy()
   } )
 
   it( 'renders the project label and loaded document summary', async () => {

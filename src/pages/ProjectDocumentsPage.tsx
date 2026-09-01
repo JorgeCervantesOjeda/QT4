@@ -23,6 +23,7 @@ import BackStack from '../components/BackStack'
 import DataTable from '../components/DataTable'
 import ErrorChecklistModal, { type ChecklistItem } from '../components/ErrorChecklistModal'
 import ModalDialog from '../components/ModalDialog'
+import ProgressModal from '../components/ProgressModal'
 import { GiphyInline } from '../giphy/GiphyProvider'
 import { useErrorChecklistModal } from '../hooks/useErrorChecklistModal'
 import { FIRST_VERSION_NUMBER, versionNumberToString } from '../domain/types'
@@ -1615,9 +1616,7 @@ function ProjectDocumentsPage() {
         ) : null}
 
         {isLoadingDocuments && documents.length === 0 ? (
-          <section className="panel">
-            <GiphyInline reason="loading" mode="inline" />
-          </section>
+          <ProgressModal title="Loading documents" message="Loading documents..." />
         ) : (
           <section className="panel stack">
             <div className="panel-header">

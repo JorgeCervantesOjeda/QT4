@@ -1,3 +1,5 @@
+// src/pages/AdminAuditPage.tsx
+// Renders administrative audit, data repair, runtime provider, and export workflows.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ColumnDef, SortingState } from '@tanstack/react-table'
 import addDays from 'date-fns/addDays'
@@ -30,6 +32,7 @@ import BackStack from '../components/BackStack'
 import DataTable from '../components/DataTable'
 import ErrorChecklistModal from '../components/ErrorChecklistModal'
 import ModalDialog from '../components/ModalDialog'
+import ProgressModal from '../components/ProgressModal'
 import {
   type FileStorageProviderKind,
   type NotificationProviderKind,
@@ -2307,10 +2310,7 @@ function AdminAuditPage() {
         ) : null}
 
         {isBusy && logs.length === 0 ? (
-          <section className="panel">
-            <GiphyInline reason="loading" mode="inline" showLabel={false} />
-            <p className="muted">Generating report...</p>
-          </section>
+          <ProgressModal title="Generating report" message="Generating report..." />
         ) : (
           <section className="panel stack">
             <div className="panel-header">

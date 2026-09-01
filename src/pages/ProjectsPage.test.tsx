@@ -1,3 +1,5 @@
+// src/pages/ProjectsPage.test.tsx
+// Verifies project list loading, cards, and error states.
 import { render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -233,6 +235,16 @@ describe( 'pages/ProjectsPage', () => {
 
   afterEach( () => {
     vi.clearAllMocks()
+  } )
+
+  it( 'shows project loading progress in a modal', () => {
+    onSnapshotMock.mockImplementation( () => () => undefined )
+
+    render( <ProjectsPage /> )
+
+    expect( screen.getByRole( 'dialog' ) ).toBeTruthy()
+    expect( screen.getByRole( 'heading', { name: 'Loading projects' } ) ).toBeTruthy()
+    expect( screen.getByText( 'Loading projects...' ) ).toBeTruthy()
   } )
 
   it( 'renders loaded projects with resolved leader labels without member lists in cards', async () => {
