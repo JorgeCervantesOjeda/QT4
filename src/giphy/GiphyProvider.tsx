@@ -1,3 +1,5 @@
+// src/giphy/GiphyProvider.tsx
+// Provides cached Giphy status media for confirmation, loading, success, and error states.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { GiphyContext, type GiphyReason } from './GiphyContext'
 import { useGiphy } from './useGiphy'
@@ -14,12 +16,12 @@ const CONFIG_BY_REASON: Record<GiphyReason, GiphyConfig> = {
   good_job: {
     endpoint: 'gifs',
     tag: 'good job yes yeah',
-    label: 'Working on it...',
+    label: 'Done.',
   },
   teamwork: {
     endpoint: 'gifs',
     tag: 'team work',
-    label: 'Working on it...',
+    label: 'Working together...',
   },
   thinking: {
     endpoint: 'gifs',
@@ -29,17 +31,17 @@ const CONFIG_BY_REASON: Record<GiphyReason, GiphyConfig> = {
   loading: {
     endpoint: 'gifs',
     tag: 'bored waiting',
-    label: 'Loading...',
+    label: 'Working...',
   },
   dislike_rejected_nope: {
     endpoint: 'gifs',
     tag: 'dislike rejected nope',
-    label: 'Working on it...',
+    label: 'Action could not continue.',
   },
   wellcome: {
     endpoint: 'gifs',
     tag: 'wellcome',
-    label: 'Working on it...',
+    label: 'Welcome.',
   },
 }
 
@@ -108,7 +110,9 @@ export const GiphyInline = ({
           return { ...current, [reason]: after }
         } )
       } else {
-        console.warn( `Giphy not available for reason: ${reason}. Showing loading state.` )
+        console.warn(
+          `Giphy not available for reason: ${reason}. Fallback: showing configured status label when enabled. Impact: animated status media is hidden.`,
+        )
       }
     } )
     return () => {
@@ -118,7 +122,7 @@ export const GiphyInline = ({
 
   if( mode === 'inline' ) {
     if( !src ) {
-      return <p className="muted">Loading...</p>
+      return showLabel ? <p className="muted">{label}</p> : null
     }
     return (
       <div className="giphy-inline">
@@ -224,8 +228,10 @@ export const GiphyProvider = ({ children }: { children: React.ReactNode }) => {
     lastSrcRef.current[reason] = src
     try {
       window.localStorage.setItem( `qt4_giphy_last_${reason}`, src )
-    } catch {
-      // ignore storage errors
+    } catch( err ) {
+      console.warn(
+        `Giphy cache write failed. Cause: ${err instanceof Error ? err.message : 'unknown storage error'}. Fallback: keep GIF in memory only. Impact: the next session may fetch media again.`,
+      )
     }
   }, [] )
 
@@ -241,9 +247,11 @@ export const GiphyProvider = ({ children }: { children: React.ReactNode }) => {
         } else {
           console.warn( `Giphy missing for reason: ${reason}. Possible rate limit or cooldown.` )
         }
-      } catch {
+      } catch( err ) {
         if( !lastSrcRef.current[reason] ) {
-          console.warn( `Giphy missing for reason: ${reason}. Fetch failed.` )
+          console.warn(
+            `Giphy missing for reason: ${reason}. Cause: ${err instanceof Error ? err.message : 'fetch failed'}. Fallback: show the configured status label. Impact: animated status media is hidden.`,
+          )
         }
       }
     },
@@ -296,8 +304,10 @@ export const GiphyProvider = ({ children }: { children: React.ReactNode }) => {
         if( stored ) {
           lastSrcRef.current[reason] = stored
         }
-      } catch {
-        // ignore storage errors
+      } catch( err ) {
+        console.warn(
+          `Giphy cache read failed for reason: ${reason}. Cause: ${err instanceof Error ? err.message : 'unknown storage error'}. Fallback: fetch fresh media. Impact: loading may take longer.`,
+        )
       }
     } )
   }, [] )

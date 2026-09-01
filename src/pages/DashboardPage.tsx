@@ -686,7 +686,7 @@ function DashboardPage() {
         {isLoadingTasks || isAnalyzingUrgency ? (
           <ModalDialog cardClassName="dashboard-progress-modal">
             <h3>{isLoadingTasks ? 'Refreshing dashboard' : 'Analyzing urgency'}</h3>
-            <GiphyInline reason="teamwork" mode="inline" />
+            <GiphyInline reason="loading" mode="inline" showLabel={false} />
             {isLoadingTasks && refreshProgress ? (
               <div className="dashboard-progress">
                 <div className="dashboard-progress__track" aria-hidden="true">

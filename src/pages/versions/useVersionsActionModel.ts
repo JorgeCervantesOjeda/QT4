@@ -52,6 +52,7 @@ const useVersionsActionModel = ({
     pendingThreadStatusChange,
     pendingUploadFile,
     pendingVersionAction,
+    propagationFailurePrompt,
     selectedVersionId,
     setEmailNotifyMessage,
     setEmailNotifyStatus,
@@ -65,6 +66,7 @@ const useVersionsActionModel = ({
     setPendingThreadStatusChange,
     setPendingUploadFile,
     setPendingVersionAction,
+    setPropagationFailurePrompt,
     setSelectedThreadId,
     setVersions,
     setSuccessEmailRecipients,
@@ -124,7 +126,11 @@ const useVersionsActionModel = ({
     isMembersTableCompact: isMembersTableCompact,
   });
 
-  const { handleConfirmVersionDecision, requestVersionDecisionConfirmation } =
+  const {
+    handleConfirmVersionDecision,
+    handleRetryPropagatedErrorReports,
+    requestVersionDecisionConfirmation,
+  } =
     createVersionDecisionActions({
       canAcceptOrReject: derived.canAcceptOrReject,
       docId,
@@ -134,10 +140,12 @@ const useVersionsActionModel = ({
       latestVersion: derived.latestVersion,
       loadDocumentAndVersions,
       logBlockedVersionDecision: derived.logBlockedVersionDecision,
+      propagationFailurePrompt,
       projectId: derived.projectId,
       reportVersionsError: derived.reportVersionsError,
       setError: setError,
       setIsBusy: setIsBusy,
+      setPropagationFailurePrompt,
       setSuccessMessage: setSuccessMessage,
       setVersionDecisionModal: setVersionDecisionModal,
       userEmail,
@@ -374,6 +382,7 @@ const useVersionsActionModel = ({
     handleConfirmVersionDecision,
     handleCreateErrorReport,
     handleCreateThread: reviewIssueActions.handleCreateThread,
+    handleRetryPropagatedErrorReports,
     handleReviewDurationDaysChange,
     memberColumns,
     moveSelectedVersion,

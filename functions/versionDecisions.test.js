@@ -251,6 +251,61 @@ test( "accepting a change request records the active derived configuration insid
   )
 } )
 
+test( "accepting an error report returns propagation failures to the client", async () => {
+  const db = createFakeDb( {
+    "documents/error-report-doc": {
+      projectId: "target-project",
+      type: "errorReport",
+      createdBy: "author-1",
+      baseProjectId: "origin-project",
+      baseDocId: "origin-doc",
+      baseVersionId: "origin-version",
+    },
+    "versions/error-report-version": {
+      ...readyReviewVersion,
+      docId: "error-report-doc",
+      fileRefId: "source-file",
+    },
+    "projectMembers/target-project_author-1": {
+      projectId: "target-project",
+      userId: "author-1",
+      role: "member",
+    },
+  } )
+  let capturedAfterData = null
+
+  const result = await decideVersion( {
+    admin: adminFor( db ),
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+    uid: "author-1",
+    email: "author@example.com",
+    body: {
+      decision: "accept",
+      projectId: "target-project",
+      docId: "error-report-doc",
+      versionId: "error-report-version",
+    },
+    propagateAcceptedErrorReport: async ({ afterData }) => {
+      capturedAfterData = afterData
+      return {
+        createdCount: 0,
+        skippedCount: 0,
+        failedCount: 1,
+        failures: [ { reason: "storage_copy_failed" } ],
+      }
+    },
+  } )
+
+  assert.equal( capturedAfterData.status, "Accepted" )
+  assert.equal( capturedAfterData.number, 100 )
+  assert.deepEqual( result.propagatedErrorReports, {
+    createdCount: 0,
+    skippedCount: 0,
+    failedCount: 1,
+    failures: [ { reason: "storage_copy_failed" } ],
+  } )
+} )
+
 test( "accepting a derived document replaces incorporated accepted change requests", async () => {
   const db = createFakeDb( {
     "documents/derived-doc": {

@@ -10,6 +10,7 @@ import type {
   FileRefSummary,
   PendingVersionAction,
   ProjectMember,
+  PropagationFailurePrompt,
   ThreadSummary,
   VersionSummary,
 } from "./types";
@@ -58,6 +59,8 @@ const useVersionsPageState = () => {
   const [versionDecisionModal, setVersionDecisionModal] = useState<
     "accept" | "reject" | null
   >(null);
+  const [propagationFailurePrompt, setPropagationFailurePrompt] =
+    useState<PropagationFailurePrompt | null>(null);
   const [pendingVersionAction, setPendingVersionAction] =
     useState<PendingVersionAction | null>(null);
   const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
@@ -211,6 +214,8 @@ const useVersionsPageState = () => {
     setIsErrorReportModalOpen,
     versionDecisionModal,
     setVersionDecisionModal,
+    propagationFailurePrompt,
+    setPropagationFailurePrompt,
     pendingVersionAction,
     setPendingVersionAction,
     pendingUploadFile,

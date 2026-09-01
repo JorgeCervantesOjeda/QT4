@@ -503,7 +503,6 @@ function ProjectsPage() {
       <header className="app-header">
         <div>
           <AppBrand pageTitle="Projects" />
-          {isLoadingProjects ? <GiphyInline reason="loading" /> : null}
         </div>
         <BackStack links={[]} />
       </header>
@@ -533,7 +532,7 @@ function ProjectsPage() {
 
         {isLoadingProjects && projects.length === 0 ? (
           <section className="panel">
-            <GiphyInline reason="loading" />
+            <GiphyInline reason="loading" mode="inline" />
           </section>
         ) : (
           <section className="panel stack">

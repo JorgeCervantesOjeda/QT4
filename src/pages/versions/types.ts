@@ -1,5 +1,6 @@
 // Local view-model types for the Versions page. These summarize Firestore documents after normalization.
 import type { FileStorageProviderKind } from '../../domain/types'
+import type { PropagatedErrorReportFailure } from '../../lib/propagatedErrorReports'
 
 type VersionSummary = {
   id: string
@@ -100,6 +101,13 @@ type AcceptedErrorReportSummary = {
 
 type PendingVersionAction = 'createVersion' | 'startReview' | 'replaceFile'
 type DashboardFocusTarget = 'actions' | 'file' | 'issues' | 'comments'
+type PropagationFailurePrompt = {
+  projectId: string
+  docId: string
+  versionId: string
+  message: string
+  failures: PropagatedErrorReportFailure[]
+}
 
 export type {
   AcceptedErrorReportSummary,
@@ -110,6 +118,7 @@ export type {
   FileRefSummary,
   PendingVersionAction,
   ProjectMember,
+  PropagationFailurePrompt,
   ThreadSummary,
   VersionSummary,
 }

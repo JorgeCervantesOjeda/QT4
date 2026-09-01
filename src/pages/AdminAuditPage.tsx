@@ -232,6 +232,14 @@ function AdminAuditPage() {
   const [modelUpdateLog, setModelUpdateLog] = useState<string[]>([] )
   const [isModelUpdateLogOpen, setIsModelUpdateLogOpen] = useState( false )
   const [modelUpdateLogCopyStatus, setModelUpdateLogCopyStatus] = useState<'idle' | 'copied' | 'error'>( 'idle' )
+  const modelUpdateLogGiphyReason =
+    modelUpdateStatus === 'running'
+      ? 'loading'
+      : modelUpdateStatus === 'done'
+        ? 'good_job'
+        : modelUpdateStatus === 'error'
+          ? 'dislike_rejected_nope'
+          : 'thinking'
   const [confirmModelUpdate, setConfirmModelUpdate] = useState( false )
   const [reviewRepairStatus, setReviewRepairStatus] = useState<'idle' | 'running' | 'done' | 'error'>( 'idle' )
   const [reviewRepairMessage, setReviewRepairMessage] = useState<string>( '' )
@@ -2103,7 +2111,7 @@ function AdminAuditPage() {
         {isModelUpdateLogOpen ? (
           <ModalDialog onClose={() => setIsModelUpdateLogOpen( false )}>
             <h3>Data model update log</h3>
-            <GiphyInline reason="thinking" mode="inline" />
+            <GiphyInline reason={modelUpdateLogGiphyReason} mode="inline" showLabel={false} />
             <p className="muted">
               Review the repair steps below, then close this window when you are done.
             </p>
@@ -2300,7 +2308,7 @@ function AdminAuditPage() {
 
         {isBusy && logs.length === 0 ? (
           <section className="panel">
-            <GiphyInline reason="loading" />
+            <GiphyInline reason="loading" mode="inline" showLabel={false} />
             <p className="muted">Generating report...</p>
           </section>
         ) : (

@@ -1,4 +1,7 @@
 // functions/versionDecisions.js: Applies accepted/rejected version decisions with transactional side effects.
+const { propagateAcceptedErrorReport } = require( "./propagatedErrorReports" )
+const { appendPropagatedErrorReportsToDecisionResult } = require( "./versionDecisionPropagation" )
+const { hasReviewEvidence, isIntegerVersionNumber, promotedNumberFor, versionNumber } = require( "./versionDecisionRules" )
 const DECISIONS = new Set( [ "accept", "reject" ] )
 
 const ACCEPTED_DERIVED_DOCUMENT_MESSAGE =
@@ -49,30 +52,6 @@ const buildDerivationLineKey = ({
   originDocumentId,
   originVersionId,
 ].join( "|" )
-
-const versionNumber = (versionData) => {
-  const value = Number( versionData?.number )
-  return Number.isFinite( value ) ? value : 0
-}
-
-const isIntegerVersionNumber = (value) => Number.isInteger( Number( value ) )
-
-const numOfVersionStat = (versionData, fieldName) => {
-  const statsValue = versionData?.stats?.[fieldName]
-  if( typeof statsValue === "number" ) {
-    return statsValue
-  }
-  const rootValue = versionData?.[fieldName]
-  return typeof rootValue === "number" ? rootValue : 0
-}
-
-const hasReviewEvidence = (versionData) =>
-  versionData?.hasFile === true
-  && numOfVersionStat( versionData, "numThreads" ) > 0
-  && numOfVersionStat( versionData, "numThreadsWithTwoPlusComments" ) > 0
-  && numOfVersionStat( versionData, "numOpenThreads" ) === 0
-
-const promotedNumberFor = (number) => ( Math.floor( number / 100 ) + 1 ) * 100
 
 const areStringSetsEqual = (left, right) => {
   if( left.length !== right.length ) {
@@ -297,7 +276,14 @@ const stageAuditLog = ({ db, transaction, request, email, decision, timestamp })
   } )
 }
 
-const decideVersion = async ({ admin, logger, uid, email = "", body }) => {
+const decideVersion = async ({
+  admin,
+  logger,
+  uid,
+  email = "",
+  body,
+  propagateAcceptedErrorReport: propagateAcceptedErrorReportFn = propagateAcceptedErrorReport,
+}) => {
   const request = {
     ...normalizeVersionDecisionRequest( body ),
     uid: normalizeString( uid ),
@@ -360,13 +346,17 @@ const decideVersion = async ({ admin, logger, uid, email = "", body }) => {
         } )
       : null
 
-    transaction.update( refs.versionRef, {
+    const shouldPropagateAcceptedErrorReport =
+      request.decision === "accept" && documentData.type === "errorReport"
+    const versionUpdate = {
       status: nextStatus,
       ...( promotedNumber ? { number: promotedNumber } : {} ),
       activityAt: timestamp,
       updatedAt: timestamp,
       updatedBy: request.uid,
-    } )
+      ...( shouldPropagateAcceptedErrorReport ? { propagatedErrorReportsHandledByDecision: true } : {} ),
+    }
+    transaction.update( refs.versionRef, versionUpdate )
 
     if( request.decision === "accept" ) {
       transaction.set( refs.counterRef, {
@@ -411,7 +401,7 @@ const decideVersion = async ({ admin, logger, uid, email = "", body }) => {
       decision: request.decision,
       timestamp,
     } )
-    return {
+    const response = {
       ok: true,
       decision: request.decision,
       docId: request.docId,
@@ -420,6 +410,29 @@ const decideVersion = async ({ admin, logger, uid, email = "", body }) => {
       promotedNumber,
       replacedVersionIds: previousAcceptedSnapshots.map( (snapshot) => snapshot.id ),
     }
+    if( shouldPropagateAcceptedErrorReport ) {
+      response.propagationContext = {
+        beforeData: versionData,
+        afterData: {
+          ...versionData,
+          ...versionUpdate,
+          projectId: request.projectId,
+          docId: request.docId,
+        },
+        afterRef: refs.versionRef,
+      }
+    }
+    return response
+  } )
+  const propagationContext = result.propagationContext || null
+  delete result.propagationContext
+  const response = await appendPropagatedErrorReportsToDecisionResult( {
+    admin,
+    logger,
+    request,
+    result,
+    propagationContext,
+    propagateAcceptedErrorReport: propagateAcceptedErrorReportFn,
   } )
   logger.info( "versionDecision applied", {
     uid: request.uid,
@@ -427,9 +440,9 @@ const decideVersion = async ({ admin, logger, uid, email = "", body }) => {
     docId: request.docId,
     versionId: request.versionId,
     decision: request.decision,
-    replacedCount: result.replacedVersionIds.length,
+    replacedCount: response.replacedVersionIds.length,
   } )
-  return result
+  return response
 }
 
 const createVersionDecisionHandler = ({ admin, logger, verifyBearerToken, setCorsHeaders }) => async (req, res) => {

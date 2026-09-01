@@ -1,12 +1,17 @@
 // src/pages/versions/VersionsModals.tsx
 // Presents confirmations, document title edits, success messages, and error reporting context.
-import type { Dispatch, RefObject, SetStateAction } from "react";
+import { useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 import ErrorChecklistModal, {
   type ChecklistItem,
 } from "../../components/ErrorChecklistModal";
 import ModalDialog from "../../components/ModalDialog";
 import { GiphyInline } from "../../giphy/GiphyProvider";
-import type { PendingVersionAction, ThreadSummary } from "./types";
+import { reportUserVisibleError } from "../../lib/errorMonitor";
+import type {
+  PendingVersionAction,
+  PropagationFailurePrompt,
+  ThreadSummary,
+} from "./types";
 import { formatEmailRecipientsLine } from "./utils";
 
 type ErrorReportContext = {
@@ -39,6 +44,10 @@ type VersionsModalsProps = {
   versionDecisionModal: "accept" | "reject" | null;
   onCloseVersionDecisionModal: () => void;
   onConfirmVersionDecision: () => void;
+  propagationFailurePrompt: PropagationFailurePrompt | null;
+  onClosePropagationFailurePrompt: () => void;
+  onReportPropagationFailure: () => void;
+  onRetryPropagatedErrorReports: () => void;
   pendingVersionAction: PendingVersionAction | null;
   onClosePendingVersionAction: () => void;
   onConfirmPendingVersionAction: () => void;
@@ -81,6 +90,10 @@ function VersionsModals(props: VersionsModalsProps) {
     versionDecisionModal,
     onCloseVersionDecisionModal,
     onConfirmVersionDecision,
+    propagationFailurePrompt,
+    onClosePropagationFailurePrompt,
+    onReportPropagationFailure,
+    onRetryPropagatedErrorReports,
     pendingVersionAction,
     onClosePendingVersionAction,
     onConfirmPendingVersionAction,
@@ -103,6 +116,18 @@ function VersionsModals(props: VersionsModalsProps) {
     onCloseError,
     errorReportContext,
   } = props;
+  const [propagationReportStatus, setPropagationReportStatus] = useState<
+    "idle" | "sending" | "sent" | "failed"
+  >("idle");
+  const isReportingPropagationFailure = propagationReportStatus === "sending";
+  const propagationFailureGiphyReason =
+    isBusy || isReportingPropagationFailure
+      ? "loading"
+      : propagationReportStatus === "sent"
+        ? "good_job"
+        : propagationReportStatus === "failed"
+          ? "dislike_rejected_nope"
+          : "thinking";
   const versionDecisionProgressTitle =
     versionDecisionModal === "accept"
       ? "Accepting latest version"
@@ -135,6 +160,44 @@ function VersionsModals(props: VersionsModalsProps) {
     pendingThreadStatusChange?.status === "open"
       ? "Confirm closing this issue."
       : "Confirm reopening this issue.";
+  const reportPropagationFailure = async () => {
+    if( !propagationFailurePrompt ) {
+      return;
+    }
+    setPropagationReportStatus( "sending" );
+    const failureReasons = propagationFailurePrompt.failures
+      .map( (failure) => failure.reason )
+      .join( ", " );
+    const readableContextLines = [
+      `Page: ${errorReportContext.pageLabel}`,
+      errorReportContext.projectLabel ? `Project: ${errorReportContext.projectLabel}` : null,
+      errorReportContext.docLabel ? `Document: ${errorReportContext.docLabel}` : null,
+      errorReportContext.versionLabel ? `Version: ${errorReportContext.versionLabel}` : null,
+      errorReportContext.threadLabel ? `Issue: ${errorReportContext.threadLabel}` : null,
+    ].filter( Boolean );
+    const reportMessage = [
+      `User-visible error: ${propagationFailurePrompt.message}`,
+      readableContextLines.length > 0 ? "" : null,
+      ...readableContextLines,
+      "",
+      `Failures: ${failureReasons || "unknown"}`,
+    ].filter( (line) => line !== null ).join( "\n" );
+    const wasReported = await reportUserVisibleError( {
+      message: reportMessage,
+      action: "versions.propagateAcceptedErrorReport",
+      source: "storage",
+      projectId: propagationFailurePrompt.projectId,
+      docId: propagationFailurePrompt.docId,
+      versionId: propagationFailurePrompt.versionId,
+      pageLabel: errorReportContext.pageLabel,
+      projectLabel: errorReportContext.projectLabel,
+      docLabel: errorReportContext.docLabel,
+      versionLabel: errorReportContext.versionLabel,
+      threadLabel: errorReportContext.threadLabel,
+    } );
+    onReportPropagationFailure();
+    setPropagationReportStatus( wasReported ? "sent" : "failed" );
+  };
 
   return (
     <>
@@ -212,7 +275,7 @@ function VersionsModals(props: VersionsModalsProps) {
           <h3>
             {isBusy ? versionDecisionProgressTitle : versionDecisionConfirmationTitle}
           </h3>
-          <GiphyInline reason="thinking" mode="inline" />
+          <GiphyInline reason={isBusy ? "loading" : "thinking"} mode="inline" />
           <p className="muted">
             {isBusy ? versionDecisionProgressMessage : versionDecisionConfirmationMessage}
           </p>
@@ -234,6 +297,65 @@ function VersionsModals(props: VersionsModalsProps) {
               </button>
             </div>
           ) : null}
+        </ModalDialog>
+      ) : null}
+      {propagationFailurePrompt ? (
+        <ModalDialog
+          onClose={isBusy || isReportingPropagationFailure ? undefined : onClosePropagationFailurePrompt}
+        >
+          <h3>
+            {isBusy
+              ? "Retrying error report propagation"
+              : isReportingPropagationFailure
+                ? "Reporting propagation failure"
+                : "Error report propagation failed"}
+          </h3>
+          <GiphyInline reason={propagationFailureGiphyReason} mode="inline" showLabel={false} />
+          <p className="muted">
+            {isBusy
+              ? "Retrying propagated error report creation..."
+              : isReportingPropagationFailure
+                ? "Reporting the propagation failure to the admin..."
+                : propagationFailurePrompt.message}
+          </p>
+          {propagationFailurePrompt.failures.length > 0 ? (
+            <ul className="muted">
+              {propagationFailurePrompt.failures.map( (failure, index) => (
+                <li key={`${failure.reason}-${index}`}>
+                  {failure.reason}
+                </li>
+              ) )}
+            </ul>
+          ) : null}
+          {propagationReportStatus === "sent" ? (
+            <p className="muted">The error was reported to the admin.</p>
+          ) : null}
+          {propagationReportStatus === "failed" ? (
+            <p className="error">The admin report could not be sent.</p>
+          ) : null}
+          <div className="actions">
+            <button
+              type="button"
+              onClick={reportPropagationFailure}
+              disabled={isBusy || propagationReportStatus === "sending"}
+            >
+              {propagationReportStatus === "sending" ? "Reporting..." : "Report to admin"}
+            </button>
+            <button
+              type="button"
+              onClick={onRetryPropagatedErrorReports}
+              disabled={isBusy || isReportingPropagationFailure}
+            >
+              Retry
+            </button>
+            <button
+              type="button"
+              onClick={onClosePropagationFailurePrompt}
+              disabled={isBusy || isReportingPropagationFailure}
+            >
+              Close
+            </button>
+          </div>
         </ModalDialog>
       ) : null}
       {pendingVersionAction ? (
@@ -274,7 +396,7 @@ function VersionsModals(props: VersionsModalsProps) {
       {pendingThreadStatusChange ? (
         <ModalDialog onClose={isBusy ? undefined : onClosePendingThreadStatusChange}>
           <h3>{isBusy ? threadStatusProgressTitle : threadStatusConfirmationTitle}</h3>
-          <GiphyInline reason="thinking" mode="inline" />
+          <GiphyInline reason={isBusy ? "loading" : "thinking"} mode="inline" />
           <p className="muted">
             {isBusy ? threadStatusProgressMessage : threadStatusConfirmationMessage}
           </p>
@@ -351,7 +473,7 @@ function ProgressModal({ title, message }: { title: string; message: string }) {
   return (
     <ModalDialog>
       <h3>{title}</h3>
-      <GiphyInline reason="loading" mode="inline" />
+      <GiphyInline reason="loading" mode="inline" showLabel={false} />
       <p className="muted">{message}</p>
     </ModalDialog>
   );

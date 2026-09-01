@@ -23,6 +23,10 @@ const versionDecisionMocks = vi.hoisted( () => ( {
   requestVersionDecision: vi.fn<() => Promise<unknown>>(),
 } ) )
 
+const propagatedErrorReportsMocks = vi.hoisted( () => ( {
+  requestRetryPropagatedErrorReports: vi.fn<() => Promise<unknown>>(),
+} ) )
+
 vi.mock( 'firebase/firestore', () => ( {
   collection: vi.fn( ( ...segments: unknown[] ) => ( { segments } ) ),
   doc: firestoreMocks.doc,
@@ -52,6 +56,10 @@ vi.mock( '../../lib/slowUiAction', () => ( {
 
 vi.mock( '../../lib/versionDecisions', () => ( {
   requestVersionDecision: versionDecisionMocks.requestVersionDecision,
+} ) )
+
+vi.mock( '../../lib/propagatedErrorReports', () => ( {
+  requestRetryPropagatedErrorReports: propagatedErrorReportsMocks.requestRetryPropagatedErrorReports,
 } ) )
 
 import { createVersionDecisionActions } from './versionDecisionActions'
@@ -116,6 +124,8 @@ const buildActions = (overrides: Partial<Parameters<typeof createVersionDecision
   setIsBusy: vi.fn(),
   setSuccessMessage: vi.fn(),
   setVersionDecisionModal: vi.fn(),
+  propagationFailurePrompt: null,
+  setPropagationFailurePrompt: vi.fn(),
   userEmail: 'author@example.com',
   userId: 'author-1',
   versionDecisionModal: null,
@@ -136,6 +146,16 @@ describe( 'createVersionDecisionActions', () => {
       versionId: 'change-request-version-1',
       promotedNumber: 100,
       replacedVersionIds: [],
+    } )
+    propagatedErrorReportsMocks.requestRetryPropagatedErrorReports.mockResolvedValue( {
+      ok: true,
+      projectId: 'target-project',
+      docId: 'change-request-1',
+      versionId: 'change-request-version-1',
+      createdCount: 1,
+      skippedCount: 0,
+      failedCount: 0,
+      failures: [],
     } )
     firestoreMocks.getDoc.mockResolvedValue( {
       exists: () => true,
@@ -176,6 +196,82 @@ describe( 'createVersionDecisionActions', () => {
       docId: 'change-request-1',
       versionId: 'change-request-version-1',
     } )
+  } )
+
+  it( 'asks the user to report or retry when accepting an error report fails propagation', async () => {
+    const setPropagationFailurePrompt = vi.fn()
+    versionDecisionMocks.requestVersionDecision.mockResolvedValueOnce( {
+      ok: true,
+      decision: 'accept',
+      projectId: 'target-project',
+      docId: 'error-report-1',
+      versionId: 'error-report-version-1',
+      promotedNumber: 100,
+      replacedVersionIds: [],
+      propagatedErrorReports: {
+        createdCount: 0,
+        skippedCount: 0,
+        failedCount: 1,
+        failures: [{ reason: 'storage_copy_failed' }],
+      },
+    } )
+    const actions = buildActions( {
+      docId: 'error-report-1',
+      documentData: {
+        id: 'error-report-1',
+        projectId: 'target-project',
+        title: 'Error report',
+        createdBy: 'author-1',
+        type: 'errorReport',
+        shortId: 33,
+        baseProjectId: 'base-project',
+        baseDocId: 'base-document',
+        baseVersionId: 'base-version',
+      },
+      latestVersion: {
+        ...reviewReadyVersion,
+        id: 'error-report-version-1',
+        fileRefId: 'source-file',
+      },
+      setPropagationFailurePrompt,
+    } )
+
+    await actions.handleAcceptLatestVersion()
+
+    expect( setPropagationFailurePrompt ).toHaveBeenCalledWith(
+      expect.objectContaining( {
+        projectId: 'target-project',
+        docId: 'error-report-1',
+        versionId: 'error-report-version-1',
+        failures: [{ reason: 'storage_copy_failed' }],
+      } ),
+    )
+  } )
+
+  it( 'retries propagated error report creation from the failure prompt', async () => {
+    const setPropagationFailurePrompt = vi.fn()
+    const setSuccessMessage = vi.fn()
+    const actions = buildActions( {
+      propagationFailurePrompt: {
+        projectId: 'target-project',
+        docId: 'error-report-1',
+        versionId: 'error-report-version-1',
+        message: 'Propagation failed.',
+        failures: [{ reason: 'storage_copy_failed' }],
+      },
+      setPropagationFailurePrompt,
+      setSuccessMessage,
+    } )
+
+    await actions.handleRetryPropagatedErrorReports()
+
+    expect( propagatedErrorReportsMocks.requestRetryPropagatedErrorReports ).toHaveBeenCalledWith( {
+      projectId: 'target-project',
+      docId: 'error-report-1',
+      versionId: 'error-report-version-1',
+    } )
+    expect( setPropagationFailurePrompt ).toHaveBeenCalledWith( null )
+    expect( setSuccessMessage ).toHaveBeenCalledWith( 'Propagated error reports created successfully.' )
   } )
 
   it( 'keeps the accept confirmation modal open until the backend decision finishes', async () => {

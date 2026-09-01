@@ -83,6 +83,47 @@ describe( 'lib/versionDecisions', () => {
     )
   } )
 
+  it( 'keeps propagated error report failures from the backend response', async () => {
+    vi.stubGlobal( 'fetch', fetchMock )
+    authMock.currentUser = {
+      getIdToken: vi.fn().mockResolvedValue( 'token-123' ),
+    }
+    fetchMock.mockResolvedValueOnce( {
+      ok: true,
+      status: 200,
+      json: vi.fn().mockResolvedValue( {
+        ok: true,
+        decision: 'accept',
+        projectId: 'project-1',
+        docId: 'doc-1',
+        versionId: 'version-1',
+        promotedNumber: 100,
+        replacedVersionIds: [],
+        propagatedErrorReports: {
+          createdCount: 0,
+          skippedCount: 0,
+          failedCount: 1,
+          failures: [{ reason: 'storage_copy_failed' }],
+        },
+      } ),
+      text: vi.fn().mockResolvedValue( '' ),
+      headers: { get: vi.fn().mockReturnValue( 'application/json' ) },
+    } )
+
+    const result = await requestVersionDecision(
+      {
+        decision: 'accept',
+        projectId: 'project-1',
+        docId: 'doc-1',
+        versionId: 'version-1',
+      },
+      { functionUrl: 'https://example.test/version-decision' },
+    )
+
+    expect( result.propagatedErrorReports?.failedCount ).toBe( 1 )
+    expect( result.propagatedErrorReports?.failures[0]?.reason ).toBe( 'storage_copy_failed' )
+  } )
+
   it( 'requires an active user session', async () => {
     await expect(
       requestVersionDecision(

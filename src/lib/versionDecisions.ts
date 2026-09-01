@@ -1,6 +1,10 @@
 // src/lib/versionDecisions.ts
 // Calls the backend authority for transactional version accept/reject decisions.
 import { auth } from './firebase'
+import {
+  normalizePropagatedErrorReportsResult,
+  type PropagatedErrorReportsResult,
+} from './propagatedErrorReports'
 import { consumeInjectedTestFault } from './testFaults'
 
 export type VersionDecision = 'accept' | 'reject'
@@ -20,6 +24,7 @@ export type VersionDecisionResponse = {
   versionId: string
   promotedNumber: number | null
   replacedVersionIds: string[]
+  propagatedErrorReports?: PropagatedErrorReportsResult
 }
 
 type VersionDecisionOptions = {
@@ -99,5 +104,8 @@ export const requestVersionDecision = async (
     versionId: data.versionId,
     promotedNumber: typeof data.promotedNumber === 'number' ? data.promotedNumber : null,
     replacedVersionIds: Array.isArray( data.replacedVersionIds ) ? data.replacedVersionIds : [],
+    propagatedErrorReports: data.propagatedErrorReports
+      ? normalizePropagatedErrorReportsResult( data.propagatedErrorReports )
+      : undefined,
   }
 }

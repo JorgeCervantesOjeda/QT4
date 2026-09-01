@@ -48,6 +48,8 @@ function VersionsPage() {
     pendingVersionAction,
     setPendingVersionAction,
     setPendingUploadFile,
+    propagationFailurePrompt,
+    setPropagationFailurePrompt,
     errorReportTitle,
     setErrorReportTitle,
     errorReportTitleError,
@@ -236,6 +238,7 @@ function VersionsPage() {
     handleConfirmVersionDecision,
     handleCreateErrorReport,
     handleCreateThread,
+    handleRetryPropagatedErrorReports,
     handleReviewDurationDaysChange,
     memberColumns,
     moveSelectedVersion,
@@ -318,6 +321,7 @@ function VersionsPage() {
       openReviewIssuesForVersion={openReviewIssuesForVersion}
       pendingThreadStatusChange={pendingThreadStatusChange}
       pendingVersionAction={pendingVersionAction}
+      propagationFailurePrompt={propagationFailurePrompt}
       projectId={projectId}
       projectName={projectName}
       projectReportLabel={projectReportLabel}
@@ -334,6 +338,7 @@ function VersionsPage() {
       }
       requestVersionDecisionConfirmation={requestVersionDecisionConfirmation}
       requestDocumentTitleEdit={requestDocumentTitleEdit}
+      retryPropagatedErrorReports={handleRetryPropagatedErrorReports}
       reviewIssuesPanelRef={reviewIssuesPanelRef}
       selectedCommentWindowState={selectedCommentWindowState}
       selectedDownloadProvider={selectedDownloadProvider}
@@ -359,6 +364,7 @@ function VersionsPage() {
       setPendingThreadStatusChange={setPendingThreadStatusChange}
       setPendingUploadFile={setPendingUploadFile}
       setPendingVersionAction={setPendingVersionAction}
+      setPropagationFailurePrompt={setPropagationFailurePrompt}
       setThreadsSorting={setThreadsSorting}
       setThreadsViewMode={setThreadsViewMode}
       setVersionDecisionModal={setVersionDecisionModal}

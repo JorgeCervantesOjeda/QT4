@@ -16,8 +16,12 @@ import {
 } from "../../lib/documentDerivation";
 import { db } from "../../lib/firebase";
 import { measureSlowUiAction } from "../../lib/slowUiAction";
+import {
+  requestRetryPropagatedErrorReports,
+  type PropagatedErrorReportsResult,
+} from "../../lib/propagatedErrorReports";
 import { requestVersionDecision } from "../../lib/versionDecisions";
-import type { DocumentSummary, VersionSummary } from "./types";
+import type { DocumentSummary, PropagationFailurePrompt, VersionSummary } from "./types";
 
 type ReportVersionsError = (
   error: unknown,
@@ -40,10 +44,12 @@ type VersionDecisionActionParams = {
     decision: VersionDecision,
     message: string,
   ) => void;
+  propagationFailurePrompt: PropagationFailurePrompt | null;
   projectId: string;
   reportVersionsError: ReportVersionsError;
   setError: (value: string | null) => void;
   setIsBusy: (value: boolean) => void;
+  setPropagationFailurePrompt: (value: PropagationFailurePrompt | null) => void;
   setSuccessMessage: (value: string | null) => void;
   setVersionDecisionModal: (value: VersionDecision | null) => void;
   userEmail?: string | null;
@@ -75,6 +81,14 @@ const areStringSetsEqual = (left: string[], right: string[]) => {
   const rightValues = new Set(right);
   return left.every((item) => rightValues.has(item));
 };
+
+const hasPropagationFailures = (
+  result?: PropagatedErrorReportsResult,
+): result is PropagatedErrorReportsResult =>
+  Boolean( result && result.failedCount > 0 && result.failures.length > 0 );
+
+const propagationFailureMessage =
+  "The version was accepted, but one or more propagated error reports could not be created with the required file.";
 
 const derivedConfigurationRefFor = (value: {
   variantProjectId: string;
@@ -164,6 +178,7 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
       loadDocumentAndVersions,
       logBlockedVersionDecision,
       projectId,
+      setPropagationFailurePrompt,
       reportVersionsError,
       setError,
       setIsBusy,
@@ -213,7 +228,7 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
         logBlockedVersionDecision("accept", derivedDocumentAcceptValidation);
         return;
       }
-      await measureSlowUiAction(
+      const decisionResult = await measureSlowUiAction(
         {
           action: "versions.acceptLatestVersion",
           page: "Document Versions",
@@ -232,6 +247,18 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
       );
       await loadDocumentAndVersions();
       setVersionDecisionModal(null);
+      const propagationResult = decisionResult.propagatedErrorReports;
+      if( documentData?.type === "errorReport" && hasPropagationFailures( propagationResult ) ) {
+        setPropagationFailurePrompt( {
+          projectId,
+          docId,
+          versionId: latestVersion.id,
+          message: propagationFailureMessage,
+          failures: propagationResult.failures,
+        } );
+        return;
+      }
+      setPropagationFailurePrompt( null );
       setSuccessMessage("Latest version accepted successfully.");
       const baseVersionId = documentData?.baseVersionId ?? null;
       if (documentData?.type === "errorReport" && baseVersionId) {
@@ -330,6 +357,64 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
     }
   };
 
+  const handleRetryPropagatedErrorReports = async () => {
+    const {
+      loadDocumentAndVersions,
+      propagationFailurePrompt,
+      reportVersionsError,
+      setError,
+      setIsBusy,
+      setPropagationFailurePrompt,
+      setSuccessMessage,
+      userId,
+    } = params;
+    if( !propagationFailurePrompt ) {
+      return;
+    }
+    setError( null );
+    setSuccessMessage( null );
+    setIsBusy( true );
+    try {
+      const result = await measureSlowUiAction(
+        {
+          action: "versions.retryPropagatedErrorReports",
+          page: "Document Versions",
+          userId,
+          projectId: propagationFailurePrompt.projectId,
+          docId: propagationFailurePrompt.docId,
+          versionId: propagationFailurePrompt.versionId,
+        },
+        () => requestRetryPropagatedErrorReports( {
+          projectId: propagationFailurePrompt.projectId,
+          docId: propagationFailurePrompt.docId,
+          versionId: propagationFailurePrompt.versionId,
+        } ),
+      );
+      await loadDocumentAndVersions();
+      if( hasPropagationFailures( result ) ) {
+        setPropagationFailurePrompt( {
+          ...propagationFailurePrompt,
+          message: propagationFailureMessage,
+          failures: result.failures,
+        } );
+        return;
+      }
+      setPropagationFailurePrompt( null );
+      setSuccessMessage( "Propagated error reports created successfully." );
+    } catch( err ) {
+      const message = err instanceof Error ? err.message : "Unexpected error";
+      reportVersionsError( err, "versions.retryPropagatedErrorReports", "network", {
+        versionId: propagationFailurePrompt.versionId,
+      } );
+      setPropagationFailurePrompt( {
+        ...propagationFailurePrompt,
+        message,
+      } );
+    } finally {
+      setIsBusy( false );
+    }
+  };
+
   const requestVersionDecisionConfirmation = (decision: VersionDecision) => {
     if (!params.docId || !params.userId || !params.latestVersion) {
       const message =
@@ -354,6 +439,7 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
   return {
     handleAcceptLatestVersion,
     handleConfirmVersionDecision,
+    handleRetryPropagatedErrorReports,
     handleRejectLatestVersion,
     requestVersionDecisionConfirmation,
   };

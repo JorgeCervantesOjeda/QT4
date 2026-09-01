@@ -43,6 +43,10 @@
           "function": "versionDecision"
         },
         {
+          "source": "/retry-propagated-error-reports",
+          "function": "retryPropagatedErrorReports"
+        },
+        {
           "source": "**",
           "destination": "/index.html"
         }
@@ -64,6 +68,10 @@
         {
           "source": "/version-decision",
           "function": "versionDecision"
+        },
+        {
+          "source": "/retry-propagated-error-reports",
+          "function": "retryPropagatedErrorReports"
         },
         {
           "source": "**",

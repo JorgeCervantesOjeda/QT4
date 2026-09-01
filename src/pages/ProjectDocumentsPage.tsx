@@ -1616,7 +1616,7 @@ function ProjectDocumentsPage() {
 
         {isLoadingDocuments && documents.length === 0 ? (
           <section className="panel">
-            <GiphyInline reason="loading" />
+            <GiphyInline reason="loading" mode="inline" />
           </section>
         ) : (
           <section className="panel stack">

@@ -6,7 +6,10 @@ const admin = require( "firebase-admin" )
 const nodemailer = require( "nodemailer" )
 const crypto = require( "node:crypto" )
 const { createAiAssistHandler } = require( "./aiAssist" )
-const { createPropagateAcceptedErrorReportHandler } = require( "./propagatedErrorReports" )
+const {
+  createPropagateAcceptedErrorReportHandler,
+  createRetryPropagatedErrorReportsHandler,
+} = require( "./propagatedErrorReports" )
 const { createSlowUiActionDigestJob } = require( "./slowUiDigest" )
 const { createVersionDecisionHandler } = require( "./versionDecisions" )
 
@@ -568,4 +571,9 @@ exports.aiAssist = onRequest(
 exports.versionDecision = onRequest(
   { cors: false, maxInstances: 10, invoker: "public" },
   createVersionDecisionHandler( { admin, logger, verifyBearerToken, setCorsHeaders } ),
+)
+
+exports.retryPropagatedErrorReports = onRequest(
+  { cors: false, maxInstances: 10, invoker: "public" },
+  createRetryPropagatedErrorReportsHandler( { admin, logger, verifyBearerToken, setCorsHeaders } ),
 )

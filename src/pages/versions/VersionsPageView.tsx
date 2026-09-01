@@ -20,6 +20,7 @@ import type {
   DocumentSummary,
   FileRefSummary,
   PendingVersionAction,
+  PropagationFailurePrompt,
   ThreadSummary,
   VersionSummary,
 } from "./types";
@@ -104,6 +105,7 @@ type VersionsPageViewProps = {
   openReviewIssuesForVersion: (versionId: string) => void;
   pendingThreadStatusChange: ThreadSummary | null;
   pendingVersionAction: PendingVersionAction | null;
+  propagationFailurePrompt: PropagationFailurePrompt | null;
   projectId: string;
   projectName: string;
   projectReportLabel: string;
@@ -118,6 +120,7 @@ type VersionsPageViewProps = {
   requestThreadStatusChangeConfirmation: (thread: ThreadSummary) => void;
   requestVersionDecisionConfirmation: (decision: "accept" | "reject") => void;
   requestDocumentTitleEdit: () => void;
+  retryPropagatedErrorReports: () => void;
   reviewIssuesPanelRef: React.RefObject<HTMLElement | null>;
   selectedCommentWindowState: string;
   selectedDownloadProvider: FileStorageProviderKind | null;
@@ -146,6 +149,9 @@ type VersionsPageViewProps = {
   setPendingUploadFile: React.Dispatch<React.SetStateAction<File | null>>;
   setPendingVersionAction: React.Dispatch<
     React.SetStateAction<PendingVersionAction | null>
+  >;
+  setPropagationFailurePrompt: React.Dispatch<
+    React.SetStateAction<PropagationFailurePrompt | null>
   >;
   setThreadsSorting: React.Dispatch<React.SetStateAction<SortingState>>;
   setThreadsViewMode: React.Dispatch<React.SetStateAction<"card" | "table">>;
@@ -352,6 +358,12 @@ const VersionsPageDialogs = (props: VersionsPageViewProps) => (
     versionDecisionModal={props.versionDecisionModal}
     onCloseVersionDecisionModal={() => props.setVersionDecisionModal(null)}
     onConfirmVersionDecision={props.handleConfirmVersionDecision}
+    propagationFailurePrompt={props.propagationFailurePrompt}
+    onClosePropagationFailurePrompt={() =>
+      props.setPropagationFailurePrompt(null)
+    }
+    onReportPropagationFailure={() => undefined}
+    onRetryPropagatedErrorReports={props.retryPropagatedErrorReports}
     pendingVersionAction={props.pendingVersionAction}
     onClosePendingVersionAction={props.handleClosePendingVersionAction}
     onConfirmPendingVersionAction={props.handleConfirmPendingVersionAction}
