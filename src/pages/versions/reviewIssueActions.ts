@@ -7,6 +7,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { logAudit } from "../../lib/audit";
+import { requestAiAssist } from "../../lib/aiAssist";
 import { db } from "../../lib/firebase";
 import { canAddCommentInWindow } from "../../lib/reviewWindow";
 import { measureSlowUiAction } from "../../lib/slowUiAction";
@@ -18,6 +19,7 @@ import {
 import {
   buildThreadStatsMismatchMessage,
   getThreadStatsFromLoadedData,
+  ISSUE_TITLE_MAX_LENGTH,
   normalizeIssueTitleInput,
   toTimestampDate,
 } from "./utils";
@@ -87,20 +89,20 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
         [
           "To create an issue, the version must be in active review time",
           "or grace, you must be the author, leader, or reviewer,",
-          "and the title cannot be empty.",
+          "and the initial comment cannot be empty.",
         ].join(" "),
       );
       return;
     }
+    const initialCommentBody = params.newThreadTitle.trim();
     const lockedVersionId = selectedVersion.id;
     params.setError(null);
     params.setIsBusy(true);
     try {
+      const threadTitle = await draftIssueTitle(initialCommentBody);
       const threadRef = doc(collection(db, "threads"));
+      const commentRef = doc(collection(db, "comments"));
       const versionRef = doc(db, "versions", selectedVersion.id);
-      const threadTitle = normalizeIssueTitleInput(
-        params.newThreadTitle,
-      ).trim();
       await measureSlowUiAction(
         {
           action: "versions.createThread",
@@ -122,22 +124,33 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
             status: "open",
             title: threadTitle,
             createdBy: userId,
-            commentCount: 0,
-            lastCommentAt: null,
-            lastCommentBy: null,
+            commentCount: 1,
+            lastCommentAt: serverTimestamp(),
+            lastCommentBy: userId,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
             updatedBy: userId,
+          });
+          transaction.set(commentRef, {
+            projectId,
+            docId,
+            versionId: selectedVersion.id,
+            threadId: threadRef.id,
+            body: initialCommentBody,
+            createdBy: userId,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
           });
           transaction.update(versionRef, {
             stats: {
               ...currentStats,
               numThreads: currentStats.numThreads + 1,
               numOpenThreads: currentStats.numOpenThreads + 1,
+              numComments: currentStats.numComments + 1,
             },
             numThreads: currentStats.numThreads + 1,
             numOpenThreads: currentStats.numOpenThreads + 1,
-            numComments: currentStats.numComments,
+            numComments: currentStats.numComments + 1,
             numThreadsWithTwoPlusComments:
               currentStats.numThreadsWithTwoPlusComments,
             activityAt: serverTimestamp(),
@@ -149,6 +162,20 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
       params.setNewThreadTitle("");
       params.setSelectedThreadId(threadRef.id);
       params.setSuccessMessage("Issue created successfully.");
+      logAudit({
+        actorId: userId,
+        actorEmail: params.userEmail ?? null,
+        action: "createComment",
+        entityType: "comment",
+        entityId: commentRef.id,
+        projectId,
+        docId,
+        versionId: selectedVersion.id,
+        threadId: threadRef.id,
+        commentId: commentRef.id,
+      }).catch((err) => {
+        console.warn("Audit log failed (create initial issue comment):", err);
+      });
       logAudit({
         actorId: userId,
         actorEmail: params.userEmail ?? null,
@@ -453,6 +480,36 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
     handleCreateThread,
     handleToggleThreadStatus,
   };
+};
+
+const draftIssueTitle = async (commentBody: string) => {
+  try {
+    const response = await requestAiAssist({
+      mode: "draft_issue_title",
+      text: commentBody,
+    });
+    return normalizeIssueTitleInput(response.result).trim() || buildFallbackIssueTitle(commentBody);
+  } catch (err) {
+    console.warn("AI issue title fallback used:", {
+      cause: err instanceof Error ? err.message : "Unexpected AI title error",
+      fallback: "local initial comment summary",
+      impact: "Issue uses a deterministic local summary instead of an AI-generated summary.",
+    });
+    return buildFallbackIssueTitle(commentBody);
+  }
+};
+
+const buildFallbackIssueTitle = (commentBody: string) => {
+  const firstSentence = commentBody
+    .split(/[.!?\n]/u)
+    .map((part) => part.trim())
+    .find(Boolean) ?? commentBody.trim();
+  const words = firstSentence.split(/\s+/u).filter(Boolean).slice(0, 12);
+  const title = words.join(" ");
+  return normalizeIssueTitleInput(title || "Review issue").slice(
+    0,
+    ISSUE_TITLE_MAX_LENGTH,
+  );
 };
 
 const readVersionStats = (versionData: Record<string, unknown>) => ({

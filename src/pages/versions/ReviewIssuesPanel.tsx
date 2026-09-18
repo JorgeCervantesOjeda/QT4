@@ -8,10 +8,8 @@ import { measureSlowUiAction } from '../../lib/slowUiAction'
 import { formatTimeAgoWithTimestamp } from '../../lib/time'
 import type { CommentSummary, ThreadSummary, VersionSummary } from './types'
 import {
-  ISSUE_TITLE_MAX_LENGTH,
   areThreadsEqual,
   buildCommentAnchorId,
-  normalizeIssueTitleInput,
 } from './utils'
 
 type CommentWindowMeta = {
@@ -125,14 +123,13 @@ function ReviewIssuesPanel( props: ReviewIssuesPanelProps ) {
         Issues: {selectedVersion.numThreads} - Open: {selectedVersion.numOpenThreads} - Comments: {selectedVersion.numComments}
       </p>
       <div className="stack issue-title-capture">
+        <h4>New Issue</h4>
         <div className="actions actions--capture-row">
-          <input
-            type="text"
-            className="issue-title-input"
+          <textarea
+            className="comment-input comment-input--active"
             value={newThreadTitle}
-            onChange={( event ) => setNewThreadTitle( normalizeIssueTitleInput( event.target.value ) )}
-            placeholder="New issue title"
-            maxLength={ISSUE_TITLE_MAX_LENGTH}
+            onChange={( event ) => setNewThreadTitle( event.target.value )}
+            placeholder="Describe what happened"
             disabled={isBusy}
           />
           <button type="button" onClick={onCreateThread} disabled={isBusy}>
@@ -140,7 +137,7 @@ function ReviewIssuesPanel( props: ReviewIssuesPanelProps ) {
           </button>
         </div>
         <p className="issue-title-hint muted">
-          One-line title. Up to {ISSUE_TITLE_MAX_LENGTH} characters.
+          AI will suggest the issue summary when you create it.
         </p>
       </div>
       {isLoadingThreads ? (
@@ -224,6 +221,7 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
 
   return (
     <div className="stack">
+      <h4>Created Issues</h4>
       <div className="actions">
         <ViewToggle label="Issue view" value={threadsViewMode} onChange={setThreadsViewMode} />
       </div>
@@ -255,9 +253,12 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
         <div className="project-grid">
           {threads.map( ( thread ) => {
             const commentWindowMeta = getThreadCommentWindowMeta( thread )
+            const threadComments = commentsByThread[thread.id] ?? []
+            const latestComment = threadComments[threadComments.length - 1]
             return (
-              <article
+              <details
                 key={thread.id}
+                open={effectiveSelectedThreadId === thread.id}
                 className={`project-card ${
                   thread.status === 'open'
                     ? commentWindowMeta.state === 'expired'
@@ -265,23 +266,34 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
                       : 'project-card--thread-open'
                     : 'project-card--thread-closed'
                 } ${effectiveSelectedThreadId === thread.id ? 'project-card--thread-selected' : ''}`}
-                onClick={() => selectThreadKeepingViewport( thread.id )}
-                role="button"
-                tabIndex={0}
-                onKeyDown={( event ) => {
-                  if( event.key === 'Enter' || event.key === ' ' ) {
-                    event.preventDefault()
-                    selectThreadKeepingViewport( thread.id )
-                  }
-                }}
               >
-                <h4>{thread.title}</h4>
+                <summary onClick={() => selectThreadKeepingViewport( thread.id )}>
+                  <span>{thread.title}</span>
+                </summary>
                 <p className="muted">Status: {thread.status}</p>
                 <p className="muted">Created by: {formatUserLabel( thread.createdBy )}</p>
                 <p className="muted">Comments: {commentsByThread[thread.id]?.length ?? thread.commentCount}</p>
+                {latestComment ? (
+                  <p className="muted">Latest comment: {latestComment.body}</p>
+                ) : null}
                 <p className={`thread-window thread-window--${commentWindowMeta.state}`}>
                   Comment window: {commentWindowMeta.label}
                 </p>
+                <div className="thread-conversation">
+                  <h5>Conversation</h5>
+                  {threadComments.length === 0 ? (
+                    <p className="muted">No comments yet.</p>
+                  ) : (
+                    <div className="comment-list comment-list--thread-card">
+                      {threadComments.map( ( comment ) => (
+                        <article key={comment.id} className="project-card">
+                          <p className="muted">By: {formatUserLabel( comment.createdBy )}</p>
+                          <p className="comment-body">{comment.body}</p>
+                        </article>
+                      ) )}
+                    </div>
+                  )}
+                </div>
                 <div className="actions">
                   <button
                     type="button"
@@ -294,7 +306,7 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
                     {thread.status === 'open' ? 'Close' : 'Reopen'}
                   </button>
                 </div>
-              </article>
+              </details>
             )
           } )}
         </div>

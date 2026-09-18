@@ -137,6 +137,10 @@ test( "normalizes only supported AI assist modes", () => {
 
 test( "selects deterministic skills for each mode", () => {
   assert.deepEqual(
+    selectSkillNames( "draft_issue_title" ),
+    [ "qt4-glossary", "issue-title", "preserve-intent" ],
+  )
+  assert.deepEqual(
     selectSkillNames( "explain_thread" ),
     [ "qt4-glossary", "explain-thread", "review-context-safety" ],
   )
@@ -144,6 +148,25 @@ test( "selects deterministic skills for each mode", () => {
     selectSkillNames( "improve_text" ),
     [ "improve-writing", "preserve-intent", "no-new-claims" ],
   )
+} )
+
+test( "issue title prompt asks for a short editable summary", () => {
+  const request = normalizeAiAssistRequest( {
+    mode: "draft_issue_title",
+    text: "No puedo adjuntar la evidencia porque el botón no responde.",
+  } )
+  const prompt = buildAiPrompt( {
+    mode: request.mode,
+    language: "es",
+    context: {
+      userText: request.text,
+    },
+  } )
+
+  assert.equal( request.text, "No puedo adjuntar la evidencia porque el botón no responde." )
+  assert.match( prompt, /sólo un título breve/u )
+  assert.match( prompt, /máximo 12 palabras/u )
+  assert.match( prompt, /No inventes datos/u )
 } )
 
 test( "prompt forbids writing replies from scratch", () => {

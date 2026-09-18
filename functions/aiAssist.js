@@ -5,6 +5,7 @@ const MAX_TEXT_LENGTH = 4000
 const MAX_THREAD_COMMENTS = 40
 
 const MODE_SKILLS = {
+  draft_issue_title: [ "qt4-glossary", "issue-title", "preserve-intent" ],
   explain_comment: [ "qt4-glossary", "explain-comment", "review-context-safety" ],
   explain_thread: [ "qt4-glossary", "explain-thread", "review-context-safety" ],
   improve_text: [ "improve-writing", "preserve-intent", "no-new-claims" ],
@@ -12,6 +13,7 @@ const MODE_SKILLS = {
 }
 
 const MODE_LABELS = {
+  draft_issue_title: "titular issue",
   explain_comment: "explicar comentario",
   explain_thread: "explicar hilo",
   improve_text: "mejorar redacción",
@@ -102,6 +104,9 @@ const normalizeAiAssistRequest = (body) => {
   }
   if( mode === "explain_comment" ) {
     request.commentId = normalizeRequiredString( body.commentId, "commentId" )
+  }
+  if( mode === "draft_issue_title" ) {
+    request.text = normalizeRequiredString( body.text, "text", MAX_TEXT_LENGTH )
   }
   if( mode === "explain_thread" ) {
     request.threadId = normalizeRequiredString( body.threadId, "threadId" )
@@ -298,6 +303,9 @@ const loadContext = async (firestore, auth, request) => {
   if( request.mode === "explain_comment" ) {
     return await loadCommentContext( firestore, auth, request.commentId )
   }
+  if( request.mode === "draft_issue_title" ) {
+    return { userText: truncateText( request.text ) }
+  }
   if( request.mode === "explain_thread" ) {
     return await loadThreadContext( firestore, auth, request.threadId )
   }
@@ -314,6 +322,9 @@ const loadContext = async (firestore, auth, request) => {
 }
 
 const skillText = (mode) => {
+  if( mode === "draft_issue_title" ) {
+    return "Redacta sólo un título breve para un issue a partir del comentario inicial del usuario. Debe ser una frase nominal o verbal corta, específica, sin punto final, sin comillas, sin prefijos y con máximo 12 palabras. No inventes datos que no estén en el comentario."
+  }
   if( mode === "explain_comment" ) {
     return "Explica el comentario como una respuesta humana para la persona usuaria. Di qué parece pedir, si requiere acción y qué queda ambiguo. No uses formato de auditoría, no menciones campos técnicos y no propongas una respuesta."
   }

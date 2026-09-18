@@ -255,7 +255,7 @@ const buildVersionsErrorChecklist = (
         ],
         operator: 'or',
       },
-      { label: '(issue title is provided)', ok: context.issueTitleProvided },
+      { label: '(initial comment is provided)', ok: context.issueTitleProvided },
     ]
   }
 

@@ -2,9 +2,10 @@
 import { auth } from './firebase'
 import { consumeInjectedTestFault } from './testFaults'
 
-export type AiAssistMode = 'explain_comment' | 'explain_thread' | 'improve_text' | 'summarize_pending'
+export type AiAssistMode = 'draft_issue_title' | 'explain_comment' | 'explain_thread' | 'improve_text' | 'summarize_pending'
 
 export type AiAssistRequest =
+  | { mode: 'draft_issue_title'; text: string; language?: 'auto' | 'es' | 'en' }
   | { mode: 'explain_comment'; commentId: string; language?: 'auto' | 'es' | 'en' }
   | { mode: 'explain_thread'; threadId: string; language?: 'auto' | 'es' | 'en' }
   | { mode: 'improve_text'; text: string; threadId?: string; language?: 'auto' | 'es' | 'en' }

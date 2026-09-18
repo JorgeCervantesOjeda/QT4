@@ -1,5 +1,6 @@
 // src/pages/versions/ReviewIssuesPanel.test.tsx: Verifies slow-action instrumentation in review issue AI controls.
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import type { ComponentProps } from 'react'
 import { createRef } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ReviewIssuesPanel from './ReviewIssuesPanel'
@@ -54,50 +55,52 @@ const selectedThreadComments: CommentSummary[] = [
   },
 ]
 
-const renderPanel = () => render(
-  <ReviewIssuesPanel
-    projectId="project-1"
-    docId="doc-1"
-    selectedVersion={selectedVersion}
-    reviewIssuesPanelRef={createRef<HTMLElement>()}
-    formatUserLabel={( userId ) => userId}
-    newThreadTitle=""
-    setNewThreadTitle={vi.fn()}
-    isBusy={false}
-    onCreateThread={vi.fn()}
-    isLoadingThreads={false}
-    threads={[ selectedThread ]}
-    threadsViewMode="card"
-    setThreadsViewMode={vi.fn()}
-    threadColumns={[]}
-    threadsSorting={[]}
-    setThreadsSorting={vi.fn()}
-    setVisibleThreadRows={vi.fn()}
-    getThreadCommentWindowMeta={() => ( { state: 'active', label: 'Open' } )}
-    effectiveSelectedThreadId="thread-1"
-    selectThreadKeepingViewport={vi.fn()}
-    commentsByThread={{ 'thread-1': selectedThreadComments }}
-    requestThreadStatusChangeConfirmation={vi.fn()}
-    selectedThread={selectedThread}
-    threadNavigationStatusLabel="1 of 1"
-    onSelectAdjacentThread={vi.fn()}
-    hasPreviousThread={false}
-    hasNextThread={false}
-    commentsViewMode="card"
-    setCommentsViewMode={vi.fn()}
-    selectedThreadComments={selectedThreadComments}
-    commentColumns={[]}
-    commentsSorting={[]}
-    setCommentsSorting={vi.fn()}
-    highlightedCommentId={null}
-    commentWindowCountdownLabel={null}
-    commentInputRef={createRef<HTMLTextAreaElement>()}
-    selectedCommentWindowState="active"
-    newCommentBody="Please clarify the evidence source."
-    setNewCommentBody={vi.fn()}
-    onAddComment={vi.fn()}
-  />,
-)
+const renderPanel = (overrides: Partial<ComponentProps<typeof ReviewIssuesPanel>> = {}) => {
+  const props: ComponentProps<typeof ReviewIssuesPanel> = {
+    projectId: "project-1",
+    docId: "doc-1",
+    selectedVersion,
+    reviewIssuesPanelRef: createRef<HTMLElement>(),
+    formatUserLabel: ( userId ) => userId,
+    newThreadTitle: "",
+    setNewThreadTitle: vi.fn(),
+    isBusy: false,
+    onCreateThread: vi.fn(),
+    isLoadingThreads: false,
+    threads: [ selectedThread ],
+    threadsViewMode: "card",
+    setThreadsViewMode: vi.fn(),
+    threadColumns: [],
+    threadsSorting: [],
+    setThreadsSorting: vi.fn(),
+    setVisibleThreadRows: vi.fn(),
+    getThreadCommentWindowMeta: () => ( { state: "active", label: "Open" } ),
+    effectiveSelectedThreadId: "thread-1",
+    selectThreadKeepingViewport: vi.fn(),
+    commentsByThread: { "thread-1": selectedThreadComments },
+    requestThreadStatusChangeConfirmation: vi.fn(),
+    selectedThread,
+    threadNavigationStatusLabel: "1 of 1",
+    onSelectAdjacentThread: vi.fn(),
+    hasPreviousThread: false,
+    hasNextThread: false,
+    commentsViewMode: "card",
+    setCommentsViewMode: vi.fn(),
+    selectedThreadComments,
+    commentColumns: [],
+    commentsSorting: [],
+    setCommentsSorting: vi.fn(),
+    highlightedCommentId: null,
+    commentWindowCountdownLabel: null,
+    commentInputRef: createRef<HTMLTextAreaElement>(),
+    selectedCommentWindowState: "active",
+    newCommentBody: "Please clarify the evidence source.",
+    setNewCommentBody: vi.fn(),
+    onAddComment: vi.fn(),
+    ...overrides,
+  }
+  return render( <ReviewIssuesPanel {...props} /> )
+}
 
 describe( 'ReviewIssuesPanel', () => {
   beforeEach( () => {
@@ -124,5 +127,18 @@ describe( 'ReviewIssuesPanel', () => {
       versionId: 'version-1',
       threadId: 'thread-1',
     } )
+  } )
+
+  it( 'presents new issue capture as an initial comment and existing issues as collapsible conversations', () => {
+    renderPanel()
+
+    expect( screen.getByRole( 'heading', { name: 'New Issue' } ) ).toBeTruthy()
+    expect( screen.getByPlaceholderText( 'Describe what happened' ) ).toBeTruthy()
+    expect( screen.getByText( 'AI will suggest the issue summary when you create it.' ) ).toBeTruthy()
+    expect( screen.queryByPlaceholderText( 'New issue title' ) ).toBeNull()
+    expect( screen.getByRole( 'button', { name: 'Create issue' } ) ).toBeTruthy()
+    expect( screen.getByRole( 'heading', { name: 'Created Issues' } ) ).toBeTruthy()
+    expect( screen.getByText( 'Conversation' ) ).toBeTruthy()
+    expect( screen.getAllByText( 'Please add evidence.' ).length ).toBeGreaterThan( 0 )
   } )
 } )
