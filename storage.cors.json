@@ -1,0 +1,21 @@
+[
+  {
+    "origin": [
+      "https://qualiteam-plus.web.app",
+      "https://qualiteam-plus.firebaseapp.com",
+      "http://localhost:4175",
+      "http://127.0.0.1:4175",
+      "http://localhost:5173",
+      "http://127.0.0.1:5173"
+    ],
+    "method": ["GET", "HEAD"],
+    "responseHeader": [
+      "Cache-Control",
+      "Content-Disposition",
+      "Content-Length",
+      "Content-Type",
+      "ETag"
+    ],
+    "maxAgeSeconds": 3600
+  }
+]

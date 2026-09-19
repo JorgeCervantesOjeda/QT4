@@ -156,11 +156,11 @@ const downloadFileWithFirebaseStorage = async (
       if( !isBrowserNetworkFetchError( err ) ) {
         throw err
       }
-      console.warn( `${DOWNLOAD_LOG_PREFIX}[firebase][direct_fallback]`, {
+      console.error( `${DOWNLOAD_LOG_PREFIX}[firebase][cors_blocked]`, {
         fileKey,
         message: describeError( err ),
       } )
-      triggerUrlDownload( downloadUrl, suggestedName, fileKey )
+      throw new Error( 'Firebase Storage download was blocked by the browser. Verify the bucket CORS configuration.' )
     }
     console.info( `${DOWNLOAD_LOG_PREFIX}[firebase][triggered]`, {
       fileKey,

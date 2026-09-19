@@ -148,7 +148,7 @@ describe( 'lib/fileStorage', () => {
     expect( anchor.href ).toBe( 'blob:firebase-download' )
   } )
 
-  it( 'falls back to the direct Firebase URL when blob fetching is blocked by the browser', async () => {
+  it( 'reports a browser network error instead of navigating to a cross-origin Firebase URL', async () => {
     getDownloadURLMock.mockResolvedValue( 'https://example.com/download/draft.txt' )
     vi.stubGlobal( 'fetch', vi.fn().mockRejectedValue( new TypeError( 'NetworkError when attempting to fetch resource.' ) ) )
     const clickSpy = vi
@@ -157,12 +157,9 @@ describe( 'lib/fileStorage', () => {
         void this
       } )
 
-    await downloadFileByProvider( 'qt4/test/file.txt', 'draft.txt', 'firebase-storage' )
-
-    expect( clickSpy ).toHaveBeenCalledTimes( 1 )
-    const anchor = clickSpy.mock.instances[0] as HTMLAnchorElement
-    expect( anchor.href ).toBe( 'https://example.com/download/draft.txt' )
-    expect( anchor.download ).toBe( 'draft.txt' )
+    await expect( downloadFileByProvider( 'qt4/test/file.txt', 'draft.txt', 'firebase-storage' ) )
+      .rejects.toThrow( 'Firebase Storage download was blocked by the browser.' )
+    expect( clickSpy ).not.toHaveBeenCalled()
   } )
 
   it( 'ignores missing Firebase Storage objects during delete cleanup', async () => {
