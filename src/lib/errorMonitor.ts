@@ -1,6 +1,8 @@
+// src/lib/errorMonitor.ts
+// Classifies and reports abnormal client-side errors with route and diagnostic context.
 import { auth } from './firebase'
 
-import { getRecentDiagnostics } from './diagnostics/clientDiagnostics'
+import { getRecentDiagnostics, logClientDiagnostic } from './diagnostics/clientDiagnostics'
 import { getRouteDiagnosticContext } from './diagnostics/routeContext'
 import { getActiveFirestoreListeners } from './diagnostics/firestoreListeners'    
 
@@ -222,6 +224,23 @@ const normalizeError = (value: unknown): NormalizedError => {
 const isNormalBusinessMessage = (normalizedMessage: string): boolean =>
   NORMAL_MESSAGE_PATTERNS.some( ( pattern ) => pattern.test( normalizedMessage ) )
 
+const isTolerableFirebaseLifecycleRejection = (
+  normalized: NormalizedError,
+  action: string,
+): boolean => {
+  if( action !== 'global.unhandledrejection' ) {
+    return false
+  }
+  const isFirebaseAuthPersistenceStack =
+    normalized.stack.includes( 'setCurrentUser' )
+    || normalized.stack.includes( 'directlySetCurrentUser' )
+    || normalized.stack.includes( 'reloadAndSetCurrentUserOrClear' )
+  return (
+    normalized.messageNormalized.includes( 'database is closing/hidden' )
+    && isFirebaseAuthPersistenceStack
+  )
+}
+
 const resolveSource = (code: string, explicitSource?: MonitorSource): MonitorSource => {
   if( explicitSource ) {
     return explicitSource
@@ -256,6 +275,9 @@ const classifyError = (
     return null
   }
   if( normalized.name === 'AbortError' ) {
+    return null
+  }
+  if( isTolerableFirebaseLifecycleRejection( normalized, action ) ) {
     return null
   }
 
@@ -465,6 +487,15 @@ export const reportAbnormalError = async (input: ReportAbnormalErrorInput): Prom
 
   const normalized = normalizeError( input.error )
   const action = trimAndCollapseWhitespace( input.action ?? 'unknown', 120 )
+  if( isTolerableFirebaseLifecycleRejection( normalized, action ) ) {
+    logClientDiagnostic( 'firebase.auth_lifecycle_rejection_suppressed', {
+      action,
+      source: input.source ?? 'unknown',
+      message: normalized.messageRaw,
+      impact: 'Suppressed abnormal alert because Firebase Auth rejected while browser storage was closing or hidden.',
+    } )
+    return false
+  }
   const classified = classifyError( normalized, action, input.source )
   if( !classified ) {
     return false

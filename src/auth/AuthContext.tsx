@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth'
 import { disableNetwork, enableNetwork } from 'firebase/firestore'
 import { auth, db } from '../lib/firebase'
+import { logClientDiagnostic } from '../lib/diagnostics/clientDiagnostics'
+import { getRouteDiagnosticContext } from '../lib/diagnostics/routeContext'
 import { AuthContext } from './AuthContextStore'
 
 type AuthProviderProps = {
@@ -91,8 +93,14 @@ function AuthProvider( { children }: AuthProviderProps ) {
         } else {
           await enableNetwork( db )
         }
-      } catch {
-        // ignore network toggle errors
+      } catch( err ) {
+        logClientDiagnostic( 'firestore.visibility_network_toggle_failed', {
+          targetVisibilityState: document.visibilityState,
+          errorName: err instanceof Error ? err.name : '',
+          errorMessage: err instanceof Error ? err.message : String( err ),
+          impact: 'Firestore network state may remain unchanged until the next visibility transition.',
+          ...getRouteDiagnosticContext(),
+        } )
       } finally {
         isToggling = false
       }

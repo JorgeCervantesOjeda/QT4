@@ -1,8 +1,11 @@
+// src/lib/firebase.ts
+// Initializes Firebase clients and emulator wiring for the app runtime.
 import { initializeApp } from "firebase/app";
 import { getAnalytics, isSupported } from "firebase/analytics";
 import { browserLocalPersistence, connectAuthEmulator, getAuth, setPersistence } from "firebase/auth";
 import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
 import { connectStorageEmulator, getStorage } from "firebase/storage";
+import { logClientDiagnostic } from "./diagnostics/clientDiagnostics";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -38,8 +41,12 @@ if( useFirebaseEmulators ) {
   connectStorageEmulator( storage, storageEmulatorHost, storageEmulatorPort )
 }
 
-void setPersistence( auth, browserLocalPersistence ).catch( () => {
-  // ignore persistence setup errors
+void setPersistence( auth, browserLocalPersistence ).catch( (err) => {
+  logClientDiagnostic( "auth.persistence.setup_failed", {
+    errorName: err instanceof Error ? err.name : "",
+    errorMessage: err instanceof Error ? err.message : String( err ),
+    impact: "Firebase Auth will continue with its active persistence mode.",
+  } )
 } );
 
 const analyticsPromise = import.meta.env.PROD && !useFirebaseEmulators
