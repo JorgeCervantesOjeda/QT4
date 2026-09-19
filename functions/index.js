@@ -157,6 +157,38 @@ const buildMonitorFingerprint = (payload) =>
 
 const normalizeMonitorField = (value, maxLength) => trimSingleLine( value, maxLength )
 
+const normalizeMonitorBoolean = (value) => typeof value === "boolean" ? value : null
+
+const stringifyMonitorData = (value) => {
+  try {
+    return JSON.stringify( value && typeof value === "object" ? value : {} ) || "{}"
+  } catch {
+    return "{}"
+  }
+}
+
+const normalizeMonitorDiagnostics = (value) => Array.isArray( value )
+  ? value.slice( -20 ).map( (entry) => ({
+    type: normalizeMonitorField( entry?.type, 120 ),
+    timestamp: normalizeMonitorField( entry?.timestamp, 64 ),
+    data: trimSingleLine( stringifyMonitorData( entry?.data ), 2000 ),
+  }) )
+  : []
+
+const normalizeMonitorListeners = (value) => Array.isArray( value )
+  ? value.slice( -30 ).map( (listener) => ({
+    id: normalizeMonitorField( listener?.id, 80 ),
+    label: normalizeMonitorField( listener?.label, 120 ),
+    projectId: normalizeMonitorField( listener?.projectId, 128 ),
+    documentId: normalizeMonitorField( listener?.documentId, 128 ),
+    versionId: normalizeMonitorField( listener?.versionId, 128 ),
+    threadId: normalizeMonitorField( listener?.threadId, 128 ),
+    focus: normalizeMonitorField( listener?.focus, 80 ),
+    queryDescription: normalizeMonitorField( listener?.queryDescription, 500 ),
+    createdAt: normalizeMonitorField( listener?.createdAt, 64 ),
+  }) )
+  : []
+
 const normalizeMonitorPayload = (body, decoded, req) => {
   const source = normalizeMonitorField( body.source, 32 )
   const category = normalizeMonitorField( body.category, 32 )
@@ -188,6 +220,11 @@ const normalizeMonitorPayload = (body, decoded, req) => {
     threadLabel: trimMultiline( body.threadLabel, 200 ),
     userAgent: trimSingleLine( body.userAgent || req.headers[ "user-agent" ] || "", 400 ),
     appBuild: normalizeMonitorField( body.appBuild, 120 ),
+    appVersion: normalizeMonitorField( body.appVersion || body.appBuild, 120 ),
+    online: normalizeMonitorBoolean( body.online ),
+    visibilityState: normalizeMonitorField( body.visibilityState, 32 ),
+    activeFirestoreListeners: normalizeMonitorListeners( body.activeFirestoreListeners ),
+    recentDiagnostics: normalizeMonitorDiagnostics( body.recentDiagnostics ),
     clientTimestamp: normalizeMonitorField( body.clientTimestamp, 64 ),
   }
   if( !normalized.fingerprint ) {
@@ -416,6 +453,9 @@ exports.reportClientMonitorEvent = onRequest( { cors: false, maxInstances: 10, i
           docId: payload.docId,
           versionId: payload.versionId,
           threadId: payload.threadId,
+          appVersion: payload.appVersion,
+          online: payload.online,
+          visibilityState: payload.visibilityState,
           lastSeenAt: serverTimestamp,
           updatedAt: serverTimestamp,
           occurrenceCount: admin.firestore.FieldValue.increment( 1 ),
@@ -445,6 +485,9 @@ exports.reportClientMonitorEvent = onRequest( { cors: false, maxInstances: 10, i
         docId: payload.docId,
         versionId: payload.versionId,
         threadId: payload.threadId,
+        appVersion: payload.appVersion,
+        online: payload.online,
+        visibilityState: payload.visibilityState,
         dedupeWindowMinutes,
         dedupeBucket,
         occurrenceCount: 1,
@@ -481,6 +524,10 @@ exports.reportClientMonitorEvent = onRequest( { cors: false, maxInstances: 10, i
         `Fingerprint: ${payload.fingerprint}`,
         `Client timestamp: ${payload.clientTimestamp || "-"}`,
         `Build: ${payload.appBuild || "-"}`,
+        `App version: ${payload.appVersion || payload.appBuild || "-"}`,
+        `Online: ${payload.online === null ? "unknown" : payload.online ? "yes" : "no"}`,
+        `Visibility: ${payload.visibilityState || "unknown"}`,
+        `Active Firestore listeners: ${payload.activeFirestoreListeners.length}`,
         ``,
         payload.route ? `Route: ${payload.route}` : "",
         payload.projectId ? `Project ID: ${payload.projectId}` : "",
@@ -492,6 +539,12 @@ exports.reportClientMonitorEvent = onRequest( { cors: false, maxInstances: 10, i
         payload.messageRaw,
         payload.stack ? `\nStack:\n${payload.stack}` : "",
         payload.pageUrl ? `\nPage URL:\n${payload.pageUrl}` : "",
+        payload.activeFirestoreListeners.length > 0
+          ? `\nActive listeners:\n${JSON.stringify( payload.activeFirestoreListeners, null, 2 )}`
+          : "",
+        payload.recentDiagnostics.length > 0
+          ? `\nRecent diagnostics:\n${JSON.stringify( payload.recentDiagnostics, null, 2 )}`
+          : "",
         consoleUrl ? `\nFirestore event:\n${consoleUrl}` : "",
       ].filter( Boolean ).join( "\n" )
 

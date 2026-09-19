@@ -81,6 +81,9 @@ const resolveRequestedAction = (error: string): string | null => {
   if( error.includes( 'create an error report' ) ) {
     return 'create_error_report'
   }
+  if( error.toLowerCase().includes( 'download' ) ) {
+    return 'download_file'
+  }
   if( error.includes( 'close or reopen' ) || error.includes( 'update an issue' ) ) {
     return 'close_or_reopen_issue'
   }

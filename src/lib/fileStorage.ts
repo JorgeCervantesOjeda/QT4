@@ -78,6 +78,16 @@ const describeError = (err: unknown): string => {
   return String( err )
 }
 
+const isBrowserNetworkFetchError = (err: unknown): boolean => {
+  const message = describeError( err ).toLowerCase()
+  return (
+    err instanceof TypeError
+    || message.includes( 'networkerror' )
+    || message.includes( 'failed to fetch' )
+    || message.includes( 'load failed' )
+  )
+}
+
 const resolveProvider = async (preferred?: FileStorageProviderKind): Promise<FileStorageProviderKind> => {
   if( FORCED_FILE_STORAGE_PROVIDER ) {
     return FORCED_FILE_STORAGE_PROVIDER
@@ -140,7 +150,18 @@ const downloadFileWithFirebaseStorage = async (
       elapsedMs: Date.now() - startedAt,
       urlHost: new URL( downloadUrl ).host,
     } )
-    await downloadRemoteUrlAsBlob( downloadUrl, suggestedName, fileKey )
+    try {
+      await downloadRemoteUrlAsBlob( downloadUrl, suggestedName, fileKey )
+    } catch( err ) {
+      if( !isBrowserNetworkFetchError( err ) ) {
+        throw err
+      }
+      console.warn( `${DOWNLOAD_LOG_PREFIX}[firebase][direct_fallback]`, {
+        fileKey,
+        message: describeError( err ),
+      } )
+      triggerUrlDownload( downloadUrl, suggestedName, fileKey )
+    }
     console.info( `${DOWNLOAD_LOG_PREFIX}[firebase][triggered]`, {
       fileKey,
       totalElapsedMs: Date.now() - startedAt,

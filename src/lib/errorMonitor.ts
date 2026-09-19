@@ -84,7 +84,8 @@ type ClassifiedError = {
 const FIREBASE_MONITOR_FUNCTION_URL = (
   import.meta.env.VITE_FIREBASE_MONITOR_FUNCTION_URL ?? ''
 ).trim()
-const APP_BUILD = ( import.meta.env.VITE_APP_BUILD ?? import.meta.env.MODE ).trim()
+const APP_VERSION = __APP_VERSION__
+const APP_BUILD = APP_VERSION
 const LOCAL_DEDUPE_WINDOW_MS = 5000
 const MAX_STACK_LENGTH = 4000
 const MAX_MESSAGE_LENGTH = 1200
@@ -313,7 +314,9 @@ const classifyError = (
     || loweredCode.includes( 'deadline-exceeded' )
     || loweredCode.includes( 'resource-exhausted' )
     || normalized.messageNormalized.includes( 'network error' )
+    || normalized.messageNormalized.includes( 'networkerror' )
     || normalized.messageNormalized.includes( 'failed to fetch' )
+    || normalized.messageNormalized.includes( 'fetch resource' )
   ) {
     return {
       category: 'network',
@@ -545,6 +548,7 @@ export const reportAbnormalError = async (input: ReportAbnormalErrorInput): Prom
     threadLabel: trimMultiline( input.threadLabel ?? '', 200 ),
     userAgent: trimAndCollapseWhitespace( window.navigator.userAgent ?? '', 400 ),
     appBuild: APP_BUILD,
+    appVersion: APP_VERSION,
     clientTimestamp: new Date().toISOString(),
   } )
 }
@@ -595,6 +599,7 @@ export const reportUserVisibleError = async (input: ReportUserVisibleErrorInput)
     recentDiagnostics: getRecentDiagnostics(),
     userAgent: trimAndCollapseWhitespace( window.navigator.userAgent ?? '', 400 ),
     appBuild: APP_BUILD,
+    appVersion: APP_VERSION,
     clientTimestamp: new Date().toISOString(),
   } )
 }

@@ -93,12 +93,15 @@ describe( 'lib/errorMonitor', () => {
       } ),
     )
     const payload = JSON.parse( String( fetchMock.mock.calls[0]?.[1]?.body ) )
+    const { APP_METADATA } = await import( './appMetadata' )
     expect( payload ).toEqual(
       expect.objectContaining( {
         action: 'global.unhandledrejection',
         messageRaw: 'Unexpected runtime failure',
         projectId: 'project-1',
         docId: 'doc-1',
+        appBuild: APP_METADATA.appVersion,
+        appVersion: APP_METADATA.appVersion,
       } ),
     )
   } )

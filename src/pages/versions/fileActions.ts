@@ -234,6 +234,7 @@ function useFileActions(params: UseFileActionsParams) {
     const {
       selectedVersion,
       selectedFileRef,
+      reportVersionsError,
       setError,
       setSuccessMessage,
       setDownloadStatus,
@@ -285,7 +286,10 @@ function useFileActions(params: UseFileActionsParams) {
     } catch (err) {
       const rawMessage =
         err instanceof Error ? err.message : "Unexpected error";
-      setError(normalizeDownloadError(rawMessage));
+      reportVersionsError(err, "versions.downloadSelectedFile", "storage", {
+        versionId: selectedVersion.id,
+      });
+      setError(`Download failed: ${normalizeDownloadError(rawMessage)}`);
     } finally {
       setDownloadStatus("idle");
       setDownloadMessage("");
