@@ -412,10 +412,6 @@ function SelectedThreadComments( props: Pick<ReviewIssuesPanelProps,
 
   return (
     <div className="stack">
-      <h4>Conversation</h4>
-      <p className="muted selected-thread-title">
-        Selected issue: <span>{selectedThread.title}</span>
-      </p>
       <div className="actions actions--thread-navigation">
         <p className="thread-navigation-status muted">{threadNavigationStatusLabel}</p>
         <div className="thread-navigation-buttons">

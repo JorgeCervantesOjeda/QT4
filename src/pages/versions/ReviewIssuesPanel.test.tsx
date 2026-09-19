@@ -143,7 +143,7 @@ describe( 'ReviewIssuesPanel', () => {
     expect( screen.queryByPlaceholderText( 'New issue title' ) ).toBeNull()
     expect( screen.getByRole( 'button', { name: 'Create issue' } ) ).toBeTruthy()
     expect( screen.getByRole( 'heading', { name: 'Created Issues' } ) ).toBeTruthy()
-    expect( screen.getByText( 'Conversation' ) ).toBeTruthy()
+    expect( screen.queryByText( 'Conversation' ) ).toBeNull()
     expect( screen.queryByText( 'Comment view' ) ).toBeNull()
     expect( screen.getByRole( 'button', { name: /Comment/u } ) ).toBeTruthy()
     expect( screen.getAllByText( 'Please add evidence.' ) ).toHaveLength( 1 )
@@ -153,7 +153,7 @@ describe( 'ReviewIssuesPanel', () => {
     renderPanel( { threadsViewMode: 'table' } )
 
     expect( screen.getByRole( 'heading', { name: 'Created Issues' } ) ).toBeTruthy()
-    expect( screen.getByText( 'Conversation' ) ).toBeTruthy()
+    expect( screen.queryByText( 'Conversation' ) ).toBeNull()
     expect( screen.getByRole( 'button', { name: /Comment/u } ) ).toBeTruthy()
     expect( screen.getAllByText( 'Please add evidence.' ) ).toHaveLength( 1 )
   } )
