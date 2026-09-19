@@ -87,7 +87,12 @@ const renderPanel = (overrides: Partial<ComponentProps<typeof ReviewIssuesPanel>
     commentsViewMode: "card",
     setCommentsViewMode: vi.fn(),
     selectedThreadComments,
-    commentColumns: [],
+    commentColumns: [
+      {
+        header: 'Comment',
+        accessorKey: 'body',
+      },
+    ],
     commentsSorting: [],
     setCommentsSorting: vi.fn(),
     highlightedCommentId: null,
@@ -129,7 +134,7 @@ describe( 'ReviewIssuesPanel', () => {
     } )
   } )
 
-  it( 'presents new issue capture as an initial comment and existing issues as collapsible conversations', () => {
+  it( 'expands the selected issue card with one comments table', () => {
     renderPanel()
 
     expect( screen.getByRole( 'heading', { name: 'New Issue' } ) ).toBeTruthy()
@@ -139,6 +144,17 @@ describe( 'ReviewIssuesPanel', () => {
     expect( screen.getByRole( 'button', { name: 'Create issue' } ) ).toBeTruthy()
     expect( screen.getByRole( 'heading', { name: 'Created Issues' } ) ).toBeTruthy()
     expect( screen.getByText( 'Conversation' ) ).toBeTruthy()
-    expect( screen.getAllByText( 'Please add evidence.' ).length ).toBeGreaterThan( 0 )
+    expect( screen.queryByText( 'Comment view' ) ).toBeNull()
+    expect( screen.getByRole( 'button', { name: /Comment/u } ) ).toBeTruthy()
+    expect( screen.getAllByText( 'Please add evidence.' ) ).toHaveLength( 1 )
+  } )
+
+  it( 'expands the selected issue table row with one comments table', () => {
+    renderPanel( { threadsViewMode: 'table' } )
+
+    expect( screen.getByRole( 'heading', { name: 'Created Issues' } ) ).toBeTruthy()
+    expect( screen.getByText( 'Conversation' ) ).toBeTruthy()
+    expect( screen.getByRole( 'button', { name: /Comment/u } ) ).toBeTruthy()
+    expect( screen.getAllByText( 'Please add evidence.' ) ).toHaveLength( 1 )
   } )
 } )

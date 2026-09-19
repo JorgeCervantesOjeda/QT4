@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   createTable,
   flexRender,
@@ -29,6 +29,7 @@ type DataTableProps<T> = {
   enablePagination?: boolean
   initialPageSize?: number
   onVisibleRowsChange?: (rows: T[]) => void
+  renderExpandedRow?: (row: T) => ReactNode
 }
 
 function DataTable<T>( {
@@ -43,6 +44,7 @@ function DataTable<T>( {
   enablePagination = false,
   initialPageSize = 20,
   onVisibleRowsChange,
+  renderExpandedRow,
 }: DataTableProps<T> ) {
   const columnPinning = useMemo<ColumnPinningState>( () => ( { left: [], right: [] } ), [] )
 
@@ -236,28 +238,35 @@ function DataTable<T>( {
           {table.getRowModel().rows.map( ( row ) => {
             const rowData = row.original
             const rowClassName = getRowClassName ? getRowClassName( rowData ) : ''
+            const expandedRow = renderExpandedRow ? renderExpandedRow( rowData ) : null
             return (
-              <tr
-                key={row.id}
-                className={rowClassName}
-                onClick={onRowClick ? () => onRowClick( rowData ) : undefined}
-                role={onRowClick ? 'button' : undefined}
-                tabIndex={onRowClick ? 0 : undefined}
-                onKeyDown={
-                  onRowClick
-                    ? ( event ) => {
-                      if( event.key === 'Enter' || event.key === ' ' ) {
-                        event.preventDefault()
-                        onRowClick( rowData )
+              <Fragment key={row.id}>
+                <tr
+                  className={rowClassName}
+                  onClick={onRowClick ? () => onRowClick( rowData ) : undefined}
+                  role={onRowClick ? 'button' : undefined}
+                  tabIndex={onRowClick ? 0 : undefined}
+                  onKeyDown={
+                    onRowClick
+                      ? ( event ) => {
+                        if( event.key === 'Enter' || event.key === ' ' ) {
+                          event.preventDefault()
+                          onRowClick( rowData )
+                        }
                       }
-                    }
-                    : undefined
-                }
-              >
-                {row.getVisibleCells().map( ( cell ) => (
-                  <td key={cell.id}>{flexRender( cell.column.columnDef.cell, cell.getContext() )}</td>
-                ) )}
-              </tr>
+                      : undefined
+                  }
+                >
+                  {row.getVisibleCells().map( ( cell ) => (
+                    <td key={cell.id}>{flexRender( cell.column.columnDef.cell, cell.getContext() )}</td>
+                  ) )}
+                </tr>
+                {expandedRow ? (
+                  <tr className="data-table-row--expanded">
+                    <td colSpan={Math.max( 1, row.getVisibleCells().length )}>{expandedRow}</td>
+                  </tr>
+                ) : null}
+              </Fragment>
             )
           } )}
         </tbody>

@@ -5,11 +5,9 @@ import { useState } from 'react'
 import DataTable from '../../components/DataTable'
 import { requestAiAssist } from '../../lib/aiAssist'
 import { measureSlowUiAction } from '../../lib/slowUiAction'
-import { formatTimeAgoWithTimestamp } from '../../lib/time'
 import type { CommentSummary, ThreadSummary, VersionSummary } from './types'
 import {
   areThreadsEqual,
-  buildCommentAnchorId,
 } from './utils'
 
 type CommentWindowMeta = {
@@ -93,9 +91,7 @@ function ReviewIssuesPanel( props: ReviewIssuesPanelProps ) {
     onSelectAdjacentThread,
     hasPreviousThread,
     hasNextThread,
-    commentsViewMode,
-    setCommentsViewMode,
-    selectedThreadComments,
+  selectedThreadComments,
     commentColumns,
     commentsSorting,
     setCommentsSorting,
@@ -161,36 +157,33 @@ function ReviewIssuesPanel( props: ReviewIssuesPanelProps ) {
           requestThreadStatusChangeConfirmation={requestThreadStatusChangeConfirmation}
           formatUserLabel={formatUserLabel}
           isBusy={isBusy}
+          issueConversation={selectedThread ? (
+            <SelectedThreadComments
+              selectedThread={selectedThread}
+              selectedVersion={selectedVersion}
+              projectId={props.projectId}
+              docId={props.docId}
+              threadNavigationStatusLabel={threadNavigationStatusLabel}
+              onSelectAdjacentThread={onSelectAdjacentThread}
+              hasPreviousThread={hasPreviousThread}
+              hasNextThread={hasNextThread}
+              requestThreadStatusChangeConfirmation={requestThreadStatusChangeConfirmation}
+              isBusy={isBusy}
+              selectedThreadComments={selectedThreadComments}
+              commentColumns={commentColumns}
+              commentsSorting={commentsSorting}
+              setCommentsSorting={setCommentsSorting}
+              highlightedCommentId={highlightedCommentId}
+              commentWindowCountdownLabel={commentWindowCountdownLabel}
+              commentInputRef={commentInputRef}
+              selectedCommentWindowState={selectedCommentWindowState}
+              newCommentBody={newCommentBody}
+              setNewCommentBody={setNewCommentBody}
+              onAddComment={onAddComment}
+            />
+          ) : null}
         />
       )}
-      {selectedThread ? (
-        <SelectedThreadComments
-          selectedThread={selectedThread}
-          selectedVersion={selectedVersion}
-          projectId={props.projectId}
-          docId={props.docId}
-          threadNavigationStatusLabel={threadNavigationStatusLabel}
-          onSelectAdjacentThread={onSelectAdjacentThread}
-          hasPreviousThread={hasPreviousThread}
-          hasNextThread={hasNextThread}
-          requestThreadStatusChangeConfirmation={requestThreadStatusChangeConfirmation}
-          isBusy={isBusy}
-          commentsViewMode={commentsViewMode}
-          setCommentsViewMode={setCommentsViewMode}
-          selectedThreadComments={selectedThreadComments}
-          commentColumns={commentColumns}
-          commentsSorting={commentsSorting}
-          setCommentsSorting={setCommentsSorting}
-          highlightedCommentId={highlightedCommentId}
-          formatUserLabel={formatUserLabel}
-          commentWindowCountdownLabel={commentWindowCountdownLabel}
-          commentInputRef={commentInputRef}
-          selectedCommentWindowState={selectedCommentWindowState}
-          newCommentBody={newCommentBody}
-          setNewCommentBody={setNewCommentBody}
-          onAddComment={onAddComment}
-        />
-      ) : null}
     </section>
   )
 }
@@ -200,7 +193,7 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
   'threadsSorting' | 'setThreadsSorting' | 'setVisibleThreadRows' | 'getThreadCommentWindowMeta' |
   'effectiveSelectedThreadId' | 'selectThreadKeepingViewport' | 'commentsByThread' |
   'requestThreadStatusChangeConfirmation' | 'formatUserLabel' | 'isBusy'
-> ) {
+> & { issueConversation: ReactNode } ) {
   const {
     selectedVersion,
     threads,
@@ -218,6 +211,7 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
     formatUserLabel,
     isBusy,
   } = props
+  const issueConversation = props.issueConversation
 
   return (
     <div className="stack">
@@ -248,17 +242,19 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
             }`.trim()
           }}
           onRowClick={( row ) => selectThreadKeepingViewport( row.id )}
+          renderExpandedRow={( row ) => (
+            row.id === effectiveSelectedThreadId && issueConversation ? (
+              <div className="issue-conversation-expanded">{issueConversation}</div>
+            ) : null
+          )}
         />
       ) : (
         <div className="project-grid">
           {threads.map( ( thread ) => {
             const commentWindowMeta = getThreadCommentWindowMeta( thread )
-            const threadComments = commentsByThread[thread.id] ?? []
-            const latestComment = threadComments[threadComments.length - 1]
             return (
-              <details
+              <article
                 key={thread.id}
-                open={effectiveSelectedThreadId === thread.id}
                 className={`project-card ${
                   thread.status === 'open'
                     ? commentWindowMeta.state === 'expired'
@@ -267,33 +263,20 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
                     : 'project-card--thread-closed'
                 } ${effectiveSelectedThreadId === thread.id ? 'project-card--thread-selected' : ''}`}
               >
-                <summary onClick={() => selectThreadKeepingViewport( thread.id )}>
-                  <span>{thread.title}</span>
-                </summary>
-                <p className="muted">Status: {thread.status}</p>
-                <p className="muted">Created by: {formatUserLabel( thread.createdBy )}</p>
-                <p className="muted">Comments: {commentsByThread[thread.id]?.length ?? thread.commentCount}</p>
-                {latestComment ? (
-                  <p className="muted">Latest comment: {latestComment.body}</p>
-                ) : null}
-                <p className={`thread-window thread-window--${commentWindowMeta.state}`}>
-                  Comment window: {commentWindowMeta.label}
-                </p>
-                <div className="thread-conversation">
-                  <h5>Conversation</h5>
-                  {threadComments.length === 0 ? (
-                    <p className="muted">No comments yet.</p>
-                  ) : (
-                    <div className="comment-list comment-list--thread-card">
-                      {threadComments.map( ( comment ) => (
-                        <article key={comment.id} className="project-card">
-                          <p className="muted">By: {formatUserLabel( comment.createdBy )}</p>
-                          <p className="comment-body">{comment.body}</p>
-                        </article>
-                      ) )}
-                    </div>
-                  )}
-                </div>
+                <button
+                  type="button"
+                  className="issue-card-select-area"
+                  aria-label={`Select issue ${thread.title}`}
+                  onClick={() => selectThreadKeepingViewport( thread.id )}
+                >
+                  <h4>{thread.title}</h4>
+                  <p className="muted">Status: {thread.status}</p>
+                  <p className="muted">Created by: {formatUserLabel( thread.createdBy )}</p>
+                  <p className="muted">Comments: {commentsByThread[thread.id]?.length ?? thread.commentCount}</p>
+                  <p className={`thread-window thread-window--${commentWindowMeta.state}`}>
+                    Comment window: {commentWindowMeta.label}
+                  </p>
+                </button>
                 <div className="actions">
                   <button
                     type="button"
@@ -306,7 +289,15 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
                     {thread.status === 'open' ? 'Close' : 'Reopen'}
                   </button>
                 </div>
-              </details>
+                {effectiveSelectedThreadId === thread.id && issueConversation ? (
+                  <div
+                    className="issue-conversation-expanded"
+                    onClick={( event ) => event.stopPropagation()}
+                  >
+                    {issueConversation}
+                  </div>
+                ) : null}
+              </article>
             )
           } )}
         </div>
@@ -317,9 +308,8 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
 
 function SelectedThreadComments( props: Pick<ReviewIssuesPanelProps,
   'selectedThread' | 'selectedVersion' | 'projectId' | 'docId' | 'threadNavigationStatusLabel' | 'onSelectAdjacentThread' | 'hasPreviousThread' |
-  'hasNextThread' | 'requestThreadStatusChangeConfirmation' | 'isBusy' | 'commentsViewMode' |
-  'setCommentsViewMode' | 'selectedThreadComments' | 'commentColumns' | 'commentsSorting' |
-  'setCommentsSorting' | 'highlightedCommentId' | 'formatUserLabel' | 'commentWindowCountdownLabel' |
+  'hasNextThread' | 'requestThreadStatusChangeConfirmation' | 'isBusy' | 'selectedThreadComments' |
+  'commentColumns' | 'commentsSorting' | 'setCommentsSorting' | 'highlightedCommentId' | 'commentWindowCountdownLabel' |
   'commentInputRef' | 'selectedCommentWindowState' | 'newCommentBody' | 'setNewCommentBody' | 'onAddComment'
 > ) {
   const {
@@ -333,14 +323,11 @@ function SelectedThreadComments( props: Pick<ReviewIssuesPanelProps,
     hasNextThread,
     requestThreadStatusChangeConfirmation,
     isBusy,
-    commentsViewMode,
-    setCommentsViewMode,
     selectedThreadComments,
     commentColumns,
     commentsSorting,
     setCommentsSorting,
     highlightedCommentId,
-    formatUserLabel,
     commentWindowCountdownLabel,
     commentInputRef,
     selectedCommentWindowState,
@@ -350,7 +337,6 @@ function SelectedThreadComments( props: Pick<ReviewIssuesPanelProps,
   } = props
   const [activeAiRequest, setActiveAiRequest] = useState<string | null>( null )
   const [threadAiState, setThreadAiState] = useState<AiAssistTextState | null>( null )
-  const [commentAiStates, setCommentAiStates] = useState<Record<string, AiAssistTextState>>( {} )
   const [draftAiState, setDraftAiState] = useState<AiAssistTextState | null>( null )
 
   if( !selectedThread ) {
@@ -380,43 +366,6 @@ function SelectedThreadComments( props: Pick<ReviewIssuesPanelProps,
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected AI error'
       setThreadAiState( { entityId: selectedThread.id, result: '', error: message } )
-    } finally {
-      setActiveAiRequest( null )
-    }
-  }
-
-  const explainComment = async (commentId: string) => {
-    const requestKey = `comment:${commentId}`
-    setActiveAiRequest( requestKey )
-    setCommentAiStates( ( previous ) => ( {
-      ...previous,
-      [commentId]: { entityId: commentId, result: '', error: '' },
-    } ) )
-    try {
-      const response = await measureSlowUiAction(
-        {
-          action: 'review.explainComment',
-          page: 'Document Versions',
-          projectId,
-          docId,
-          versionId: selectedVersion.id,
-          threadId: selectedThread.id,
-        },
-        () => requestAiAssist( {
-          mode: 'explain_comment',
-          commentId,
-        } ),
-      )
-      setCommentAiStates( ( previous ) => ( {
-        ...previous,
-        [commentId]: { entityId: commentId, result: response.result, error: '' },
-      } ) )
-    } catch( err ) {
-      const message = err instanceof Error ? err.message : 'Unexpected AI error'
-      setCommentAiStates( ( previous ) => ( {
-        ...previous,
-        [commentId]: { entityId: commentId, result: '', error: message },
-      } ) )
     } finally {
       setActiveAiRequest( null )
     }
@@ -463,6 +412,7 @@ function SelectedThreadComments( props: Pick<ReviewIssuesPanelProps,
 
   return (
     <div className="stack">
+      <h4>Conversation</h4>
       <p className="muted selected-thread-title">
         Selected issue: <span>{selectedThread.title}</span>
       </p>
@@ -498,12 +448,9 @@ function SelectedThreadComments( props: Pick<ReviewIssuesPanelProps,
           error={selectedThreadAiState?.error ?? ''}
         />
       ) : null}
-      <div className="actions">
-        <ViewToggle label="Comment view" value={commentsViewMode} onChange={setCommentsViewMode} />
-      </div>
       {selectedThreadComments.length === 0 ? (
         <p className="muted">No comments yet.</p>
-      ) : commentsViewMode === 'table' ? (
+      ) : (
         <DataTable
           key={`qt4_table_versions_thread_comments_${selectedThread.id}`}
           columns={commentColumns}
@@ -516,38 +463,6 @@ function SelectedThreadComments( props: Pick<ReviewIssuesPanelProps,
             highlightedCommentId === row.id ? 'data-table-row--selected comment-row--highlight' : ''
           }
         />
-      ) : (
-        <div className="comment-list">
-          {selectedThreadComments.map( ( comment ) => (
-            <article
-              id={buildCommentAnchorId( comment.id )}
-              key={comment.id}
-              className={`project-card ${highlightedCommentId === comment.id ? 'comment-card--highlight' : ''}`.trim()}
-            >
-              <p className="muted">By: {formatUserLabel( comment.createdBy )}</p>
-              <p className="muted">{formatTimeAgoWithTimestamp( comment.createdAt )}</p>
-              <p className="comment-body">{comment.body}</p>
-              <div className="actions">
-                <button
-                  type="button"
-                  className="ghost"
-                  onClick={() => explainComment( comment.id )}
-                  disabled={isBusy || activeAiRequest !== null}
-                >
-                  {activeAiRequest === `comment:${comment.id}` ? 'Explaining comment...' : 'Explain comment'}
-                </button>
-              </div>
-              {commentAiStates[comment.id] || activeAiRequest === `comment:${comment.id}` ? (
-                <AiAssistPanel
-                  title="Comment explanation"
-                  isLoading={activeAiRequest === `comment:${comment.id}`}
-                  result={commentAiStates[comment.id]?.result ?? ''}
-                  error={commentAiStates[comment.id]?.error ?? ''}
-                />
-              ) : null}
-            </article>
-          ) )}
-        </div>
       )}
       {commentWindowCountdownLabel ? <p className="muted">{commentWindowCountdownLabel}</p> : null}
       <div className="actions actions--capture-row">

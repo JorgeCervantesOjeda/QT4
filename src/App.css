@@ -611,6 +611,14 @@
   box-shadow: var(--qt-selected-shadow);
 }
 
+.data-table tr.data-table-row--expanded td {
+  background: rgba(255, 253, 249, 0.96);
+  border-left: 2px solid var(--qt-interaction-border);
+  border-right: 2px solid var(--qt-interaction-border);
+  border-bottom: 2px solid var(--qt-interaction-border);
+  box-shadow: var(--qt-selected-shadow);
+}
+
 .data-table tr.status-card--in-creation td {
   background: #ffffff;
 }
@@ -1120,6 +1128,29 @@
   background: #e6e6e6;
 }
 
+
+.issue-card-select-area {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.issue-card-select-area h4,
+.issue-card-select-area p {
+  margin: 0;
+}
+
+.issue-card-select-area:focus-visible {
+  outline: 2px solid var(--qt-interaction-border);
+  outline-offset: 3px;
+}
+
 .review-timer {
   border-radius: 12px;
   padding: 14px 16px;
@@ -1186,11 +1217,23 @@
   border-color: var(--qt-interaction-border);
   border-width: 2px;
   box-shadow: var(--qt-selected-shadow);
+  grid-column: 1 / -1;
 }
 
 .project-card--thread-selected[role="button"]:hover,
 .project-card--thread-selected:hover {
   box-shadow: var(--qt-selected-shadow);
+}
+
+.issue-conversation-expanded {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  min-width: 0;
+}
+
+.issue-conversation-expanded > .stack {
+  min-width: 0;
 }
 
 .modal-overlay {
@@ -1578,7 +1621,7 @@
   }
 
   .data-table table {
-    min-width: 0;
+    min-width: 640px;
   }
 
   .data-table--members th {
@@ -1680,29 +1723,6 @@
 .project-card h3 {
   margin-top: 0;
   margin-bottom: 6px;
-}
-
-.project-card summary {
-  cursor: pointer;
-  font-weight: 800;
-  color: var(--qt-ink-strong);
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.thread-conversation {
-  display: grid;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.thread-conversation h5 {
-  margin: 0;
-  font-size: 0.95rem;
-}
-
-.comment-list--thread-card {
-  grid-template-columns: 1fr;
 }
 
 .project-card h4 {
