@@ -146,6 +146,16 @@ describe( 'ReviewIssuesPanel', () => {
     expect( screen.queryByText( 'Conversation' ) ).toBeNull()
     expect( screen.queryByText( 'Comment view' ) ).toBeNull()
     expect( screen.getByRole( 'button', { name: /Comment/u } ) ).toBeTruthy()
+    expect( screen.getByRole( 'button', { name: 'Hide comments' } ) ).toBeTruthy()
+    expect( screen.getAllByText( 'Please add evidence.' ) ).toHaveLength( 1 )
+
+    fireEvent.click( screen.getByRole( 'button', { name: 'Hide comments' } ) )
+
+    expect( screen.queryByText( 'Please add evidence.' ) ).toBeNull()
+    expect( screen.getByRole( 'button', { name: 'Show comments' } ) ).toBeTruthy()
+
+    fireEvent.click( screen.getByRole( 'button', { name: 'Show comments' } ) )
+
     expect( screen.getAllByText( 'Please add evidence.' ) ).toHaveLength( 1 )
   } )
 
@@ -155,6 +165,11 @@ describe( 'ReviewIssuesPanel', () => {
     expect( screen.getByRole( 'heading', { name: 'Created Issues' } ) ).toBeTruthy()
     expect( screen.queryByText( 'Conversation' ) ).toBeNull()
     expect( screen.getByRole( 'button', { name: /Comment/u } ) ).toBeTruthy()
+    expect( screen.getByRole( 'button', { name: 'Hide comments' } ) ).toBeTruthy()
     expect( screen.getAllByText( 'Please add evidence.' ) ).toHaveLength( 1 )
+
+    fireEvent.click( screen.getByRole( 'button', { name: 'Hide comments' } ) )
+
+    expect( screen.queryByText( 'Please add evidence.' ) ).toBeNull()
   } )
 } )

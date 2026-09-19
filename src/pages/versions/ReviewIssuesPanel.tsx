@@ -212,6 +212,24 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
     isBusy,
   } = props
   const issueConversation = props.issueConversation
+  const [collapsedThreadId, setCollapsedThreadId] = useState<string | null>( null )
+  const isIssueConversationExpanded = (threadId: string) => (
+    threadId === effectiveSelectedThreadId && collapsedThreadId !== threadId && Boolean( issueConversation )
+  )
+  const handleSelectIssue = (threadId: string) => {
+    if( threadId === effectiveSelectedThreadId && collapsedThreadId === threadId ) {
+      setCollapsedThreadId( null )
+      return
+    }
+    setCollapsedThreadId( null )
+    selectThreadKeepingViewport( threadId )
+  }
+  const toggleSelectedIssueConversation = () => {
+    if( !effectiveSelectedThreadId ) {
+      return
+    }
+    setCollapsedThreadId( ( current ) => ( current === effectiveSelectedThreadId ? null : effectiveSelectedThreadId ) )
+  }
 
   return (
     <div className="stack">
@@ -241,10 +259,17 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
               effectiveSelectedThreadId === row.id ? 'data-table-row--selected' : ''
             }`.trim()
           }}
-          onRowClick={( row ) => selectThreadKeepingViewport( row.id )}
+          onRowClick={( row ) => handleSelectIssue( row.id )}
           renderExpandedRow={( row ) => (
-            row.id === effectiveSelectedThreadId && issueConversation ? (
-              <div className="issue-conversation-expanded">{issueConversation}</div>
+            isIssueConversationExpanded( row.id ) ? (
+              <div className="issue-conversation-expanded">
+                <div className="actions issue-conversation-expanded__toolbar">
+                  <button type="button" className="ghost" onClick={toggleSelectedIssueConversation}>
+                    Hide comments
+                  </button>
+                </div>
+                {issueConversation}
+              </div>
             ) : null
           )}
         />
@@ -267,7 +292,7 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
                   type="button"
                   className="issue-card-select-area"
                   aria-label={`Select issue ${thread.title}`}
-                  onClick={() => selectThreadKeepingViewport( thread.id )}
+                  onClick={() => handleSelectIssue( thread.id )}
                 >
                   <h4>{thread.title}</h4>
                   <p className="muted">Status: {thread.status}</p>
@@ -278,6 +303,11 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
                   </p>
                 </button>
                 <div className="actions">
+                  {effectiveSelectedThreadId === thread.id && issueConversation ? (
+                    <button type="button" className="ghost" onClick={toggleSelectedIssueConversation}>
+                      {isIssueConversationExpanded( thread.id ) ? 'Hide comments' : 'Show comments'}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     onClick={( event ) => {
@@ -289,7 +319,7 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
                     {thread.status === 'open' ? 'Close' : 'Reopen'}
                   </button>
                 </div>
-                {effectiveSelectedThreadId === thread.id && issueConversation ? (
+                {isIssueConversationExpanded( thread.id ) ? (
                   <div
                     className="issue-conversation-expanded"
                     onClick={( event ) => event.stopPropagation()}
