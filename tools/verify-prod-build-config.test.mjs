@@ -1,6 +1,6 @@
 // tools/verify-prod-build-config.test.mjs: Verifies production build guards against missing Firebase env injection.
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -42,6 +42,28 @@ test( 'validateProductionFirebaseEnv rejects missing required Firebase config', 
     () => validateProductionFirebaseEnv( { ...validEnv, VITE_FIREBASE_API_KEY: '' } ),
     /VITE_FIREBASE_API_KEY/,
   )
+} )
+
+test( 'production pins Firebase Auth before the visibility persistence regression', () => {
+  const packageJson = JSON.parse(
+    readFileSync( path.join( process.cwd(), 'package.json' ), 'utf8' ),
+  )
+  const firebasePackageJson = JSON.parse(
+    readFileSync( path.join( process.cwd(), 'node_modules/firebase/package.json' ), 'utf8' ),
+  )
+  const authPackageJson = JSON.parse(
+    readFileSync( path.join( process.cwd(), 'node_modules/@firebase/auth/package.json' ), 'utf8' ),
+  )
+  const appPackageJson = JSON.parse(
+    readFileSync( path.join( process.cwd(), 'node_modules/@firebase/app/package.json' ), 'utf8' ),
+  )
+
+  assert.equal( packageJson.dependencies.firebase, '12.16.0' )
+  assert.equal( packageJson.overrides['@firebase/app'], '0.15.1' )
+  assert.equal( packageJson.overrides['firebase-admin']['@firebase/database-compat'], '2.1.4' )
+  assert.equal( firebasePackageJson.version, '12.16.0' )
+  assert.equal( authPackageJson.version, '1.13.3' )
+  assert.equal( appPackageJson.version, '0.15.1' )
 } )
 
 test( 'validateProductionBuildConfig rejects bundles with undefined Firebase config', () => {
