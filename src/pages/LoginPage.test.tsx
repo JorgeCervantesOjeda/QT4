@@ -138,3 +138,22 @@ describe( 'pages/LoginPage password reset', () => {
     } )
   } )
 } )
+
+describe( 'pages/LoginPage password visibility', () => {
+  afterEach( () => {
+    vi.clearAllMocks()
+  } )
+
+  it( 'toggles the password field visibility from the eye button', () => {
+    renderLoginPage()
+
+    const passwordInput = screen.getByLabelText( 'Password' )
+    expect( passwordInput.getAttribute( 'type' ) ).toBe( 'password' )
+
+    fireEvent.click( screen.getByRole( 'button', { name: 'Show password' } ) )
+    expect( passwordInput.getAttribute( 'type' ) ).toBe( 'text' )
+
+    fireEvent.click( screen.getByRole( 'button', { name: 'Hide password' } ) )
+    expect( passwordInput.getAttribute( 'type' ) ).toBe( 'password' )
+  } )
+} )

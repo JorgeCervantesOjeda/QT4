@@ -5,6 +5,7 @@ import { formatTimestamp } from "../../lib/time";
 import type {
   CommentSummary,
   DashboardFocusTarget,
+  FileRefSummary,
   ProjectMember,
   ThreadSummary,
   VersionSummary,
@@ -79,6 +80,51 @@ const formatStorageProviderLabel = (
     return "Files API";
   }
   return "Unknown";
+};
+
+const getFileExtensionFromName = (fileName: string): string | null => {
+  const cleanName = fileName.split(/[\\/]/).pop()?.split(/[?#]/)[0] ?? "";
+  const lastDotIndex = cleanName.lastIndexOf(".");
+  if (lastDotIndex <= 0 || lastDotIndex === cleanName.length - 1) {
+    return null;
+  }
+  return cleanName.slice(lastDotIndex).toLowerCase();
+};
+
+const getFileExtensionFromContentType = (contentType: string): string | null => {
+  const normalizedType = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+  const extensionByContentType: Record<string, string> = {
+    "application/msword": ".doc",
+    "application/pdf": ".pdf",
+    "application/vnd.ms-excel": ".xls",
+    "application/vnd.ms-powerpoint": ".ppt",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation":
+      ".pptx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+      ".xlsx",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+      ".docx",
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "text/csv": ".csv",
+    "text/plain": ".txt",
+  };
+  return extensionByContentType[normalizedType] ?? null;
+};
+
+const formatFileExtensionLabel = (
+  fileRef:
+    | Pick<FileRefSummary, "fileName" | "contentType">
+    | null
+    | undefined,
+): string | null => {
+  if (!fileRef) {
+    return null;
+  }
+  const extension =
+    getFileExtensionFromName(fileRef.fileName) ??
+    getFileExtensionFromContentType(fileRef.contentType);
+  return extension ? `File: ${extension}` : null;
 };
 
 const formatReviewPeriodLabel = (
@@ -388,6 +434,7 @@ export {
   buildCommentAnchorId,
   buildThreadStatsMismatchMessage,
   formatEmailRecipientsLine,
+  formatFileExtensionLabel,
   formatFileSize,
   formatReviewPeriodLabel,
   formatStorageProviderLabel,

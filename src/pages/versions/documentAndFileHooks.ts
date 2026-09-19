@@ -247,6 +247,106 @@ function useSelectedFileMetadata( {
   ] )
 }
 
+type UseVersionFileMetadataMapParams = {
+  versions: VersionSummary[]
+  localFileRefByIdRef: MutableRefObject<Map<string, FileRefSummary>>
+  reportVersionsErrorRef: MutableRefObject<VersionsErrorReporter>
+  setVersionFileRefsById: Dispatch<SetStateAction<Record<string, FileRefSummary>>>
+}
+
+function useVersionFileMetadataMap( {
+  versions,
+  localFileRefByIdRef,
+  reportVersionsErrorRef,
+  setVersionFileRefsById,
+}: UseVersionFileMetadataMapParams ) {
+  useEffect( () => {
+    let isActive = true
+    const fileRefIds = Array.from(
+      new Set(
+        versions
+          .map( ( version ) => version.fileRefId )
+          .filter( ( fileRefId ): fileRefId is string => Boolean( fileRefId ) ),
+      ),
+    )
+    setVersionFileRefsById( ( current ) => {
+      const nextEntries = Object.entries( current )
+        .filter( ( [ fileRefId ] ) => fileRefIds.includes( fileRefId ) )
+      const next = Object.fromEntries( nextEntries )
+      for( const fileRefId of fileRefIds ) {
+        const localFileRef = localFileRefByIdRef.current.get( fileRefId )
+        if( localFileRef ) {
+          next[fileRefId] = localFileRef
+        }
+      }
+      return next
+    } )
+    const uncachedFileRefIds = fileRefIds
+      .filter( ( fileRefId ) => !localFileRefByIdRef.current.has( fileRefId ) )
+    if( uncachedFileRefIds.length === 0 ) {
+      return () => {
+        isActive = false
+      }
+    }
+    void loadVersionFileMetadataMap( {
+      fileRefIds: uncachedFileRefIds,
+      isActive: () => isActive,
+      localFileRefByIdRef,
+      reportVersionsErrorRef,
+      setVersionFileRefsById,
+    } )
+    return () => {
+      isActive = false
+    }
+  }, [ versions, localFileRefByIdRef, reportVersionsErrorRef, setVersionFileRefsById ] )
+}
+
+type LoadVersionFileMetadataMapParams = {
+  fileRefIds: string[]
+  isActive: () => boolean
+  localFileRefByIdRef: MutableRefObject<Map<string, FileRefSummary>>
+  reportVersionsErrorRef: MutableRefObject<VersionsErrorReporter>
+  setVersionFileRefsById: Dispatch<SetStateAction<Record<string, FileRefSummary>>>
+}
+
+async function loadVersionFileMetadataMap( {
+  fileRefIds,
+  isActive,
+  localFileRefByIdRef,
+  reportVersionsErrorRef,
+  setVersionFileRefsById,
+}: LoadVersionFileMetadataMapParams ) {
+  try {
+    const snapshots = await Promise.all( fileRefIds.map( ( fileRefId ) => getDoc( doc( db, 'files', fileRefId ) ) ) )
+    if( !isActive() ) {
+      return
+    }
+    const loadedFileRefs: Record<string, FileRefSummary> = {}
+    for( const snapshot of snapshots ) {
+      if( !snapshot.exists() ) {
+        continue
+      }
+      const data = snapshot.data()
+      const fileRef = buildFileRefSummary( snapshot.id, data )
+      localFileRefByIdRef.current.set( snapshot.id, fileRef )
+      loadedFileRefs[snapshot.id] = fileRef
+    }
+    setVersionFileRefsById( ( current ) => ( {
+      ...current,
+      ...loadedFileRefs,
+    } ) )
+  } catch( err ) {
+    if( !isActive() ) {
+      return
+    }
+    console.warn( 'Version file metadata map refresh failed:', {
+      fileRefIds,
+      error: err instanceof Error ? err.message : String( err ),
+    } )
+    reportVersionsErrorRef.current( err, 'versions.loadVersionFileMetadataMap', 'firestore' )
+  }
+}
+
 type LoadSelectedFileMetadataParams = {
   selectedVersion: VersionSummary | null
   fileRefId: string
@@ -281,20 +381,8 @@ async function loadSelectedFileMetadata( {
     }
     const data = snapshot.data()
     if( isActive() ) {
-      setSelectedFileRef( {
-        id: snapshot.id,
-        fileKey: ( data.fileKey as string ) ?? '',
-        fileName: ( data.fileName as string ) ?? '',
-        contentType: ( data.contentType as string | undefined ) ?? 'application/octet-stream',
-        sizeBytes: Number( data.sizeBytes ?? 0 ),
-        isPermanent: Boolean( data.isPermanent ),
-        expireAfterDays: typeof data.expireAfterDays === 'number' ? Number( data.expireAfterDays ) : null,
-        storageProvider: normalizeFileStorageProvider( data.storageProvider ),
-        createdBy: ( data.createdBy as string ) ?? '',
-        projectId: ( data.projectId as string ) ?? '',
-        docId: ( data.docId as string ) ?? '',
-        versionId: ( data.versionId as string ) ?? '',
-      } )
+      const fileRef = buildFileRefSummary( snapshot.id, data )
+      setSelectedFileRef( fileRef )
       setFileMetadataNotice( null )
     }
   } catch( err ) {
@@ -321,4 +409,22 @@ async function loadSelectedFileMetadata( {
   }
 }
 
-export { useDocumentSubscription, useSelectedFileMetadata }
+const buildFileRefSummary = (
+  id: string,
+  data: Record<string, unknown>,
+): FileRefSummary => ( {
+  id,
+  fileKey: ( data.fileKey as string ) ?? '',
+  fileName: ( data.fileName as string ) ?? '',
+  contentType: ( data.contentType as string | undefined ) ?? 'application/octet-stream',
+  sizeBytes: Number( data.sizeBytes ?? 0 ),
+  isPermanent: Boolean( data.isPermanent ),
+  expireAfterDays: typeof data.expireAfterDays === 'number' ? Number( data.expireAfterDays ) : null,
+  storageProvider: normalizeFileStorageProvider( data.storageProvider ),
+  createdBy: ( data.createdBy as string ) ?? '',
+  projectId: ( data.projectId as string ) ?? '',
+  docId: ( data.docId as string ) ?? '',
+  versionId: ( data.versionId as string ) ?? '',
+} )
+
+export { useDocumentSubscription, useSelectedFileMetadata, useVersionFileMetadataMap }

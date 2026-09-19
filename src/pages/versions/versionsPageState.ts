@@ -51,6 +51,9 @@ const useVersionsPageState = () => {
   const [selectedFileRef, setSelectedFileRef] = useState<FileRefSummary | null>(
     null,
   );
+  const [versionFileRefsById, setVersionFileRefsById] = useState<
+    Record<string, FileRefSummary>
+  >({});
   const localFileRefByIdRef = useRef<Map<string, FileRefSummary>>(new Map());
   const [fileMetadataNotice, setFileMetadataNotice] = useState<string | null>(
     null,
@@ -207,6 +210,8 @@ const useVersionsPageState = () => {
     uploadInputRef,
     selectedFileRef,
     setSelectedFileRef,
+    versionFileRefsById,
+    setVersionFileRefsById,
     localFileRefByIdRef,
     fileMetadataNotice,
     setFileMetadataNotice,

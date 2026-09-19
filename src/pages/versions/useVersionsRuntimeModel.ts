@@ -9,6 +9,7 @@ import useAcceptedErrorReports from "./acceptedErrorReportHooks";
 import {
   useDocumentSubscription,
   useSelectedFileMetadata,
+  useVersionFileMetadataMap,
 } from "./documentAndFileHooks";
 import {
   useRoleSubscriptions,
@@ -108,6 +109,7 @@ const useVersionsRuntimeModel = ({
     setUploadMessage,
     setUploadStatus,
     setUserDirectoryById,
+    setVersionFileRefsById,
     setVersionSorting,
     setVersions,
     setVisibleThreadRows,
@@ -277,6 +279,12 @@ const useVersionsRuntimeModel = ({
     setSelectedFileRef: setSelectedFileRef,
     setFileMetadataNotice: setFileMetadataNotice,
     setError: setError,
+  });
+  useVersionFileMetadataMap({
+    versions: versions,
+    localFileRefByIdRef: localFileRefByIdRef,
+    reportVersionsErrorRef,
+    setVersionFileRefsById: setVersionFileRefsById,
   });
   useVersionsProjectSubscription({
     docId,

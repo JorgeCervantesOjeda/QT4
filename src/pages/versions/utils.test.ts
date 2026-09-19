@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatReviewPeriodLabel } from "./utils";
+import { formatFileExtensionLabel, formatReviewPeriodLabel } from "./utils";
 
 describe("formatReviewPeriodLabel", () => {
   it("shows the historical end date for a past review period", () => {
@@ -24,5 +24,26 @@ describe("formatReviewPeriodLabel", () => {
     expect(formatReviewPeriodLabel({ reviewEndAt: null }, Date.now())).toBe(
       "No expiration",
     );
+  });
+});
+
+describe("formatFileExtensionLabel", () => {
+  it("uses the extension from the file name", () => {
+    expect(
+      formatFileExtensionLabel({
+        fileName: "review-draft.DOCX",
+        contentType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      }),
+    ).toBe("File: .docx");
+  });
+
+  it("falls back to the content type when the name has no extension", () => {
+    expect(
+      formatFileExtensionLabel({
+        fileName: "review-draft",
+        contentType: "application/pdf",
+      }),
+    ).toBe("File: .pdf");
   });
 });

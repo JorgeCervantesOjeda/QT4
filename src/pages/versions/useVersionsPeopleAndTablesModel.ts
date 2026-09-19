@@ -8,7 +8,7 @@ import {
   downloadVersionFile,
   requestDownloadVersionFile as requestDownloadVersionFileOperation,
 } from "./downloadOperations";
-import type { ProjectMember, VersionSummary } from "./types";
+import type { FileRefSummary, ProjectMember, VersionSummary } from "./types";
 
 type UserDirectoryEntry = {
   displayName?: string | null;
@@ -39,6 +39,7 @@ type UseVersionsPeopleAndTablesModelParams = {
   userDisplayName?: string | null;
   userEmail?: string | null;
   userId: string;
+  versionFileRefsById: Record<string, FileRefSummary>;
 };
 
 const useVersionsPeopleAndTablesModel = ({
@@ -58,6 +59,7 @@ const useVersionsPeopleAndTablesModel = ({
   userDisplayName,
   userEmail,
   userId,
+  versionFileRefsById,
 }: UseVersionsPeopleAndTablesModelParams) => {
   const formatUserLabel = useCallback(
     (memberUserId: string) => {
@@ -158,6 +160,7 @@ const useVersionsPeopleAndTablesModel = ({
     downloadStatus,
     getVersionDownloadProvider,
     clockNowMs,
+    versionFileRefsById,
   });
   const commentColumns = useCommentColumns(formatUserLabel);
 

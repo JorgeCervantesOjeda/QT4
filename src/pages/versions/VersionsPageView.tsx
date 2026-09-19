@@ -187,6 +187,7 @@ type VersionsPageViewProps = {
     version?: Pick<VersionSummary, "status" | "reviewEndAt"> | null,
   ) => string;
   versions: VersionSummary[];
+  versionFileRefsById: Record<string, FileRefSummary>;
   versionsActionsRef: React.RefObject<HTMLDivElement | null>;
   viewMode: "card" | "table";
   warningMessage: string | null;
@@ -281,6 +282,7 @@ const VersionsPagePanels = (props: VersionsPageViewProps) => (
       clockNowMs={props.clockNowMs}
       formatUserLabel={props.formatUserLabel}
       getVersionDownloadProvider={props.getVersionDownloadProvider}
+      versionFileRefsById={props.versionFileRefsById}
       versionStatusClassName={props.versionStatusClassName}
       setVersionSorting={props.setVersionSorting}
       openReviewIssuesForVersion={props.openReviewIssuesForVersion}

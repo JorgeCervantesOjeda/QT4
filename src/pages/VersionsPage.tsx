@@ -40,6 +40,7 @@ function VersionsPage() {
     emailNotifyMessage,
     uploadInputRef,
     selectedFileRef,
+    versionFileRefsById,
     fileMetadataNotice,
     isErrorReportModalOpen,
     setIsErrorReportModalOpen,
@@ -385,6 +386,7 @@ function VersionsPage() {
       uploadStatus={uploadStatus}
       versionColumns={versionColumns}
       versionDecisionModal={versionDecisionModal}
+      versionFileRefsById={versionFileRefsById}
       versionReportLabel={versionReportLabel}
       versionSelectStatusClassName={versionSelectStatusClassName}
       versionSorting={versionSorting}

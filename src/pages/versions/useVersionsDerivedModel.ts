@@ -62,6 +62,7 @@ const useVersionsDerivedModel = ({
     setDownloadStatus,
     setDownloadMessage,
     selectedFileRef,
+    versionFileRefsById,
     threadsViewMode,
     isAdmin,
     isLeader,
@@ -265,6 +266,7 @@ const useVersionsDerivedModel = ({
     userDisplayName: user?.displayName,
     userEmail: user?.email,
     userId,
+    versionFileRefsById,
   });
   const baseVersionForDownload = useMemo<VersionSummary | null>(() => {
     if (

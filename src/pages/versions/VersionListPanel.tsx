@@ -6,8 +6,9 @@ import {
   type FileStorageProviderKind,
 } from '../../domain/types'
 import { formatTimeAgoWithTimestamp } from '../../lib/time'
-import type { VersionSummary } from './types'
+import type { FileRefSummary, VersionSummary } from './types'
 import {
+  formatFileExtensionLabel,
   formatReviewPeriodLabel,
   formatStorageProviderLabel,
   hasLinkedFileMetadata,
@@ -26,6 +27,7 @@ type VersionListPanelProps = {
   clockNowMs: number
   formatUserLabel: (userId: string) => string
   getVersionDownloadProvider: (version: VersionSummary) => FileStorageProviderKind | null
+  versionFileRefsById: Record<string, FileRefSummary>
   versionStatusClassName: (version: VersionSummary) => string
   setVersionSorting: OnChangeFn<SortingState>
   openReviewIssuesForVersion: (versionId: string) => void
@@ -45,6 +47,7 @@ function VersionListPanel( {
   clockNowMs,
   formatUserLabel,
   getVersionDownloadProvider,
+  versionFileRefsById,
   versionStatusClassName,
   setVersionSorting,
   openReviewIssuesForVersion,
@@ -76,6 +79,9 @@ function VersionListPanel( {
     <div className="project-grid">
       {versions.map( ( version ) => {
         const isSelected = selectedVersion?.id === version.id
+        const fileExtensionLabel = formatFileExtensionLabel(
+          version.fileRefId ? versionFileRefsById[version.fileRefId] : null,
+        )
         return (
           <article
             key={version.id}
@@ -120,6 +126,9 @@ function VersionListPanel( {
                 >
                   Download file
                 </button>
+                {fileExtensionLabel ? (
+                  <span className="download-file-extension">{fileExtensionLabel}</span>
+                ) : null}
                 <span className="download-provider-hint">
                   {`From: ${formatStorageProviderLabel( getVersionDownloadProvider( version ) )}`}
                 </span>

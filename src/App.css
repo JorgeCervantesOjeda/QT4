@@ -870,7 +870,8 @@
   gap: 8px;
 }
 
-.field span {
+.field span,
+.field > label {
   font-weight: 600;
   color: var(--qt-ink-strong);
 }
@@ -883,6 +884,73 @@
   font-family: inherit;
   color: var(--qt-ink);
   background: #fff;
+}
+
+.password-input-shell {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+
+.password-input-shell input {
+  width: 100%;
+  padding-right: 52px;
+}
+
+.password-visibility-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  width: 38px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+}
+
+.password-visibility-toggle:hover:not(:disabled) {
+  box-shadow: none;
+}
+
+.password-visibility-toggle:focus-visible {
+  outline: 2px solid var(--qt-interaction-border);
+  outline-offset: 2px;
+}
+
+.password-visibility-toggle__icon {
+  position: relative;
+  width: 24px;
+  height: 14px;
+  border: 2px solid var(--qt-ink-strong);
+  border-radius: 50%;
+  display: block;
+}
+
+.password-visibility-toggle__icon::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--qt-ink-strong);
+  transform: translate( -50%, -50% );
+}
+
+.password-visibility-toggle[aria-pressed="true"] .password-visibility-toggle__icon::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: -4px;
+  width: 30px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--qt-ink-strong);
+  transform: rotate( -35deg );
 }
 
 .field select {
@@ -1018,6 +1086,14 @@
 .download-provider-hint {
   color: rgba( 45, 55, 72, 0.82 );
   font-size: 0.76rem;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.download-file-extension {
+  color: var(--qt-ink-strong);
+  font-size: 0.76rem;
+  font-weight: 700;
   line-height: 1.15;
   white-space: nowrap;
 }

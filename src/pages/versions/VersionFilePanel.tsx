@@ -4,6 +4,7 @@ import type { FileStorageProviderKind } from '../../domain/types'
 import type { FileRefSummary, VersionSummary } from './types'
 import {
   formatFileSize,
+  formatFileExtensionLabel,
   formatStorageProviderLabel,
 } from './utils'
 
@@ -42,6 +43,8 @@ function VersionFilePanel( {
   onReplaceFile,
   onDownloadSelectedFile,
 }: VersionFilePanelProps ) {
+  const fileExtensionLabel = formatFileExtensionLabel( selectedFileRef )
+
   return (
     <section ref={filePanelRef} className="panel stack">
       <h3>File</h3>
@@ -95,6 +98,9 @@ function VersionFilePanel( {
             >
               Download file
             </button>
+            {fileExtensionLabel ? (
+              <span className="download-file-extension">{fileExtensionLabel}</span>
+            ) : null}
             <span className="download-provider-hint">
               {`From: ${formatStorageProviderLabel( selectedDownloadProvider )}`}
             </span>

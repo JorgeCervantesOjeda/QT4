@@ -3,10 +3,16 @@ import { useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { versionNumberToString } from "../../domain/types";
 import { formatTimeAgoWithTimestamp } from "../../lib/time";
-import type { CommentSummary, ThreadSummary, VersionSummary } from "./types";
+import type {
+  CommentSummary,
+  FileRefSummary,
+  ThreadSummary,
+  VersionSummary,
+} from "./types";
 import type { MemberAssignmentRow } from "./AuthorReviewerAssignmentPanel";
 import {
   formatReviewPeriodLabel,
+  formatFileExtensionLabel,
   formatStorageProviderLabel,
 } from "./utils";
 
@@ -21,6 +27,7 @@ type VersionColumnsParams = {
     typeof import("../../lib/fileStorage").getEffectiveFileStorageProviderHint
   >;
   clockNowMs: number;
+  versionFileRefsById: Record<string, FileRefSummary>;
 };
 
 const useVersionColumns = (params: VersionColumnsParams) =>
@@ -50,6 +57,11 @@ const useVersionColumns = (params: VersionColumnsParams) =>
         accessorKey: "hasFile",
         cell: (info) => {
           const version = info.row.original;
+          const fileExtensionLabel = formatFileExtensionLabel(
+            version.fileRefId
+              ? params.versionFileRefsById[version.fileRefId]
+              : null,
+          );
           if (!version.hasFile) {
             return "No";
           }
@@ -71,6 +83,11 @@ const useVersionColumns = (params: VersionColumnsParams) =>
               >
                 Download
               </button>
+              {fileExtensionLabel ? (
+                <span className="download-file-extension">
+                  {fileExtensionLabel}
+                </span>
+              ) : null}
               <span className="download-provider-hint">
                 {`From: ${formatStorageProviderLabel(params.getVersionDownloadProvider(version))}`}
               </span>

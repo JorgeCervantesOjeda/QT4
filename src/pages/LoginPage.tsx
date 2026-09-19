@@ -17,6 +17,7 @@ const isLikelyEmail = (value: string) => /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test( v
 function LoginPage() {
   const [email, setEmail] = useState( '' )
   const [password, setPassword] = useState( '' )
+  const [isPasswordVisible, setIsPasswordVisible] = useState( false )
   const [isBusy, setIsBusy] = useState( false )
   const [resetNotice, setResetNotice] = useState<string | null>( null )
   const { error, errorChecklist, openError, clearError } = useErrorChecklistModal()
@@ -145,18 +146,30 @@ function LoginPage() {
             />
           </label>
 
-          <label className="field">
-            <span>Password</span>
-            <input
-              type="password"
-              name="password"
-              required
-              value={password}
-              onChange={( event ) => setPassword( event.target.value )}
-              autoComplete="current-password"
-              minLength={6}
-            />
-          </label>
+          <div className="field">
+            <label htmlFor="login-password">Password</label>
+            <div className="password-input-shell">
+              <input
+                id="login-password"
+                type={isPasswordVisible ? 'text' : 'password'}
+                name="password"
+                required
+                value={password}
+                onChange={( event ) => setPassword( event.target.value )}
+                autoComplete="current-password"
+                minLength={6}
+              />
+              <button
+                type="button"
+                className="password-visibility-toggle"
+                aria-label={isPasswordVisible ? 'Hide password' : 'Show password'}
+                aria-pressed={isPasswordVisible}
+                onClick={() => setIsPasswordVisible( ( current ) => !current )}
+              >
+                <span aria-hidden="true" className="password-visibility-toggle__icon" />
+              </button>
+            </div>
+          </div>
 
           {error ? (
             <ErrorChecklistModal
