@@ -212,23 +212,14 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
     isBusy,
   } = props
   const issueConversation = props.issueConversation
-  const [collapsedThreadId, setCollapsedThreadId] = useState<string | null>( null )
-  const isIssueConversationExpanded = (threadId: string) => (
-    threadId === effectiveSelectedThreadId && collapsedThreadId !== threadId && Boolean( issueConversation )
-  )
+  const [showIssueComments, setShowIssueComments] = useState( false )
+  const isSelectedIssue = (threadId: string) => threadId === effectiveSelectedThreadId && Boolean( issueConversation )
+  const isIssueConversationExpanded = (threadId: string) => isSelectedIssue( threadId ) && showIssueComments
   const handleSelectIssue = (threadId: string) => {
-    if( threadId === effectiveSelectedThreadId && collapsedThreadId === threadId ) {
-      setCollapsedThreadId( null )
-      return
-    }
-    setCollapsedThreadId( null )
     selectThreadKeepingViewport( threadId )
   }
   const toggleSelectedIssueConversation = () => {
-    if( !effectiveSelectedThreadId ) {
-      return
-    }
-    setCollapsedThreadId( ( current ) => ( current === effectiveSelectedThreadId ? null : effectiveSelectedThreadId ) )
+    setShowIssueComments( ( current ) => !current )
   }
 
   return (
@@ -261,14 +252,14 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
           }}
           onRowClick={( row ) => handleSelectIssue( row.id )}
           renderExpandedRow={( row ) => (
-            isIssueConversationExpanded( row.id ) ? (
+            isSelectedIssue( row.id ) ? (
               <div className="issue-conversation-expanded">
                 <div className="actions issue-conversation-expanded__toolbar">
                   <button type="button" className="ghost" onClick={toggleSelectedIssueConversation}>
-                    Hide comments
+                    {isIssueConversationExpanded( row.id ) ? 'Hide comments' : 'Show comments'}
                   </button>
                 </div>
-                {issueConversation}
+                {isIssueConversationExpanded( row.id ) ? issueConversation : null}
               </div>
             ) : null
           )}

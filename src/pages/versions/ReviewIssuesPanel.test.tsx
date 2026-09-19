@@ -1,7 +1,7 @@
 // src/pages/versions/ReviewIssuesPanel.test.tsx: Verifies slow-action instrumentation in review issue AI controls.
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ComponentProps } from 'react'
-import { createRef } from 'react'
+import { createRef, useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ReviewIssuesPanel from './ReviewIssuesPanel'
 import type { CommentSummary, ThreadSummary, VersionSummary } from './types'
@@ -46,11 +46,28 @@ const selectedThread: ThreadSummary = {
   commentCount: 1,
 }
 
+const secondThread: ThreadSummary = {
+  id: 'thread-2',
+  status: 'open',
+  title: 'Another issue',
+  createdBy: 'reviewer-1',
+  commentCount: 1,
+}
+
 const selectedThreadComments: CommentSummary[] = [
   {
     id: 'comment-1',
     threadId: 'thread-1',
     body: 'Please add evidence.',
+    createdBy: 'reviewer-1',
+  },
+]
+
+const secondThreadComments: CommentSummary[] = [
+  {
+    id: 'comment-2',
+    threadId: 'thread-2',
+    body: 'Please clarify scope.',
     createdBy: 'reviewer-1',
   },
 ]
@@ -116,6 +133,7 @@ describe( 'ReviewIssuesPanel', () => {
   it( 'measures explain-issue AI requests as non-modal review actions', async () => {
     renderPanel()
 
+    fireEvent.click( screen.getByRole( 'button', { name: 'Show comments' } ) )
     fireEvent.click( screen.getByRole( 'button', { name: 'Explain issue' } ) )
 
     await waitFor( () => {
@@ -134,7 +152,7 @@ describe( 'ReviewIssuesPanel', () => {
     } )
   } )
 
-  it( 'expands the selected issue card with one comments table', () => {
+  it( 'keeps selected issue card comments hidden by default and lets the user show them', () => {
     renderPanel()
 
     expect( screen.getByRole( 'heading', { name: 'New Issue' } ) ).toBeTruthy()
@@ -145,31 +163,102 @@ describe( 'ReviewIssuesPanel', () => {
     expect( screen.getByRole( 'heading', { name: 'Created Issues' } ) ).toBeTruthy()
     expect( screen.queryByText( 'Conversation' ) ).toBeNull()
     expect( screen.queryByText( 'Comment view' ) ).toBeNull()
-    expect( screen.getByRole( 'button', { name: /Comment/u } ) ).toBeTruthy()
+    expect( screen.getByRole( 'button', { name: 'Show comments' } ) ).toBeTruthy()
+    expect( screen.queryByText( 'Please add evidence.' ) ).toBeNull()
+
+    fireEvent.click( screen.getByRole( 'button', { name: 'Show comments' } ) )
+
     expect( screen.getByRole( 'button', { name: 'Hide comments' } ) ).toBeTruthy()
+    expect( screen.getByRole( 'button', { name: /Comment/u } ) ).toBeTruthy()
     expect( screen.getAllByText( 'Please add evidence.' ) ).toHaveLength( 1 )
 
     fireEvent.click( screen.getByRole( 'button', { name: 'Hide comments' } ) )
 
     expect( screen.queryByText( 'Please add evidence.' ) ).toBeNull()
     expect( screen.getByRole( 'button', { name: 'Show comments' } ) ).toBeTruthy()
-
-    fireEvent.click( screen.getByRole( 'button', { name: 'Show comments' } ) )
-
-    expect( screen.getAllByText( 'Please add evidence.' ) ).toHaveLength( 1 )
   } )
 
-  it( 'expands the selected issue table row with one comments table', () => {
+  it( 'keeps selected issue table comments hidden by default and lets the user show them', () => {
     renderPanel( { threadsViewMode: 'table' } )
 
     expect( screen.getByRole( 'heading', { name: 'Created Issues' } ) ).toBeTruthy()
     expect( screen.queryByText( 'Conversation' ) ).toBeNull()
-    expect( screen.getByRole( 'button', { name: /Comment/u } ) ).toBeTruthy()
-    expect( screen.getByRole( 'button', { name: 'Hide comments' } ) ).toBeTruthy()
-    expect( screen.getAllByText( 'Please add evidence.' ) ).toHaveLength( 1 )
+    expect( screen.getByRole( 'button', { name: 'Show comments' } ) ).toBeTruthy()
+    expect( screen.queryByText( 'Please add evidence.' ) ).toBeNull()
 
-    fireEvent.click( screen.getByRole( 'button', { name: 'Hide comments' } ) )
+    fireEvent.click( screen.getByRole( 'button', { name: 'Show comments' } ) )
+
+    expect( screen.getByRole( 'button', { name: 'Hide comments' } ) ).toBeTruthy()
+    expect( screen.getByRole( 'button', { name: /Comment/u } ) ).toBeTruthy()
+    expect( screen.getAllByText( 'Please add evidence.' ) ).toHaveLength( 1 )
+  } )
+
+  it( 'keeps the comment visibility preference when selecting another issue', () => {
+    function StatefulPanel() {
+      const [selectedThreadId, setSelectedThreadId] = useState( selectedThread.id )
+      const threads = [ selectedThread, secondThread ]
+      const commentsByThread = {
+        [selectedThread.id]: selectedThreadComments,
+        [secondThread.id]: secondThreadComments,
+      }
+      const activeThread = threads.find( ( thread ) => thread.id === selectedThreadId ) ?? selectedThread
+      return (
+        <ReviewIssuesPanel
+          projectId="project-1"
+          docId="doc-1"
+          selectedVersion={{ ...selectedVersion, numThreads: 2, numOpenThreads: 2, numComments: 2 }}
+          reviewIssuesPanelRef={createRef<HTMLElement>()}
+          formatUserLabel={( userId ) => userId}
+          newThreadTitle=""
+          setNewThreadTitle={vi.fn()}
+          isBusy={false}
+          onCreateThread={vi.fn()}
+          isLoadingThreads={false}
+          threads={threads}
+          threadsViewMode="card"
+          setThreadsViewMode={vi.fn()}
+          threadColumns={[]}
+          threadsSorting={[]}
+          setThreadsSorting={vi.fn()}
+          setVisibleThreadRows={vi.fn()}
+          getThreadCommentWindowMeta={() => ( { state: 'active', label: 'Open' } )}
+          effectiveSelectedThreadId={selectedThreadId}
+          selectThreadKeepingViewport={setSelectedThreadId}
+          commentsByThread={commentsByThread}
+          requestThreadStatusChangeConfirmation={vi.fn()}
+          selectedThread={activeThread}
+          threadNavigationStatusLabel="1 of 2"
+          onSelectAdjacentThread={vi.fn()}
+          hasPreviousThread={false}
+          hasNextThread={true}
+          commentsViewMode="card"
+          setCommentsViewMode={vi.fn()}
+          selectedThreadComments={commentsByThread[activeThread.id] ?? []}
+          commentColumns={[ { header: 'Comment', accessorKey: 'body' } ]}
+          commentsSorting={[]}
+          setCommentsSorting={vi.fn()}
+          highlightedCommentId={null}
+          commentWindowCountdownLabel={null}
+          commentInputRef={createRef<HTMLTextAreaElement>()}
+          selectedCommentWindowState="active"
+          newCommentBody=""
+          setNewCommentBody={vi.fn()}
+          onAddComment={vi.fn()}
+        />
+      )
+    }
+
+    render( <StatefulPanel /> )
 
     expect( screen.queryByText( 'Please add evidence.' ) ).toBeNull()
+
+    fireEvent.click( screen.getByRole( 'button', { name: 'Show comments' } ) )
+    expect( screen.getByText( 'Please add evidence.' ) ).toBeTruthy()
+
+    fireEvent.click( screen.getByRole( 'button', { name: 'Select issue Another issue' } ) )
+
+    expect( screen.queryByText( 'Please add evidence.' ) ).toBeNull()
+    expect( screen.getByText( 'Please clarify scope.' ) ).toBeTruthy()
+    expect( screen.getByRole( 'button', { name: 'Hide comments' } ) ).toBeTruthy()
   } )
 } )
