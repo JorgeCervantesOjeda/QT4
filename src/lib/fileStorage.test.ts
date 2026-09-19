@@ -64,24 +64,35 @@ describe( 'lib/fileStorage', () => {
     } )
   } )
 
-  it( 'opens Firebase Storage URLs in a new tab', async () => {
+  it( 'downloads Firebase Storage URLs through an anchor without opening a new tab', async () => {
     getDownloadURLMock.mockResolvedValue( 'https://example.com/download/draft.txt' )
-    const openMock = vi.fn().mockReturnValue( {} )
+    const openMock = vi.fn()
     vi.stubGlobal( 'open', openMock )
-
-    await downloadFileByProvider( 'qt4/test/file.txt', 'draft.txt', 'firebase-storage' )
-
-    expect( getDownloadURLMock ).toHaveBeenCalledTimes( 1 )
-    expect( openMock ).toHaveBeenCalledWith(
-      'https://example.com/download/draft.txt',
-      '_blank',
-      'noopener,noreferrer',
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response( 'draft content', {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/plain',
+          },
+        } ),
+      ),
     )
-  } )
-
-  it( 'falls back to an anchor download when opening Firebase Storage URLs is blocked', async () => {
-    getDownloadURLMock.mockResolvedValue( 'https://example.com/download/draft.txt' )
-    vi.stubGlobal( 'open', vi.fn().mockReturnValue( null ) )
+    const blobUrl = 'blob:firebase-download'
+    const createObjectURLMock = vi.fn().mockReturnValue( blobUrl )
+    const revokeObjectURLMock = vi.fn()
+    const OriginalURL = URL
+    vi.stubGlobal( 'URL', Object.assign(
+      function URLMock( value: string | URL, base?: string | URL ) {
+        return new OriginalURL( value, base )
+      },
+      OriginalURL,
+      {
+        createObjectURL: createObjectURLMock,
+        revokeObjectURL: revokeObjectURLMock,
+      },
+    ) )
     const clickSpy = vi
       .spyOn( HTMLAnchorElement.prototype, 'click' )
       .mockImplementation( function clickMock( this: HTMLAnchorElement ) {
@@ -90,10 +101,51 @@ describe( 'lib/fileStorage', () => {
 
     await downloadFileByProvider( 'qt4/test/file.txt', 'draft.txt', 'firebase-storage' )
 
+    expect( getDownloadURLMock ).toHaveBeenCalledTimes( 1 )
+    expect( openMock ).not.toHaveBeenCalled()
     expect( clickSpy ).toHaveBeenCalledTimes( 1 )
     const anchor = clickSpy.mock.instances[0] as HTMLAnchorElement
     expect( anchor.download ).toBe( 'draft.txt' )
-    expect( anchor.href ).toBe( 'https://example.com/download/draft.txt' )
+    expect( anchor.href ).toBe( 'blob:firebase-download' )
+    expect( revokeObjectURLMock ).toHaveBeenCalledWith( blobUrl )
+  } )
+
+  it( 'uses the file key name when a Firebase Storage download has no suggested name', async () => {
+    getDownloadURLMock.mockResolvedValue( 'https://example.com/download/draft.txt' )
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response( 'draft content', {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/plain',
+          },
+        } ),
+      ),
+    )
+    const OriginalURL = URL
+    vi.stubGlobal( 'URL', Object.assign(
+      function URLMock( value: string | URL, base?: string | URL ) {
+        return new OriginalURL( value, base )
+      },
+      OriginalURL,
+      {
+        createObjectURL: vi.fn().mockReturnValue( 'blob:firebase-download' ),
+        revokeObjectURL: vi.fn(),
+      },
+    ) )
+    const clickSpy = vi
+      .spyOn( HTMLAnchorElement.prototype, 'click' )
+      .mockImplementation( function clickMock( this: HTMLAnchorElement ) {
+        void this
+      } )
+
+    await downloadFileByProvider( 'qt4/test/file.txt', undefined, 'firebase-storage' )
+
+    expect( clickSpy ).toHaveBeenCalledTimes( 1 )
+    const anchor = clickSpy.mock.instances[0] as HTMLAnchorElement
+    expect( anchor.download ).toBe( 'file.txt' )
+    expect( anchor.href ).toBe( 'blob:firebase-download' )
   } )
 
   it( 'ignores missing Firebase Storage objects during delete cleanup', async () => {

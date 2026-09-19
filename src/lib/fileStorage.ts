@@ -1,3 +1,5 @@
+// src/lib/fileStorage.ts
+// Routes file storage operations through the active provider.
 import { deleteObject, getDownloadURL, ref, uploadBytes } from 'firebase/storage'
 import type { FileStorageProviderKind } from '../domain/types'
 import {
@@ -51,12 +53,22 @@ const triggerUrlDownload = (downloadUrl: string, suggestedName?: string, fileKey
   link.remove()
 }
 
-const openUrlInNewTab = (downloadUrl: string, suggestedName?: string, fileKey?: string) => {
-  const openedWindow = window.open( downloadUrl, '_blank', 'noopener,noreferrer' )
-  if( openedWindow ) {
-    return
+const downloadRemoteUrlAsBlob = async (
+  downloadUrl: string,
+  suggestedName?: string,
+  fileKey?: string,
+) => {
+  const resp = await fetch( downloadUrl )
+  if( !resp.ok ) {
+    throw new Error( `Firebase Storage download failed (${resp.status}): ${resp.statusText}` )
   }
-  triggerUrlDownload( downloadUrl, suggestedName, fileKey )
+  const blob = await resp.blob()
+  const blobUrl = URL.createObjectURL( blob )
+  try {
+    triggerUrlDownload( blobUrl, suggestedName, fileKey )
+  } finally {
+    URL.revokeObjectURL( blobUrl )
+  }
 }
 
 const describeError = (err: unknown): string => {
@@ -128,7 +140,7 @@ const downloadFileWithFirebaseStorage = async (
       elapsedMs: Date.now() - startedAt,
       urlHost: new URL( downloadUrl ).host,
     } )
-    openUrlInNewTab( downloadUrl, suggestedName, fileKey )
+    await downloadRemoteUrlAsBlob( downloadUrl, suggestedName, fileKey )
     console.info( `${DOWNLOAD_LOG_PREFIX}[firebase][triggered]`, {
       fileKey,
       totalElapsedMs: Date.now() - startedAt,

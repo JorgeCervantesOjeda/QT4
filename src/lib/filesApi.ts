@@ -1,3 +1,5 @@
+// src/lib/filesApi.ts
+// Files API client for authenticated upload, download, delete, and notification requests.
 import { auth } from './firebase'
 
 type FilesApiMode = 'proxy' | 'direct'
@@ -182,10 +184,6 @@ export const downloadFile = async (fileKey: string, suggestedName?: string): Pro
   }
   const blob = await resp.blob()
   const blobUrl = URL.createObjectURL( blob )
-  const openedWindow = window.open( blobUrl, '_blank', 'noopener,noreferrer' )
-  if( openedWindow ) {
-    return
-  }
   const link = document.createElement( 'a' )
   link.href = blobUrl
   link.download = suggestedName || fileKey.split( '/' ).pop() || 'file.bin'
