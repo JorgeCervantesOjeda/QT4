@@ -10,7 +10,7 @@
     "dev:emulator": "vite --mode emulator",
     "dev:e2e": "vite --mode e2e",
     "test": "vitest run && npm run test:tools",
-    "test:rules": "npx firebase-tools emulators:exec --only firestore \"vitest run src/lib/firestoreChangeRequestRules.test.ts src/lib/firestoreVersionDecisionRules.test.ts src/lib/firestoreSlowUiActionRules.test.ts\"",
+    "test:rules": "npx firebase-tools emulators:exec --only firestore \"vitest run src/lib/firestoreChangeRequestRules.test.ts src/lib/firestoreVersionDecisionRules.test.ts src/lib/firestoreSlowUiActionRules.test.ts src/lib/firestoreReviewIssueRules.test.ts\"",
     "test:tools": "node --test tools/*.test.mjs",
     "test:with-emulator": "npx firebase-tools emulators:exec --only firestore \"npm run test\"",
     "test:watch": "vitest",

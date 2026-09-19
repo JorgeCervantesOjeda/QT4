@@ -255,7 +255,20 @@ service cloud.firestore {
           == versionNumThreadsWithTwoPlusComments(versionDoc(versionId).data);
     }
 
-    function isCommentCreateWithVersionStatIncrement(versionId, threadId) {
+    function isThreadCreateWithInitialCommentVersionStatIncrement(versionId) {
+      return versionNumThreads(versionAfter(versionId).data) == versionNumThreads(versionDoc(versionId).data) + 1
+        && versionNumOpenThreads(versionAfter(versionId).data) == versionNumOpenThreads(versionDoc(versionId).data) + 1
+        && versionNumComments(versionAfter(versionId).data) == versionNumComments(versionDoc(versionId).data) + 1
+        && versionNumThreadsWithTwoPlusComments(versionAfter(versionId).data)
+          == versionNumThreadsWithTwoPlusComments(versionDoc(versionId).data)
+        && versionAfter(versionId).data.numThreads == versionNumThreads(versionDoc(versionId).data) + 1
+        && versionAfter(versionId).data.numOpenThreads == versionNumOpenThreads(versionDoc(versionId).data) + 1
+        && versionAfter(versionId).data.numComments == versionNumComments(versionDoc(versionId).data) + 1
+        && versionAfter(versionId).data.numThreadsWithTwoPlusComments
+          == versionNumThreadsWithTwoPlusComments(versionDoc(versionId).data);
+    }
+
+    function isExistingThreadCommentCreateWithVersionStatIncrement(versionId, threadId) {
       let incrementTwoPlus = (
         threadDoc(threadId).data.commentCount < 2
         && threadAfter(threadId).data.commentCount >= 2
@@ -270,6 +283,27 @@ service cloud.firestore {
         && versionAfter(versionId).data.numComments == versionNumComments(versionDoc(versionId).data) + 1
         && versionAfter(versionId).data.numThreadsWithTwoPlusComments
           == versionNumThreadsWithTwoPlusComments(versionDoc(versionId).data) + incrementTwoPlus;
+    }
+
+    function isInitialCommentCreateForNewThread(versionId, threadId) {
+      return !exists(/databases/$(database)/documents/threads/$(threadId))
+        && existsAfter(/databases/$(database)/documents/threads/$(threadId))
+        && threadAfter(threadId).data.projectId == request.resource.data.projectId
+        && threadAfter(threadId).data.docId == request.resource.data.docId
+        && threadAfter(threadId).data.versionId == versionId
+        && threadAfter(threadId).data.createdBy == request.resource.data.createdBy
+        && threadAfter(threadId).data.status == 'open'
+        && threadAfter(threadId).data.commentCount == 1
+        && threadAfter(threadId).data.lastCommentBy == request.resource.data.createdBy
+        && isThreadCreateWithInitialCommentVersionStatIncrement(versionId);
+    }
+
+    function isCommentCreateWithVersionStatIncrement(versionId, threadId) {
+      return (
+          exists(/databases/$(database)/documents/threads/$(threadId))
+          && isExistingThreadCommentCreateWithVersionStatIncrement(versionId, threadId)
+        )
+        || isInitialCommentCreateForNewThread(versionId, threadId);
     }
 
     function isAdminProjectIdBackfill() {
@@ -895,7 +929,10 @@ service cloud.firestore {
         && request.resource.data.status == 'open'
         && request.resource.data.title is string
         && request.resource.data.title.size() > 0
-        && isThreadCreateWithVersionStatIncrement(request.resource.data.versionId);
+        && (
+          isThreadCreateWithVersionStatIncrement(request.resource.data.versionId)
+          || isThreadCreateWithInitialCommentVersionStatIncrement(request.resource.data.versionId)
+        );
       allow update: if canReviewContribute(resource.data.projectId, resource.data.versionId)
         && request.resource.data.projectId == resource.data.projectId
         && request.resource.data.versionId == resource.data.versionId
