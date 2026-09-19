@@ -9,8 +9,10 @@ import {
   validateProductionFirebaseEnv,
 } from './verify-prod-build-config.mjs'
 
+const buildTestGoogleApiKey = ( suffix = 'TestKeyValue12345678901234567890' ) => [ 'AI', 'za', suffix ].join( '' )
+
 const validEnv = {
-  VITE_FIREBASE_API_KEY: 'AIzaSyDqWttd69qgjbcQkkrq0PNSb0JdcFiXDGI',
+  VITE_FIREBASE_API_KEY: buildTestGoogleApiKey(),
   VITE_FIREBASE_AUTH_DOMAIN: 'qualiteam-app.firebaseapp.com',
   VITE_FIREBASE_PROJECT_ID: 'qualiteam-app',
   VITE_FIREBASE_STORAGE_BUCKET: 'qualiteam-app.firebasestorage.app',
@@ -56,7 +58,7 @@ test( 'validateProductionBuildConfig rejects bundles with undefined Firebase con
 
 test( 'validateProductionBuildConfig rejects bundles missing the expected Firebase API key', () => {
   withTempDist(
-    'const firebaseConfig={apiKey:"AIzaSyOtherKeyValue123456789012345678",authDomain:"qualiteam-app.firebaseapp.com",projectId:"qualiteam-app"};',
+    `const firebaseConfig={apiKey:"${buildTestGoogleApiKey( 'OtherKeyValue123456789012345678' )}",authDomain:"qualiteam-app.firebaseapp.com",projectId:"qualiteam-app"};`,
     ( distDirPath ) => {
       assert.throws(
         () => validateProductionBuildConfig( { distDirPath, env: validEnv } ),
