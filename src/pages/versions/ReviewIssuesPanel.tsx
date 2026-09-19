@@ -1,7 +1,7 @@
 // Issue and comment workspace for review-time collaboration on the selected version.
 import type { ColumnDef, OnChangeFn, SortingState } from '@tanstack/react-table'
 import type { Dispatch, ReactNode, RefObject, SetStateAction } from 'react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import DataTable from '../../components/DataTable'
 import { requestAiAssist } from '../../lib/aiAssist'
 import { measureSlowUiAction } from '../../lib/slowUiAction'
@@ -213,8 +213,20 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
   } = props
   const issueConversation = props.issueConversation
   const [showIssueComments, setShowIssueComments] = useState( false )
+  const expandedConversationRef = useRef<HTMLDivElement | null>( null )
   const isSelectedIssue = (threadId: string) => threadId === effectiveSelectedThreadId && Boolean( issueConversation )
   const isIssueConversationExpanded = (threadId: string) => isSelectedIssue( threadId ) && showIssueComments
+
+  useEffect( () => {
+    if( !showIssueComments || !effectiveSelectedThreadId ) {
+      return
+    }
+    expandedConversationRef.current?.scrollIntoView( {
+      behavior: 'smooth',
+      block: 'center',
+      inline: 'nearest',
+    } )
+  }, [ effectiveSelectedThreadId, showIssueComments ] )
   const handleSelectIssue = (threadId: string) => {
     selectThreadKeepingViewport( threadId )
   }
@@ -253,7 +265,7 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
           onRowClick={( row ) => handleSelectIssue( row.id )}
           renderExpandedRow={( row ) => (
             isSelectedIssue( row.id ) ? (
-              <div className="issue-conversation-expanded">
+              <div ref={expandedConversationRef} className="issue-conversation-expanded">
                 <div className="actions issue-conversation-expanded__toolbar">
                   <button type="button" className="ghost" onClick={toggleSelectedIssueConversation}>
                     {isIssueConversationExpanded( row.id ) ? 'Hide comments' : 'Show comments'}
@@ -312,6 +324,7 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
                 </div>
                 {isIssueConversationExpanded( thread.id ) ? (
                   <div
+                    ref={expandedConversationRef}
                     className="issue-conversation-expanded"
                     onClick={( event ) => event.stopPropagation()}
                   >

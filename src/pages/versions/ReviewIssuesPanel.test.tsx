@@ -14,6 +14,8 @@ const slowUiActionMocks = vi.hoisted( () => ( {
   measureSlowUiAction: vi.fn(),
 } ) )
 
+const scrollIntoViewMock = vi.fn()
+
 vi.mock( '../../lib/aiAssist', () => ( {
   requestAiAssist: aiAssistMocks.requestAiAssist,
 } ) )
@@ -126,6 +128,11 @@ const renderPanel = (overrides: Partial<ComponentProps<typeof ReviewIssuesPanel>
 
 describe( 'ReviewIssuesPanel', () => {
   beforeEach( () => {
+    scrollIntoViewMock.mockClear()
+    Object.defineProperty( HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoViewMock,
+    } )
     aiAssistMocks.requestAiAssist.mockResolvedValue( { result: 'Short explanation.' } )
     slowUiActionMocks.measureSlowUiAction.mockImplementation( async ( _context, operation ) => operation() )
   } )
@@ -168,6 +175,11 @@ describe( 'ReviewIssuesPanel', () => {
 
     fireEvent.click( screen.getByRole( 'button', { name: 'Show comments' } ) )
 
+    expect( scrollIntoViewMock ).toHaveBeenCalledWith( {
+      behavior: 'smooth',
+      block: 'center',
+      inline: 'nearest',
+    } )
     expect( screen.getByRole( 'button', { name: 'Hide comments' } ) ).toBeTruthy()
     expect( screen.getByRole( 'button', { name: /Comment/u } ) ).toBeTruthy()
     expect( screen.getAllByText( 'Please add evidence.' ) ).toHaveLength( 1 )
@@ -188,6 +200,11 @@ describe( 'ReviewIssuesPanel', () => {
 
     fireEvent.click( screen.getByRole( 'button', { name: 'Show comments' } ) )
 
+    expect( scrollIntoViewMock ).toHaveBeenCalledWith( {
+      behavior: 'smooth',
+      block: 'center',
+      inline: 'nearest',
+    } )
     expect( screen.getByRole( 'button', { name: 'Hide comments' } ) ).toBeTruthy()
     expect( screen.getByRole( 'button', { name: /Comment/u } ) ).toBeTruthy()
     expect( screen.getAllByText( 'Please add evidence.' ) ).toHaveLength( 1 )
