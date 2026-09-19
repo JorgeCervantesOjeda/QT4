@@ -116,4 +116,17 @@ describe( 'auth/AuthContext', () => {
     expect( signOutMock ).toHaveBeenCalledTimes( 1 )
     expect( locationAssignMock ).toHaveBeenCalledWith( '/login?reason=inactive' )
   } )
+
+  it( 'does not disable Firestore when the document visibility changes', () => {
+    render(
+      <AuthProvider>
+        <TestConsumer />
+      </AuthProvider>,
+    )
+
+    fireEvent( document, new Event( 'visibilitychange' ) )
+
+    expect( disableNetworkMock ).not.toHaveBeenCalled()
+    expect( enableNetworkMock ).not.toHaveBeenCalled()
+  } )
 } )

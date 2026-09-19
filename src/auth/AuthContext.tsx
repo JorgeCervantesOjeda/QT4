@@ -1,9 +1,8 @@
+// src/auth/AuthContext.tsx
+// Provides the authenticated user and session lifecycle behavior to the app.
 import { useEffect, useMemo, useState } from 'react'
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth'
-import { disableNetwork, enableNetwork } from 'firebase/firestore'
-import { auth, db } from '../lib/firebase'
-import { logClientDiagnostic } from '../lib/diagnostics/clientDiagnostics'
-import { getRouteDiagnosticContext } from '../lib/diagnostics/routeContext'
+import { auth } from '../lib/firebase'
 import { AuthContext } from './AuthContextStore'
 
 type AuthProviderProps = {
@@ -78,43 +77,6 @@ function AuthProvider( { children }: AuthProviderProps ) {
       }
     }
   }, [ user ] )
-
-  useEffect( () => {
-    let isActive = true
-    let isToggling = false
-    const syncNetworkToVisibility = async () => {
-      if( !isActive || isToggling ) {
-        return
-      }
-      isToggling = true
-      try {
-        if( document.visibilityState === 'hidden' ) {
-          await disableNetwork( db )
-        } else {
-          await enableNetwork( db )
-        }
-      } catch( err ) {
-        logClientDiagnostic( 'firestore.visibility_network_toggle_failed', {
-          targetVisibilityState: document.visibilityState,
-          errorName: err instanceof Error ? err.name : '',
-          errorMessage: err instanceof Error ? err.message : String( err ),
-          impact: 'Firestore network state may remain unchanged until the next visibility transition.',
-          ...getRouteDiagnosticContext(),
-        } )
-      } finally {
-        isToggling = false
-      }
-    }
-    void syncNetworkToVisibility()
-    const onVisibilityChange = () => {
-      void syncNetworkToVisibility()
-    }
-    document.addEventListener( 'visibilitychange', onVisibilityChange )
-    return () => {
-      isActive = false
-      document.removeEventListener( 'visibilitychange', onVisibilityChange )
-    }
-  }, [] )
 
   const value = useMemo(
     () => ( {
