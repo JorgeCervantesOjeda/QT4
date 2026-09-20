@@ -37,3 +37,9 @@ These rules apply to work inside `QT4/` and complement repository-level guidance
   - `npm run deploy:prod`
   - test deploys or other non-release deploys
 - If the user asks to `deploy` without qualification, interpret it as a full production release and use the release workflow unless the user explicitly requests a partial or technical deploy.
+
+## Live Production-Data Test Mode
+
+- `npm run dev:live` runs local code with `.env.live`, which is intended to point at production Firebase and production Files API values.
+- After code or configuration changes, offer to run the app with `npm run dev:live` when the user wants to validate local code against production data.
+- Before using this mode for workflows that create, update, or delete data, remind the user that the app is connected to live production services.

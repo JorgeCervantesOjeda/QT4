@@ -27,6 +27,20 @@ VITE_FILES_API_PROXY_PATH=/files-api
 QT4_FILES_API_BASE_URL=http://localhost:42873/api/v1
 ```
 
+### Local code with production data
+
+Use the `live` mode only when you intentionally need to test local code against the production Firebase project and production Files API.
+
+1. Copy `.env.live.example` to `.env.live`.
+2. Fill `.env.live` with the production Firebase and Files API values.
+3. Start Vite with:
+
+```bash
+npm run dev:live
+```
+
+This mode runs the local source code, but reads and writes live production services. Avoid destructive tests unless the exact data impact is known and reversible.
+
 ## Build
 
 ```bash
