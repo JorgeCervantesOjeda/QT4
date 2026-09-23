@@ -11,6 +11,7 @@ import {
   doc,
   setDoc,
   Timestamp,
+  updateDoc,
   writeBatch,
 } from 'firebase/firestore'
 import firestoreRules from '../../firestore.rules?raw'
@@ -176,6 +177,28 @@ describeWithFirestoreEmulator( 'firestore.rules review issue creation', () => {
       commentPatch: {
         createdBy: 'other-user',
       },
+    } ) )
+  } )
+
+  it( 'allows the issue creator to update the generated issue title without changing its status', async () => {
+    await writeInitialIssue()
+
+    const firestore = testEnv.authenticatedContext( userId ).firestore()
+    await assertSucceeds( updateDoc( doc( firestore, 'threads', threadId ), {
+      title: 'AI-generated summary',
+      updatedAt: Timestamp.fromMillis( 1600 ),
+      updatedBy: userId,
+    } ) )
+  } )
+
+  it( 'rejects generated issue title updates from contributors who did not create the issue', async () => {
+    await writeInitialIssue()
+
+    const firestore = testEnv.authenticatedContext( 'author-1' ).firestore()
+    await assertFails( updateDoc( doc( firestore, 'threads', threadId ), {
+      title: 'Author-provided summary',
+      updatedAt: Timestamp.fromMillis( 1600 ),
+      updatedBy: 'author-1',
     } ) )
   } )
 } )

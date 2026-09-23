@@ -318,6 +318,24 @@ service cloud.firestore {
         ]);
     }
 
+    function isThreadTitleUpdateAllowed() {
+      return canReviewContribute(resource.data.projectId, resource.data.versionId)
+        && request.auth.uid == resource.data.createdBy
+        && request.resource.data.projectId == resource.data.projectId
+        && request.resource.data.versionId == resource.data.versionId
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.status == resource.data.status
+        && request.resource.data.keys().hasAll(resource.data.keys())
+        && request.resource.data.title is string
+        && request.resource.data.title.matches('.*\\S.*')
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'title',
+          'updatedAt',
+          'updatedBy'
+        ]);
+    }
+
     function isThreadStatusWithVersionOpenCounter(versionId, isClosing) {
       return versionNumThreads(versionAfter(versionId).data) == versionNumThreads(versionDoc(versionId).data)
         && versionNumComments(versionAfter(versionId).data) == versionNumComments(versionDoc(versionId).data)
@@ -933,34 +951,37 @@ service cloud.firestore {
           isThreadCreateWithVersionStatIncrement(request.resource.data.versionId)
           || isThreadCreateWithInitialCommentVersionStatIncrement(request.resource.data.versionId)
         );
-      allow update: if canReviewContribute(resource.data.projectId, resource.data.versionId)
-        && request.resource.data.projectId == resource.data.projectId
-        && request.resource.data.versionId == resource.data.versionId
-        && request.resource.data.createdBy == resource.data.createdBy
-        && request.resource.data.keys().hasAll(resource.data.keys())
-        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
-          'status',
-          'closedBy',
-          'closedAt',
-          'reopenedBy',
-          'reopenedAt',
-          'commentCount',
-          'lastCommentAt',
-          'lastCommentBy',
-          'updatedAt',
-          'updatedBy'
-        ])
-        && (
-          (resource.data.status == 'open'
-            && request.resource.data.status == 'closed'
-            && isThreadStatusWithVersionOpenCounter(resource.data.versionId, true))
-          ||
-          (resource.data.status == 'closed'
-            && request.resource.data.status == 'open'
-            && isThreadStatusWithVersionOpenCounter(resource.data.versionId, false))
-          ||
-          (request.resource.data.status == resource.data.status)
+      allow update: if (
+          canReviewContribute(resource.data.projectId, resource.data.versionId)
+          && request.resource.data.projectId == resource.data.projectId
+          && request.resource.data.versionId == resource.data.versionId
+          && request.resource.data.createdBy == resource.data.createdBy
+          && request.resource.data.keys().hasAll(resource.data.keys())
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+            'status',
+            'closedBy',
+            'closedAt',
+            'reopenedBy',
+            'reopenedAt',
+            'commentCount',
+            'lastCommentAt',
+            'lastCommentBy',
+            'updatedAt',
+            'updatedBy'
+          ])
+          && (
+            (resource.data.status == 'open'
+              && request.resource.data.status == 'closed'
+              && isThreadStatusWithVersionOpenCounter(resource.data.versionId, true))
+            ||
+            (resource.data.status == 'closed'
+              && request.resource.data.status == 'open'
+              && isThreadStatusWithVersionOpenCounter(resource.data.versionId, false))
+            ||
+            (request.resource.data.status == resource.data.status)
+          )
         )
+        || isThreadTitleUpdateAllowed()
         || isAdminProjectIdBackfill();
       allow delete: if false;
     }
