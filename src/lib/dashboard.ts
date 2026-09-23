@@ -534,8 +534,7 @@ export const buildDashboardTasks = async (
           continue
         }
         const isAuthor = version.createdBy === userId
-        const isLeader = ( projectRoleById[version.projectId] ?? '' ) === 'leader'
-        const canDetectWithoutParticipation = isAuthor || isLeader
+        const canDetectWithoutParticipation = isAuthor
         const hasComments = thread.commentCount > 0 || Boolean( thread.lastCommentAt )
         const latestUserCommentAtMs = userCommentLatestByThread.get( thread.id ) ?? 0
         const latestUserCommentAt = latestUserCommentAtMs ? new Date( latestUserCommentAtMs ) : null

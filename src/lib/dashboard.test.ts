@@ -422,6 +422,134 @@ describe( 'lib/dashboard', () => {
     )
   } )
 
+  it( 'does not create reply tasks for leaders before they comment in a thread', async () => {
+    seedProject( 'project-dashboard-leader-reply', 'Dashboard Leader Reply Project', 'user-leader-1' )
+    setDocData( 'projectMembers/project-dashboard-leader-reply_user-reviewer-1', {
+      projectId: 'project-dashboard-leader-reply',
+      userId: 'user-reviewer-1',
+      role: 'member',
+      email: 'reviewer@example.com',
+      createdAt: timestamp( '2026-04-01T12:00:00.000Z' ),
+      updatedAt: timestamp( '2026-04-01T12:00:00.000Z' ),
+    } )
+    setDocData( 'documents/document-dashboard-leader-reply', {
+      projectId: 'project-dashboard-leader-reply',
+      title: 'Leader Reply Document',
+      type: 'document',
+      createdBy: 'user-author-1',
+      authorId: 'user-author-1',
+      shortId: 807,
+      createdAt: timestamp( '2026-04-03T09:00:00.000Z' ),
+      updatedAt: timestamp( '2026-04-03T09:00:00.000Z' ),
+    } )
+    setDocData( 'versions/version-dashboard-leader-reply', {
+      projectId: 'project-dashboard-leader-reply',
+      docId: 'document-dashboard-leader-reply',
+      number: 1,
+      status: 'In Review',
+      createdBy: 'user-author-1',
+      reviewerIds: [ 'user-reviewer-1' ],
+      hasFile: true,
+      reviewStartAt: timestamp( '2026-04-03T09:05:00.000Z' ),
+      reviewEndAt: timestamp( '2026-04-04T09:05:00.000Z' ),
+      createdAt: timestamp( '2026-04-03T09:05:00.000Z' ),
+      updatedAt: timestamp( '2026-04-03T09:05:00.000Z' ),
+    } )
+    setDocData( 'threads/thread-dashboard-leader-reply', {
+      projectId: 'project-dashboard-leader-reply',
+      docId: 'document-dashboard-leader-reply',
+      versionId: 'version-dashboard-leader-reply',
+      status: 'open',
+      title: 'Thread waiting for participant follow-up',
+      createdBy: 'user-reviewer-1',
+      commentCount: 1,
+      createdAt: timestamp( '2026-04-03T09:30:00.000Z' ),
+      lastCommentAt: timestamp( '2026-04-03T09:30:00.000Z' ),
+      lastCommentBy: 'user-reviewer-1',
+    } )
+
+    const tasks = await buildDashboardTasks( 'user-leader-1', { types: [ 'reply' ] } )
+
+    expect( tasks ).toEqual( [] )
+  } )
+
+  it( 'creates reply tasks for leaders after another user comments later in a thread they joined', async () => {
+    seedProject( 'project-dashboard-leader-follow-up', 'Dashboard Leader Follow-up Project', 'user-leader-1' )
+    setDocData( 'projectMembers/project-dashboard-leader-follow-up_user-reviewer-1', {
+      projectId: 'project-dashboard-leader-follow-up',
+      userId: 'user-reviewer-1',
+      role: 'member',
+      email: 'reviewer@example.com',
+      createdAt: timestamp( '2026-04-01T12:00:00.000Z' ),
+      updatedAt: timestamp( '2026-04-01T12:00:00.000Z' ),
+    } )
+    setDocData( 'documents/document-dashboard-leader-follow-up', {
+      projectId: 'project-dashboard-leader-follow-up',
+      title: 'Leader Follow-up Document',
+      type: 'document',
+      createdBy: 'user-author-1',
+      authorId: 'user-author-1',
+      shortId: 808,
+      createdAt: timestamp( '2026-04-03T09:00:00.000Z' ),
+      updatedAt: timestamp( '2026-04-03T09:00:00.000Z' ),
+    } )
+    setDocData( 'versions/version-dashboard-leader-follow-up', {
+      projectId: 'project-dashboard-leader-follow-up',
+      docId: 'document-dashboard-leader-follow-up',
+      number: 1,
+      status: 'In Review',
+      createdBy: 'user-author-1',
+      reviewerIds: [ 'user-reviewer-1' ],
+      hasFile: true,
+      reviewStartAt: timestamp( '2026-04-03T09:05:00.000Z' ),
+      reviewEndAt: timestamp( '2026-04-04T09:05:00.000Z' ),
+      createdAt: timestamp( '2026-04-03T09:05:00.000Z' ),
+      updatedAt: timestamp( '2026-04-03T09:05:00.000Z' ),
+    } )
+    setDocData( 'threads/thread-dashboard-leader-follow-up', {
+      projectId: 'project-dashboard-leader-follow-up',
+      docId: 'document-dashboard-leader-follow-up',
+      versionId: 'version-dashboard-leader-follow-up',
+      status: 'open',
+      title: 'Thread waiting for leader follow-up',
+      createdBy: 'user-reviewer-1',
+      commentCount: 2,
+      createdAt: timestamp( '2026-04-03T09:30:00.000Z' ),
+      lastCommentAt: timestamp( '2026-04-03T10:20:00.000Z' ),
+      lastCommentBy: 'user-reviewer-1',
+    } )
+    setDocData( 'comments/comment-dashboard-leader-follow-up-1', {
+      projectId: 'project-dashboard-leader-follow-up',
+      docId: 'document-dashboard-leader-follow-up',
+      versionId: 'version-dashboard-leader-follow-up',
+      threadId: 'thread-dashboard-leader-follow-up',
+      body: 'Leader joined the thread.',
+      createdBy: 'user-leader-1',
+      createdAt: timestamp( '2026-04-03T10:00:00.000Z' ),
+      updatedAt: timestamp( '2026-04-03T10:00:00.000Z' ),
+    } )
+    setDocData( 'comments/comment-dashboard-leader-follow-up-2', {
+      projectId: 'project-dashboard-leader-follow-up',
+      docId: 'document-dashboard-leader-follow-up',
+      versionId: 'version-dashboard-leader-follow-up',
+      threadId: 'thread-dashboard-leader-follow-up',
+      body: 'Reviewer added a later comment.',
+      createdBy: 'user-reviewer-1',
+      createdAt: timestamp( '2026-04-03T10:20:00.000Z' ),
+      updatedAt: timestamp( '2026-04-03T10:20:00.000Z' ),
+    } )
+
+    const tasks = await buildDashboardTasks( 'user-leader-1', { types: [ 'reply' ] } )
+
+    expect( tasks ).toEqual( [
+      expect.objectContaining( {
+        id: 'reply-thread-dashboard-leader-follow-up',
+        type: 'reply',
+        lifecycleState: 'active',
+      } ),
+    ] )
+  } )
+
   it( 'keeps non-reply tasks when comment access fails during reply detection', async () => {
     seedProject( 'project-dashboard-permission', 'Dashboard Permission Project', 'user-member-1' )
     setDocData( 'projectMembers/project-dashboard-permission_user-reviewer-1', {
