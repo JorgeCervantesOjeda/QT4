@@ -5,6 +5,7 @@ import {
   doc,
   runTransaction,
   serverTimestamp,
+  updateDoc,
 } from "firebase/firestore";
 import { logAudit } from "../../lib/audit";
 import { requestAiAssist } from "../../lib/aiAssist";
@@ -101,7 +102,7 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
     params.setThreadCreationStatus("creating");
     params.setIsBusy(true);
     try {
-      const threadTitle = await draftIssueTitle(initialCommentBody);
+      const threadTitle = buildFallbackIssueTitle(initialCommentBody);
       const threadRef = doc(collection(db, "threads"));
       const commentRef = doc(collection(db, "comments"));
       const versionRef = doc(db, "versions", selectedVersion.id);
@@ -190,6 +191,15 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
         threadId: threadRef.id,
       }).catch((err) => {
         console.warn("Audit log failed (create issue):", err);
+      });
+      void updateThreadTitleInBackground({
+        commentBody: initialCommentBody,
+        docId,
+        fallbackTitle: threadTitle,
+        projectId,
+        threadRef,
+        userId,
+        versionId: selectedVersion.id,
       });
       await params.reloadAndRestoreSelection(lockedVersionId, threadRef.id);
     } catch (err) {
@@ -485,20 +495,56 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
   };
 };
 
-const draftIssueTitle = async (commentBody: string) => {
+const updateThreadTitleInBackground = async ({
+  commentBody,
+  docId,
+  fallbackTitle,
+  projectId,
+  threadRef,
+  userId,
+  versionId,
+}: {
+  commentBody: string;
+  docId: string;
+  fallbackTitle: string;
+  projectId: string;
+  threadRef: ReturnType<typeof doc>;
+  userId: string;
+  versionId: string;
+}) => {
   try {
     const response = await requestAiAssist({
       mode: "draft_issue_title",
       text: commentBody,
     });
-    return normalizeIssueTitleInput(response.result).trim() || buildFallbackIssueTitle(commentBody);
-  } catch (err) {
-    console.warn("AI issue title fallback used:", {
-      cause: err instanceof Error ? err.message : "Unexpected AI title error",
-      fallback: "local initial comment summary",
-      impact: "Issue uses a deterministic local summary instead of an AI-generated summary.",
+    const threadTitle = normalizeIssueTitleInput(response.result).trim();
+    if (!threadTitle) {
+      console.warn("AI issue title background update skipped:", {
+        cause: "AI returned an empty title.",
+        fallback: fallbackTitle,
+        impact: "Issue keeps its local summary title.",
+        projectId,
+        docId,
+        versionId,
+        threadId: threadRef.id,
+      });
+      return;
+    }
+    await updateDoc(threadRef, {
+      title: threadTitle,
+      updatedAt: serverTimestamp(),
+      updatedBy: userId,
     });
-    return buildFallbackIssueTitle(commentBody);
+  } catch (err) {
+    console.warn("AI issue title background update failed:", {
+      cause: err instanceof Error ? err.message : "Unexpected AI title error",
+      fallback: fallbackTitle,
+      impact: "Issue keeps its local summary title.",
+      projectId,
+      docId,
+      versionId,
+      threadId: threadRef.id,
+    });
   }
 };
 
