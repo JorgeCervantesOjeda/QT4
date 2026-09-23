@@ -26,7 +26,10 @@ vi.mock( '../../giphy/GiphyProvider', () => ( {
   ),
 } ) )
 
-const renderVersionDecisionModal = (isBusy: boolean) => render(
+const renderVersionDecisionModal = (
+  isBusy: boolean,
+  threadCreationStatus: 'idle' | 'creating' = 'idle',
+) => render(
   <VersionsModals
     isBusy={isBusy}
     isDocumentTitleModalOpen={false}
@@ -56,6 +59,7 @@ const renderVersionDecisionModal = (isBusy: boolean) => render(
     pendingThreadStatusChange={null}
     onClosePendingThreadStatusChange={() => undefined}
     onConfirmThreadStatusChange={() => undefined}
+    threadCreationStatus={threadCreationStatus}
     uploadStatus="idle"
     uploadMessage=""
     downloadStatus="idle"
@@ -117,6 +121,7 @@ const renderThreadStatusModal = (isBusy: boolean) => render(
     }}
     onClosePendingThreadStatusChange={() => undefined}
     onConfirmThreadStatusChange={() => undefined}
+    threadCreationStatus="idle"
     uploadStatus="idle"
     uploadMessage=""
     downloadStatus="idle"
@@ -161,6 +166,14 @@ describe( 'versions/VersionsModals', () => {
     expect( screen.queryByRole( 'button', { name: 'Confirm' } ) ).toBeNull()
   } )
 
+  it( 'shows issue creation progress while the issue is being created', () => {
+    renderVersionDecisionModal( false, 'creating' )
+
+    expect( screen.getByRole( 'heading', { name: 'Creating issue' } ) ).toBeTruthy()
+    expect( screen.getAllByTestId( 'giphy-reason' ).some( (element) => element.textContent === 'loading' ) ).toBe( true )
+    expect( screen.getByText( 'Creating the issue...' ) ).toBeTruthy()
+  } )
+
   it( 'shows upload progress without an extra generic Giphy label', () => {
     render(
       <VersionsModals
@@ -192,6 +205,7 @@ describe( 'versions/VersionsModals', () => {
         pendingThreadStatusChange={null}
         onClosePendingThreadStatusChange={() => undefined}
         onConfirmThreadStatusChange={() => undefined}
+        threadCreationStatus="idle"
         uploadStatus="uploading"
         uploadMessage="Uploading new version..."
         downloadStatus="idle"
@@ -263,6 +277,7 @@ describe( 'versions/VersionsModals', () => {
         pendingThreadStatusChange={null}
         onClosePendingThreadStatusChange={() => undefined}
         onConfirmThreadStatusChange={() => undefined}
+        threadCreationStatus="idle"
         uploadStatus="idle"
         uploadMessage=""
         downloadStatus="idle"

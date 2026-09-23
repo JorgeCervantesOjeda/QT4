@@ -86,6 +86,7 @@ type VersionsPageViewProps = {
   hasPreviousThread: boolean;
   highlightedCommentId: string | null;
   isBusy: boolean;
+  threadCreationStatus: "idle" | "creating";
   isDocumentTitleModalOpen: boolean;
   isErrorReportModalOpen: boolean;
   isLoadingThreads: boolean;
@@ -341,6 +342,7 @@ const SelectedVersionPanels = (props: VersionsPageViewProps) => (
 const VersionsPageDialogs = (props: VersionsPageViewProps) => (
   <VersionsModals
     isBusy={props.isBusy}
+    threadCreationStatus={props.threadCreationStatus}
     isDocumentTitleModalOpen={props.isDocumentTitleModalOpen}
     documentTitleInputRef={props.documentTitleInputRef}
     documentTitleDraft={props.documentTitleDraft}

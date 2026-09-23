@@ -70,6 +70,7 @@ function VersionsPage() {
     commentsSorting,
     setCommentsSorting,
     isBusy,
+    threadCreationStatus,
     isLoadingVersions,
     error,
     setError,
@@ -307,6 +308,7 @@ function VersionsPage() {
       hasPreviousThread={hasPreviousThread}
       highlightedCommentId={highlightedCommentId}
       isBusy={isBusy}
+      threadCreationStatus={threadCreationStatus}
       isDocumentTitleModalOpen={isDocumentTitleModalOpen}
       isErrorReportModalOpen={isErrorReportModalOpen}
       isLoadingThreads={isLoadingThreads}

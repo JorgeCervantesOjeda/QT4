@@ -126,6 +126,7 @@ describe( 'createReviewIssueActions', () => {
     const setNewCommentBody = vi.fn()
     const setNewThreadTitle = vi.fn()
     const setSelectedThreadId = vi.fn()
+    const setThreadCreationStatus = vi.fn()
     const reloadAndRestoreSelection = vi.fn()
     const actions = createReviewIssueActions( {
       canAddComment: true,
@@ -154,6 +155,7 @@ describe( 'createReviewIssueActions', () => {
       setNewThreadTitle,
       setPendingThreadStatusChange: vi.fn(),
       setSelectedThreadId,
+      setThreadCreationStatus,
       setSuccessEmailRecipients: vi.fn(),
       setSuccessMessage: vi.fn(),
       setWarningMessage: vi.fn(),
@@ -181,6 +183,7 @@ describe( 'createReviewIssueActions', () => {
     expect( setNewThreadTitle ).toHaveBeenCalledWith( '' )
     expect( setSelectedThreadId ).toHaveBeenCalled()
     expect( reloadAndRestoreSelection ).toHaveBeenCalledWith( 'version-1', expect.any( String ) )
+    expect( setThreadCreationStatus.mock.calls ).toEqual( [ [ 'creating' ], [ 'idle' ] ] )
   } )
 
   it( 'keeps the issue status confirmation pending until the status change finishes', async () => {
@@ -241,6 +244,7 @@ describe( 'createReviewIssueActions', () => {
       setNewThreadTitle: vi.fn(),
       setPendingThreadStatusChange: vi.fn( () => calls.push( 'pending:null' ) ),
       setSelectedThreadId: vi.fn(),
+      setThreadCreationStatus: vi.fn(),
       setSuccessEmailRecipients: vi.fn(),
       setSuccessMessage: vi.fn(),
       setWarningMessage: vi.fn(),

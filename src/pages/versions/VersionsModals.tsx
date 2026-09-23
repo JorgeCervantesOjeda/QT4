@@ -56,6 +56,7 @@ type VersionsModalsProps = {
   pendingThreadStatusChange: ThreadSummary | null;
   onClosePendingThreadStatusChange: () => void;
   onConfirmThreadStatusChange: () => void;
+  threadCreationStatus: "idle" | "creating";
   uploadStatus: "idle" | "uploading" | "success" | "error";
   uploadMessage: string;
   downloadStatus: "idle" | "downloading";
@@ -102,6 +103,7 @@ function VersionsModals(props: VersionsModalsProps) {
     pendingThreadStatusChange,
     onClosePendingThreadStatusChange,
     onConfirmThreadStatusChange,
+    threadCreationStatus,
     uploadStatus,
     uploadMessage,
     downloadStatus,
@@ -412,6 +414,12 @@ function VersionsModals(props: VersionsModalsProps) {
             </div>
           ) : null}
         </ModalDialog>
+      ) : null}
+      {threadCreationStatus === "creating" ? (
+        <ProgressModal
+          title="Creating issue"
+          message="Creating the issue..."
+        />
       ) : null}
       {uploadStatus === "uploading" ? (
         <ProgressModal

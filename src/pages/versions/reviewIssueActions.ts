@@ -67,6 +67,7 @@ type ReviewIssueActionParams = {
   setNewThreadTitle: (value: string) => void;
   setPendingThreadStatusChange: (value: ThreadSummary | null) => void;
   setSelectedThreadId: (value: string | null) => void;
+  setThreadCreationStatus: (value: "idle" | "creating") => void;
   setSuccessEmailRecipients: (
     value: { to: string[]; cc: string[] } | null,
   ) => void;
@@ -97,6 +98,7 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
     const initialCommentBody = params.newThreadTitle.trim();
     const lockedVersionId = selectedVersion.id;
     params.setError(null);
+    params.setThreadCreationStatus("creating");
     params.setIsBusy(true);
     try {
       const threadTitle = await draftIssueTitle(initialCommentBody);
@@ -197,6 +199,7 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
       });
       params.setError(message);
     } finally {
+      params.setThreadCreationStatus("idle");
       params.setIsBusy(false);
     }
   };
