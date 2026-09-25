@@ -5,6 +5,7 @@ import { useCallback } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
 import VersionsPageView from "./versions/VersionsPageView";
+import { useCommentColumns } from "./versions/columns";
 import useVersionsPageState from "./versions/versionsPageState";
 import useVersionsActionModel from "./versions/useVersionsActionModel";
 import useVersionsDerivedModel from "./versions/useVersionsDerivedModel";
@@ -61,6 +62,8 @@ function VersionsPage() {
     setThreadsViewMode,
     commentsViewMode,
     setCommentsViewMode,
+    commentLikesByCommentId,
+    pendingCommentLikeIds,
     versionSorting,
     setVersionSorting,
     membersSorting,
@@ -152,7 +155,6 @@ function VersionsPage() {
     handleToggleAllReviewers,
     errorChecklist,
     versionColumns,
-    commentColumns,
   } = derived;
   const runtime = useVersionsRuntimeModel({
     derived,
@@ -240,6 +242,7 @@ function VersionsPage() {
     handleConfirmVersionDecision,
     handleCreateErrorReport,
     handleCreateThread,
+    handleToggleCommentLike,
     handleRetryPropagatedErrorReports,
     handleReviewDurationDaysChange,
     memberColumns,
@@ -253,6 +256,12 @@ function VersionsPage() {
     requestVersionDecisionConfirmation,
     threadColumns,
   } = actions;
+  const commentColumns = useCommentColumns({
+    commentLikesByCommentId,
+    formatUserLabel,
+    onToggleCommentLike: handleToggleCommentLike,
+    pendingCommentLikeIds,
+  });
   return (
     <VersionsPageView
       acceptedErrorReports={acceptedErrorReports}

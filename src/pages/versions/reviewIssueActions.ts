@@ -2,11 +2,14 @@
 // Creates handlers for review issues, comments, and issue status transitions.
 import {
   collection,
+  deleteDoc,
   doc,
   runTransaction,
   serverTimestamp,
+  setDoc,
   updateDoc,
 } from "firebase/firestore";
+import type { Dispatch, SetStateAction } from "react";
 import { logAudit } from "../../lib/audit";
 import { requestAiAssist } from "../../lib/aiAssist";
 import { db } from "../../lib/firebase";
@@ -25,6 +28,7 @@ import {
   toTimestampDate,
 } from "./utils";
 import type {
+  CommentLikeState,
   CommentSummary,
   DocumentSummary,
   ThreadSummary,
@@ -42,6 +46,7 @@ type ReviewIssueActionParams = {
   canAddComment: boolean;
   canCreateThread: boolean;
   canParticipateReview: boolean;
+  commentLikesByCommentId: Record<string, CommentLikeState>;
   commentsByThread: Record<string, CommentSummary[]>;
   currentDocumentAuthorId: string;
   docId?: string;
@@ -64,8 +69,12 @@ type ReviewIssueActionParams = {
   setEmailNotifyStatus: (value: "idle" | "sending") => void;
   setError: (value: string | null) => void;
   setIsBusy: (value: boolean) => void;
+  setCommentLikesByCommentId: Dispatch<
+    SetStateAction<Record<string, CommentLikeState>>
+  >;
   setNewCommentBody: (value: string) => void;
   setNewThreadTitle: (value: string) => void;
+  setPendingCommentLikeIds: Dispatch<SetStateAction<Record<string, boolean>>>;
   setPendingThreadStatusChange: (value: ThreadSummary | null) => void;
   setSelectedThreadId: (value: string | null) => void;
   setThreadCreationStatus: (value: "idle" | "creating") => void;
@@ -390,6 +399,75 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
     return true;
   };
 
+  const handleToggleCommentLike = async (comment: CommentSummary) => {
+    const { selectedVersion, projectId, docId, userId } = params;
+    if (!selectedVersion || !projectId || !docId || !userId) {
+      params.setError("Select a version and comment before liking it.");
+      return;
+    }
+    if (!comment.id || !comment.threadId) {
+      params.setError("Select a valid comment before liking it.");
+      return;
+    }
+    const currentLikeState = params.commentLikesByCommentId[comment.id] ?? {
+      count: 0,
+      likedByCurrentUser: false,
+    };
+    const nextLikedByCurrentUser = !currentLikeState.likedByCurrentUser;
+    const likeRef = doc(db, "commentLikes", buildCommentLikeId(comment.id, userId));
+    params.setError(null);
+    params.setPendingCommentLikeIds((current) => ({
+      ...current,
+      [comment.id]: true,
+    }));
+    params.setCommentLikesByCommentId((current) =>
+      applyOptimisticCommentLike(current, comment.id, nextLikedByCurrentUser),
+    );
+    try {
+      await measureSlowUiAction(
+        {
+          action: nextLikedByCurrentUser
+            ? "versions.likeComment"
+            : "versions.unlikeComment",
+          page: "Document Versions",
+          userId,
+          projectId,
+          docId,
+          versionId: selectedVersion.id,
+          threadId: comment.threadId,
+        },
+        () =>
+          nextLikedByCurrentUser
+            ? setDoc(likeRef, {
+                projectId,
+                docId,
+                versionId: selectedVersion.id,
+                threadId: comment.threadId,
+                commentId: comment.id,
+                userId,
+                createdAt: serverTimestamp(),
+              })
+            : deleteDoc(likeRef),
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unexpected error";
+      params.setCommentLikesByCommentId((current) =>
+        restoreCommentLikeState(current, comment.id, currentLikeState),
+      );
+      params.reportVersionsError(err, "versions.toggleCommentLike", "firestore", {
+        versionId: selectedVersion.id,
+        threadId: comment.threadId,
+      });
+      params.setError(message);
+    } finally {
+      params.setPendingCommentLikeIds((current) => {
+        const nextPendingCommentLikeIds = { ...current };
+        delete nextPendingCommentLikeIds[comment.id];
+        return nextPendingCommentLikeIds;
+      });
+    }
+  };
+
   const handleToggleThreadStatus = async (thread: ThreadSummary) => {
     if (!canChangeThreadStatus(thread) || !params.selectedVersion) return;
     const lockedVersionId = params.selectedVersion.id;
@@ -491,9 +569,47 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
     handleAddComment,
     handleConfirmThreadStatusChange,
     handleCreateThread,
+    handleToggleCommentLike,
     handleToggleThreadStatus,
   };
 };
+
+const buildCommentLikeId = (commentId: string, userId: string) =>
+  `${commentId}_${userId}`;
+
+const applyOptimisticCommentLike = (
+  current: Record<string, CommentLikeState>,
+  commentId: string,
+  likedByCurrentUser: boolean,
+) => {
+  const currentState = current[commentId] ?? {
+    count: 0,
+    likedByCurrentUser: false,
+  };
+  const countDelta = likedByCurrentUser
+    ? currentState.likedByCurrentUser
+      ? 0
+      : 1
+    : currentState.likedByCurrentUser
+      ? -1
+      : 0;
+  return {
+    ...current,
+    [commentId]: {
+      count: Math.max(0, currentState.count + countDelta),
+      likedByCurrentUser,
+    },
+  };
+};
+
+const restoreCommentLikeState = (
+  current: Record<string, CommentLikeState>,
+  commentId: string,
+  previousState: CommentLikeState,
+) => ({
+  ...current,
+  [commentId]: previousState,
+});
 
 const updateThreadTitleInBackground = async ({
   commentBody,

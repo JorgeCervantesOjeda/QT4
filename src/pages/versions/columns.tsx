@@ -4,6 +4,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { versionNumberToString } from "../../domain/types";
 import { formatTimeAgoWithTimestamp } from "../../lib/time";
 import type {
+  CommentLikeState,
   CommentSummary,
   FileRefSummary,
   ThreadSummary,
@@ -107,17 +108,76 @@ const useVersionColumns = (params: VersionColumnsParams) =>
     [params],
   );
 
-const useCommentColumns = (formatUserLabel: (userId: string) => string) =>
+type CommentColumnsParams = {
+  commentLikesByCommentId: Record<string, CommentLikeState>;
+  formatUserLabel: (userId: string) => string;
+  onToggleCommentLike: (comment: CommentSummary) => void;
+  pendingCommentLikeIds: Record<string, boolean>;
+};
+
+const formatLikeAriaLabel = (comment: CommentSummary, likeState: CommentLikeState) => {
+  const action = likeState.likedByCurrentUser ? "Unlike" : "Like";
+  const likesLabel = likeState.count === 1 ? "1 like" : `${likeState.count} likes`;
+  return `${action} comment ${comment.body} ${likesLabel}`;
+};
+
+const getLikeHandValues = (count: number) => {
+  const safeCount = Math.max(0, Math.floor(count));
+  const numOfHundreds = Math.floor(safeCount / 100);
+  const numOfTens = Math.floor((safeCount % 100) / 10);
+  const numOfOnes = safeCount % 10;
+  return [
+    ...Array.from({ length: numOfHundreds }, () => 100),
+    ...Array.from({ length: numOfTens }, () => 10),
+    ...Array.from({ length: numOfOnes }, () => 1),
+  ];
+};
+
+const renderLikeHands = (count: number) => {
+  const likeHandValues = getLikeHandValues(count);
+  if (likeHandValues.length === 0) {
+    return null;
+  }
+  return (
+    <span className="comment-like-hands" aria-hidden="true">
+      {likeHandValues.map((value, index) => (
+        <span
+          key={`${value}_${index}`}
+          className={`comment-like-hand comment-like-hand--${value}`}
+          data-like-value={String(value)}
+          title={`${value} ${value === 1 ? "like" : "likes"}`}
+        >
+          👍
+        </span>
+      ))}
+    </span>
+  );
+};
+
+const useCommentColumns = (params: CommentColumnsParams) =>
   useMemo<ColumnDef<CommentSummary>[]>(
     () => [
       {
         header: "Author",
         accessorKey: "createdBy",
-        cell: (info) => formatUserLabel(info.getValue<string>()),
+        cell: (info) => params.formatUserLabel(info.getValue<string>()),
       },
       {
         header: "Comment",
         accessorKey: "body",
+        cell: (info) => {
+          const comment = info.row.original;
+          const likeState = params.commentLikesByCommentId[comment.id] ?? {
+            count: 0,
+            likedByCurrentUser: false,
+          };
+          return (
+            <span className="comment-body-with-likes">
+              <span>{comment.body}</span>
+              {renderLikeHands(likeState.count)}
+            </span>
+          );
+        },
       },
       {
         header: "When",
@@ -127,8 +187,39 @@ const useCommentColumns = (formatUserLabel: (userId: string) => string) =>
           return value ? formatTimeAgoWithTimestamp(value) : "-";
         },
       },
+      {
+        header: "Likes",
+        id: "likes",
+        enableSorting: false,
+        cell: (info) => {
+          const comment = info.row.original;
+          const likeState = params.commentLikesByCommentId[comment.id] ?? {
+            count: 0,
+            likedByCurrentUser: false,
+          };
+          const isPending = Boolean(params.pendingCommentLikeIds[comment.id]);
+          const actionLabel = likeState.likedByCurrentUser ? "Unlike" : "Like";
+          return (
+            <div className="comment-like-cell">
+              <button
+                type="button"
+                className="ghost comment-like-button"
+                aria-label={formatLikeAriaLabel(comment, likeState)}
+                aria-pressed={likeState.likedByCurrentUser}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  params.onToggleCommentLike(comment);
+                }}
+                disabled={isPending}
+              >
+                {isPending ? "Saving" : actionLabel}
+              </button>
+            </div>
+          );
+        },
+      },
     ],
-    [formatUserLabel],
+    [params],
   );
 
 const useMemberColumns = (params: {

@@ -243,7 +243,6 @@ const useVersionsDerivedModel = ({
     clockNowMs,
   });
   const {
-    commentColumns,
     formatUserLabel,
     membersTableRows,
     requestDownloadVersionFile,
@@ -477,7 +476,6 @@ const useVersionsDerivedModel = ({
     logBlockedVersionDecision,
     errorChecklist,
     versionColumns,
-    commentColumns,
   };
 };
 

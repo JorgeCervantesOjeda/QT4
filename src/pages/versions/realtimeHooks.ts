@@ -10,8 +10,9 @@ import {
 } from 'firebase/firestore'
 import { trackFirestoreListener } from '../../lib/diagnostics/firestoreListeners'
 import { db } from '../../lib/firebase'
-import type { CommentSummary, ThreadSummary } from './types'
+import type { CommentLikeState, CommentSummary, ThreadSummary } from './types'
 import {
+  areCommentLikeStatesEqual,
   areCommentsByThreadEqual,
   areThreadsEqual,
   isIndexBuildingFirestoreError,
@@ -109,6 +110,7 @@ const useThreadsAndCommentsSubscription = (params: {
   selectedVersionId?: string
   projectId: string
   docId?: string
+  userId: string
   threadIdFromQuery: string
   commentsRetryToken: number
   commentsRetryTimeoutRef: MutableRefObject<number | null>
@@ -116,6 +118,8 @@ const useThreadsAndCommentsSubscription = (params: {
   setThreads: Dispatch<SetStateAction<ThreadSummary[]>>
   setVisibleThreadRows: Dispatch<SetStateAction<ThreadSummary[]>>
   setCommentsByThread: Dispatch<SetStateAction<Record<string, CommentSummary[]>>>
+  setCommentLikesByCommentId: Dispatch<SetStateAction<Record<string, CommentLikeState>>>
+  setPendingCommentLikeIds: Dispatch<SetStateAction<Record<string, boolean>>>
   setSelectedThreadId: Dispatch<SetStateAction<string | null>>
   setNewThreadTitle: Dispatch<SetStateAction<string>>
   setNewCommentBody: Dispatch<SetStateAction<string>>
@@ -129,12 +133,15 @@ const useThreadsAndCommentsSubscription = (params: {
     selectedVersionId,
     projectId,
     docId,
+    userId,
     commentsRetryToken,
     commentsRetryTimeoutRef,
     reportVersionsErrorRef,
     setThreads,
     setVisibleThreadRows,
     setCommentsByThread,
+    setCommentLikesByCommentId,
+    setPendingCommentLikeIds,
     setSelectedThreadId,
     setNewThreadTitle,
     setNewCommentBody,
@@ -151,6 +158,8 @@ const useThreadsAndCommentsSubscription = (params: {
         setThreads,
         setVisibleThreadRows,
         setCommentsByThread,
+        setCommentLikesByCommentId,
+        setPendingCommentLikeIds,
         setSelectedThreadId,
         setNewThreadTitle,
         setNewCommentBody,
@@ -164,6 +173,8 @@ const useThreadsAndCommentsSubscription = (params: {
       setThreads,
       setVisibleThreadRows,
       setCommentsByThread,
+      setCommentLikesByCommentId,
+      setPendingCommentLikeIds,
       setSelectedThreadId,
       setNewThreadTitle,
       setNewCommentBody,
@@ -278,23 +289,73 @@ const useThreadsAndCommentsSubscription = (params: {
         setError( `Comments failed to load: ${message}` )
       },
     )
+    const commentLikesListener = trackFirestoreListener( {
+      label: 'versions.commentLikes',
+      projectId,
+      documentId: docId ?? '',
+      versionId: selectedVersionId,
+      focus: 'issues',
+      queryDescription: `commentLikes where projectId=${projectId} versionId=${selectedVersionId}`,
+    } )
+    const commentLikesUnsub = onSnapshot(
+      query(
+        collection( db, 'commentLikes' ),
+        where( 'projectId', '==', projectId ),
+        where( 'versionId', '==', selectedVersionId ),
+      ),
+      ( snapshot ) => {
+        commentLikesListener.recordSnapshot( {
+          size: snapshot.docs.length,
+          fromCache: snapshot.metadata.fromCache,
+          hasPendingWrites: snapshot.metadata.hasPendingWrites,
+        } )
+        const nextLikes: Record<string, CommentLikeState> = {}
+        snapshot.docs.forEach( ( likeSnapshot ) => {
+          const data = likeSnapshot.data()
+          const commentId = ( data.commentId as string | undefined ) ?? ''
+          const likeUserId = ( data.userId as string | undefined ) ?? ''
+          if( !commentId || !likeUserId ) {
+            return
+          }
+          const current = nextLikes[commentId] ?? { count: 0, likedByCurrentUser: false }
+          nextLikes[commentId] = {
+            count: current.count + 1,
+            likedByCurrentUser: current.likedByCurrentUser || likeUserId === userId,
+          }
+        } )
+        setCommentLikesByCommentId( ( previous ) =>
+          areCommentLikeStatesEqual( previous, nextLikes ) ? previous : nextLikes,
+        )
+      },
+      ( err ) => {
+        commentLikesListener.recordError( err )
+        const message = err instanceof Error ? err.message : 'Unexpected error'
+        reportVersionsErrorRef.current( err, 'versions.subscribeCommentLikes', 'firestore' )
+        setError( `Comment likes failed to load: ${message}` )
+      },
+    )
     return () => {
       threadsListener.dispose()
       commentsListener.dispose()
+      commentLikesListener.dispose()
       threadsUnsub()
       commentsUnsub()
+      commentLikesUnsub()
       clearCommentsRetryTimeout( commentsRetryTimeoutRef )
     }
   }, [
     selectedVersionId,
     projectId,
     docId,
+    userId,
     commentsRetryToken,
     commentsRetryTimeoutRef,
     reportVersionsErrorRef,
     setThreads,
     setVisibleThreadRows,
     setCommentsByThread,
+    setCommentLikesByCommentId,
+    setPendingCommentLikeIds,
     setSelectedThreadId,
     setNewThreadTitle,
     setNewCommentBody,
@@ -310,6 +371,8 @@ const clearThreadState = (value: {
   setThreads: Dispatch<SetStateAction<ThreadSummary[]>>
   setVisibleThreadRows: Dispatch<SetStateAction<ThreadSummary[]>>
   setCommentsByThread: Dispatch<SetStateAction<Record<string, CommentSummary[]>>>
+  setCommentLikesByCommentId: Dispatch<SetStateAction<Record<string, CommentLikeState>>>
+  setPendingCommentLikeIds: Dispatch<SetStateAction<Record<string, boolean>>>
   setSelectedThreadId: Dispatch<SetStateAction<string | null>>
   setNewThreadTitle: Dispatch<SetStateAction<string>>
   setNewCommentBody: Dispatch<SetStateAction<string>>
@@ -318,6 +381,8 @@ const clearThreadState = (value: {
   value.setThreads( [] )
   value.setVisibleThreadRows( [] )
   value.setCommentsByThread( {} )
+  value.setCommentLikesByCommentId( {} )
+  value.setPendingCommentLikeIds( {} )
   value.setSelectedThreadId( null )
   value.setNewThreadTitle( '' )
   value.setNewCommentBody( '' )

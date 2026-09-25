@@ -76,6 +76,10 @@ service cloud.firestore {
       return getAfter(/databases/$(database)/documents/threads/$(threadId));
     }
 
+    function commentDoc(commentId) {
+      return get(/databases/$(database)/documents/comments/$(commentId));
+    }
+
     function documentDoc(docId) {
       return get(/databases/$(database)/documents/documents/$(docId));
     }
@@ -304,6 +308,42 @@ service cloud.firestore {
           && isExistingThreadCommentCreateWithVersionStatIncrement(versionId, threadId)
         )
         || isInitialCommentCreateForNewThread(versionId, threadId);
+    }
+
+    function isCommentLikeCreateAllowed(commentLikeId) {
+      let comment = commentDoc(request.resource.data.commentId).data;
+      return isSignedIn()
+        && request.resource.data.keys().hasOnly([
+          'projectId',
+          'docId',
+          'versionId',
+          'threadId',
+          'commentId',
+          'userId',
+          'createdAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'projectId',
+          'docId',
+          'versionId',
+          'threadId',
+          'commentId',
+          'userId',
+          'createdAt'
+        ])
+        && request.resource.data.projectId is string
+        && request.resource.data.docId is string
+        && request.resource.data.versionId is string
+        && request.resource.data.threadId is string
+        && request.resource.data.commentId is string
+        && request.resource.data.userId == request.auth.uid
+        && commentLikeId == request.resource.data.commentId + '_' + request.auth.uid
+        && exists(/databases/$(database)/documents/comments/$(request.resource.data.commentId))
+        && comment.projectId == request.resource.data.projectId
+        && comment.docId == request.resource.data.docId
+        && comment.versionId == request.resource.data.versionId
+        && comment.threadId == request.resource.data.threadId
+        && canReadReviewArtifacts(request.resource.data.projectId, request.resource.data.versionId);
     }
 
     function isAdminProjectIdBackfill() {
@@ -1002,6 +1042,13 @@ service cloud.firestore {
         && isCommentCreateWithVersionStatIncrement(request.resource.data.versionId, request.resource.data.threadId);
       allow update: if isAdminProjectIdBackfill();
       allow delete: if false;
+    }
+
+    match /commentLikes/{commentLikeId} {
+      allow read: if canReadReviewArtifacts(resource.data.projectId, resource.data.versionId);
+      allow create: if isCommentLikeCreateAllowed(commentLikeId);
+      allow update: if false;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
     match /changeRequests/{crId} {

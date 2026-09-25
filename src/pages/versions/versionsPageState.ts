@@ -6,6 +6,7 @@ import type {
   AcceptedErrorReportSummary,
   BaseDocumentSummary,
   CommentSummary,
+  CommentLikeState,
   DocumentSummary,
   FileRefSummary,
   PendingVersionAction,
@@ -154,6 +155,12 @@ const useVersionsPageState = () => {
   const [commentsByThread, setCommentsByThread] = useState<
     Record<string, CommentSummary[]>
   >({});
+  const [commentLikesByCommentId, setCommentLikesByCommentId] = useState<
+    Record<string, CommentLikeState>
+  >({});
+  const [pendingCommentLikeIds, setPendingCommentLikeIds] = useState<
+    Record<string, boolean>
+  >({});
   const [commentsRetryToken, setCommentsRetryToken] = useState(0);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [highlightedCommentId, setHighlightedCommentId] = useState<
@@ -288,6 +295,10 @@ const useVersionsPageState = () => {
     setVisibleThreadRows,
     commentsByThread,
     setCommentsByThread,
+    commentLikesByCommentId,
+    setCommentLikesByCommentId,
+    pendingCommentLikeIds,
+    setPendingCommentLikeIds,
     commentsRetryToken,
     setCommentsRetryToken,
     selectedThreadId,

@@ -90,6 +90,11 @@ type CommentSummary = {
   createdAt?: Date
 }
 
+type CommentLikeState = {
+  count: number
+  likedByCurrentUser: boolean
+}
+
 type AcceptedErrorReportSummary = {
   docId: string
   title: string
@@ -112,6 +117,7 @@ type PropagationFailurePrompt = {
 export type {
   AcceptedErrorReportSummary,
   BaseDocumentSummary,
+  CommentLikeState,
   CommentSummary,
   DashboardFocusTarget,
   DocumentSummary,

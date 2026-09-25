@@ -739,9 +739,10 @@
 }
 
 .data-table--comments {
-  --table-col-1: 20%;
-  --table-col-2: 60%;
+  --table-col-1: 18%;
+  --table-col-2: 50%;
   --table-col-3: 20%;
+  --table-col-4: 12%;
 }
 
 .data-table--members {
@@ -1981,6 +1982,56 @@
 
 .data-table--comments tr.comment-row--highlight td {
   background: #fff8e1;
+}
+
+.comment-body-with-likes {
+  align-items: baseline;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.comment-like-cell {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.comment-like-button {
+  min-width: 72px;
+  white-space: nowrap;
+}
+
+.comment-like-button[aria-pressed="true"] {
+  border-color: rgba( 42, 117, 79, 0.48 );
+  color: #2a754f;
+}
+
+.comment-like-hands {
+  display: inline;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.comment-like-hand {
+  display: inline-flex;
+  filter: grayscale( 0.15 );
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.comment-like-hand--10 {
+  filter: hue-rotate( 165deg ) saturate( 1.5 );
+}
+
+.comment-like-hand--100 {
+  filter: hue-rotate( 255deg ) saturate( 1.6 );
+}
+
+.comment-like-empty {
+  color: var(--qt-muted);
+  font-size: 0.82rem;
 }
 
 .link {

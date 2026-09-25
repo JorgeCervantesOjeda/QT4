@@ -3,7 +3,7 @@
 import { useCallback, useMemo } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { FileStorageProviderKind } from "../../domain/types";
-import { useCommentColumns, useVersionColumns } from "./columns";
+import { useVersionColumns } from "./columns";
 import {
   downloadVersionFile,
   requestDownloadVersionFile as requestDownloadVersionFileOperation,
@@ -162,10 +162,7 @@ const useVersionsPeopleAndTablesModel = ({
     clockNowMs,
     versionFileRefsById,
   });
-  const commentColumns = useCommentColumns(formatUserLabel);
-
   return {
-    commentColumns,
     formatUserLabel,
     handleDownloadVersionFile,
     membersTableRows,

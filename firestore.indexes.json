@@ -37,6 +37,20 @@
       ]
     },
     {
+      "collectionGroup": "commentLikes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "projectId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "versionId",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "versions",
       "queryScope": "COLLECTION",
       "fields": [

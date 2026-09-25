@@ -9,6 +9,7 @@ import {
 } from '@firebase/rules-unit-testing'
 import {
   doc,
+  deleteDoc,
   setDoc,
   Timestamp,
   updateDoc,
@@ -25,6 +26,7 @@ const docId = 'document-1'
 const versionId = 'version-1'
 const threadId = 'thread-1'
 const commentId = 'comment-1'
+const commentLikeId = `${commentId}_${userId}`
 
 const baseVersion = {
   projectId,
@@ -200,5 +202,54 @@ describeWithFirestoreEmulator( 'firestore.rules review issue creation', () => {
       updatedAt: Timestamp.fromMillis( 1600 ),
       updatedBy: 'author-1',
     } ) )
+  } )
+
+  it( 'allows a reviewer to like a review comment once with a deterministic document id', async () => {
+    await writeInitialIssue()
+
+    const firestore = testEnv.authenticatedContext( userId ).firestore()
+    await assertSucceeds( setDoc( doc( firestore, 'commentLikes', commentLikeId ), {
+      projectId,
+      docId,
+      versionId,
+      threadId,
+      commentId,
+      userId,
+      createdAt: Timestamp.fromMillis( 1700 ),
+    } ) )
+  } )
+
+  it( 'rejects comment likes that impersonate another user', async () => {
+    await writeInitialIssue()
+
+    const firestore = testEnv.authenticatedContext( userId ).firestore()
+    await assertFails( setDoc( doc( firestore, 'commentLikes', `${commentId}_other-user` ), {
+      projectId,
+      docId,
+      versionId,
+      threadId,
+      commentId,
+      userId: 'other-user',
+      createdAt: Timestamp.fromMillis( 1700 ),
+    } ) )
+  } )
+
+  it( 'allows users to remove their own comment likes', async () => {
+    await writeInitialIssue()
+    await testEnv.withSecurityRulesDisabled( async ( context ) => {
+      const firestore = context.firestore()
+      await setDoc( doc( firestore, 'commentLikes', commentLikeId ), {
+        projectId,
+        docId,
+        versionId,
+        threadId,
+        commentId,
+        userId,
+        createdAt: Timestamp.fromMillis( 1700 ),
+      } )
+    } )
+
+    const firestore = testEnv.authenticatedContext( userId ).firestore()
+    await assertSucceeds( deleteDoc( doc( firestore, 'commentLikes', commentLikeId ) ) )
   } )
 } )
