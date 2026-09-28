@@ -9,7 +9,6 @@ import {
 } from '@firebase/rules-unit-testing'
 import {
   doc,
-  deleteDoc,
   setDoc,
   Timestamp,
   updateDoc,
@@ -26,7 +25,7 @@ const docId = 'document-1'
 const versionId = 'version-1'
 const threadId = 'thread-1'
 const commentId = 'comment-1'
-const commentLikeId = `${commentId}_${userId}`
+const commentReactionId = `${commentId}_${userId}`
 
 const baseVersion = {
   projectId,
@@ -204,52 +203,61 @@ describeWithFirestoreEmulator( 'firestore.rules review issue creation', () => {
     } ) )
   } )
 
-  it( 'allows a reviewer to like a review comment once with a deterministic document id', async () => {
+  it( 'allows a reviewer to react to a review comment with a deterministic document id', async () => {
     await writeInitialIssue()
 
     const firestore = testEnv.authenticatedContext( userId ).firestore()
-    await assertSucceeds( setDoc( doc( firestore, 'commentLikes', commentLikeId ), {
+    await assertSucceeds( setDoc( doc( firestore, 'commentReactions', commentReactionId ), {
       projectId,
       docId,
       versionId,
       threadId,
       commentId,
       userId,
+      reaction: 'good',
       createdAt: Timestamp.fromMillis( 1700 ),
+      updatedAt: Timestamp.fromMillis( 1700 ),
     } ) )
   } )
 
-  it( 'rejects comment likes that impersonate another user', async () => {
+  it( 'rejects comment reactions that impersonate another user', async () => {
     await writeInitialIssue()
 
     const firestore = testEnv.authenticatedContext( userId ).firestore()
-    await assertFails( setDoc( doc( firestore, 'commentLikes', `${commentId}_other-user` ), {
+    await assertFails( setDoc( doc( firestore, 'commentReactions', `${commentId}_other-user` ), {
       projectId,
       docId,
       versionId,
       threadId,
       commentId,
       userId: 'other-user',
+      reaction: 'good',
       createdAt: Timestamp.fromMillis( 1700 ),
+      updatedAt: Timestamp.fromMillis( 1700 ),
     } ) )
   } )
 
-  it( 'allows users to remove their own comment likes', async () => {
+  it( 'allows users to update their own comment reaction', async () => {
     await writeInitialIssue()
     await testEnv.withSecurityRulesDisabled( async ( context ) => {
       const firestore = context.firestore()
-      await setDoc( doc( firestore, 'commentLikes', commentLikeId ), {
+      await setDoc( doc( firestore, 'commentReactions', commentReactionId ), {
         projectId,
         docId,
         versionId,
         threadId,
         commentId,
         userId,
+        reaction: 'good',
         createdAt: Timestamp.fromMillis( 1700 ),
+        updatedAt: Timestamp.fromMillis( 1700 ),
       } )
     } )
 
     const firestore = testEnv.authenticatedContext( userId ).firestore()
-    await assertSucceeds( deleteDoc( doc( firestore, 'commentLikes', commentLikeId ) ) )
+    await assertSucceeds( updateDoc( doc( firestore, 'commentReactions', commentReactionId ), {
+      reaction: 'bad',
+      updatedAt: Timestamp.fromMillis( 1800 ),
+    } ) )
   } )
 } )

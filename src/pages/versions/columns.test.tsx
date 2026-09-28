@@ -4,7 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import DataTable from '../../components/DataTable'
 import { useCommentColumns } from './columns'
-import type { CommentSummary } from './types'
+import type { CommentReactionKind, CommentSummary } from './types'
 
 const comments: CommentSummary[] = [
   {
@@ -16,24 +16,24 @@ const comments: CommentSummary[] = [
 ]
 
 function CommentTable( {
-  count,
-  likedByCurrentUser = false,
-  onToggleCommentLike,
+  counts = { good: 0, regular: 0, bad: 0 },
+  currentUserReaction = null,
+  onSetCommentReaction,
 }: {
-  count: number
-  likedByCurrentUser?: boolean
-  onToggleCommentLike: (comment: CommentSummary) => void
+  counts?: Record<CommentReactionKind, number>
+  currentUserReaction?: CommentReactionKind | null
+  onSetCommentReaction: ( comment: CommentSummary, reaction: CommentReactionKind ) => void
 } ) {
   const columns = useCommentColumns( {
     formatUserLabel: ( userId: string ) => userId,
-    commentLikesByCommentId: {
+    commentReactionsByCommentId: {
       'comment-1': {
-        count,
-        likedByCurrentUser,
+        counts,
+        currentUserReaction,
       },
     },
-    pendingCommentLikeIds: {},
-    onToggleCommentLike,
+    pendingCommentReactionIds: {},
+    onSetCommentReaction,
   } )
 
   return (
@@ -48,75 +48,60 @@ function CommentTable( {
 }
 
 describe( 'useCommentColumns', () => {
-  it( 'renders a like count action for each comment', () => {
-    const onToggleCommentLike = vi.fn()
+  it( 'renders reaction faces next to the comment body without putting them in the controls', () => {
+    const onSetCommentReaction = vi.fn()
 
-    render( <CommentTable count={2} onToggleCommentLike={onToggleCommentLike} /> )
+    render(
+      <CommentTable
+        counts={{ good: 2, regular: 1, bad: 2 }}
+        onSetCommentReaction={onSetCommentReaction}
+      />,
+    )
 
-    const likeButton = screen.getByRole( 'button', {
-      name: 'Like comment Please add evidence. 2 likes',
+    const goodButton = screen.getByRole( 'button', {
+      name: 'Good reaction for comment Please add evidence. 2 Good reactions',
     } )
     const commentCell = screen.getByText( 'Please add evidence.' ).closest( 'td' )
-    const likeCell = likeButton.closest( 'td' )
-    expect( likeButton.textContent ).toBe( 'Like' )
-    expect( likeButton.querySelectorAll( '[data-like-value="1"]' ) ).toHaveLength( 0 )
-    expect( likeCell?.querySelectorAll( '[data-like-value="1"]' ) ).toHaveLength( 0 )
-    expect( commentCell?.querySelectorAll( '[data-like-value="1"]' ) ).toHaveLength( 2 )
+    const reactionCell = goodButton.closest( 'td' )
+    expect( goodButton.textContent ).toBe( '😊' )
+    expect( goodButton.querySelectorAll( '[data-comment-reaction-kind]' ) ).toHaveLength( 0 )
+    expect( reactionCell?.querySelectorAll( '[data-comment-reaction-kind]' ) ).toHaveLength( 0 )
+    expect( commentCell?.querySelectorAll( '[data-comment-reaction-kind="good"]' ) ).toHaveLength( 2 )
+    expect( commentCell?.querySelectorAll( '[data-comment-reaction-kind="regular"]' ) ).toHaveLength( 1 )
+    expect( commentCell?.querySelectorAll( '[data-comment-reaction-kind="bad"]' ) ).toHaveLength( 2 )
 
-    fireEvent.click( likeButton )
+    fireEvent.click( goodButton )
 
-    expect( onToggleCommentLike ).toHaveBeenCalledWith( comments[0] )
+    expect( onSetCommentReaction ).toHaveBeenCalledWith( comments[0], 'good' )
   } )
 
-  it( 'shows the current user like state in the button', () => {
-    render( <CommentTable count={2} likedByCurrentUser={true} onToggleCommentLike={vi.fn()} /> )
+  it( 'shows the current user reaction state in the face controls', () => {
+    render(
+      <CommentTable
+        counts={{ good: 1, regular: 3, bad: 0 }}
+        currentUserReaction="regular"
+        onSetCommentReaction={vi.fn()}
+      />,
+    )
 
-    const likeButton = screen.getByRole( 'button', {
-      name: 'Unlike comment Please add evidence. 2 likes',
+    const regularButton = screen.getByRole( 'button', {
+      name: 'Regular reaction for comment Please add evidence. 3 Regular reactions',
+    } )
+    const goodButton = screen.getByRole( 'button', {
+      name: 'Good reaction for comment Please add evidence. 1 Good reaction',
     } )
 
-    expect( likeButton.textContent ).toBe( 'Unlike' )
-    expect( likeButton.getAttribute( 'aria-pressed' ) ).toBe( 'true' )
+    expect( regularButton.textContent ).toBe( '🤔' )
+    expect( regularButton.getAttribute( 'aria-pressed' ) ).toBe( 'true' )
+    expect( goodButton.getAttribute( 'aria-pressed' ) ).toBe( 'false' )
   } )
 
-  it( 'substitutes every ten individual like hands with a ten-value hand', () => {
-    render( <CommentTable count={24} onToggleCommentLike={vi.fn()} /> )
-
-    const likeButton = screen.getByRole( 'button', {
-      name: 'Like comment Please add evidence. 24 likes',
-    } )
-
-    const commentCell = screen.getByText( 'Please add evidence.' ).closest( 'td' )
-    const likeCell = likeButton.closest( 'td' )
-    expect( likeButton.querySelectorAll( '[data-like-value]' ) ).toHaveLength( 0 )
-    expect( likeCell?.querySelectorAll( '[data-like-value]' ) ).toHaveLength( 0 )
-    expect( commentCell?.querySelectorAll( '[data-like-value="100"]' ) ).toHaveLength( 0 )
-    expect( commentCell?.querySelectorAll( '[data-like-value="10"]' ) ).toHaveLength( 2 )
-    expect( commentCell?.querySelectorAll( '[data-like-value="1"]' ) ).toHaveLength( 4 )
-  } )
-
-  it( 'substitutes every hundred likes with a hundred-value hand', () => {
-    render( <CommentTable count={117} onToggleCommentLike={vi.fn()} /> )
-
-    const likeButton = screen.getByRole( 'button', {
-      name: 'Like comment Please add evidence. 117 likes',
-    } )
-
-    const commentCell = screen.getByText( 'Please add evidence.' ).closest( 'td' )
-    const likeCell = likeButton.closest( 'td' )
-    expect( likeButton.querySelectorAll( '[data-like-value]' ) ).toHaveLength( 0 )
-    expect( likeCell?.querySelectorAll( '[data-like-value]' ) ).toHaveLength( 0 )
-    expect( commentCell?.querySelectorAll( '[data-like-value="100"]' ) ).toHaveLength( 1 )
-    expect( commentCell?.querySelectorAll( '[data-like-value="10"]' ) ).toHaveLength( 1 )
-    expect( commentCell?.querySelectorAll( '[data-like-value="1"]' ) ).toHaveLength( 7 )
-  } )
-
-  it( 'does not render a zero-like marker next to comments', () => {
-    render( <CommentTable count={0} onToggleCommentLike={vi.fn()} /> )
+  it( 'does not render a zero-reaction marker next to comments', () => {
+    render( <CommentTable onSetCommentReaction={vi.fn()} /> )
 
     const commentCell = screen.getByText( 'Please add evidence.' ).closest( 'td' )
 
-    expect( commentCell?.querySelector( '.comment-like-empty' ) ).toBeNull()
-    expect( commentCell?.querySelectorAll( '[data-like-value]' ) ).toHaveLength( 0 )
+    expect( commentCell?.querySelector( '.comment-reaction-empty' ) ).toBeNull()
+    expect( commentCell?.querySelectorAll( '[data-comment-reaction-kind]' ) ).toHaveLength( 0 )
   } )
 } )

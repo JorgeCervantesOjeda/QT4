@@ -62,8 +62,8 @@ function VersionsPage() {
     setThreadsViewMode,
     commentsViewMode,
     setCommentsViewMode,
-    commentLikesByCommentId,
-    pendingCommentLikeIds,
+    commentReactionsByCommentId,
+    pendingCommentReactionIds,
     versionSorting,
     setVersionSorting,
     membersSorting,
@@ -242,7 +242,7 @@ function VersionsPage() {
     handleConfirmVersionDecision,
     handleCreateErrorReport,
     handleCreateThread,
-    handleToggleCommentLike,
+    handleSetCommentReaction,
     handleRetryPropagatedErrorReports,
     handleReviewDurationDaysChange,
     memberColumns,
@@ -257,10 +257,10 @@ function VersionsPage() {
     threadColumns,
   } = actions;
   const commentColumns = useCommentColumns({
-    commentLikesByCommentId,
+    commentReactionsByCommentId,
     formatUserLabel,
-    onToggleCommentLike: handleToggleCommentLike,
-    pendingCommentLikeIds,
+    onSetCommentReaction: handleSetCommentReaction,
+    pendingCommentReactionIds,
   });
   return (
     <VersionsPageView

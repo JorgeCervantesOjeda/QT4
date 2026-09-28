@@ -90,9 +90,13 @@ type CommentSummary = {
   createdAt?: Date
 }
 
-type CommentLikeState = {
-  count: number
-  likedByCurrentUser: boolean
+type CommentReactionKind = 'good' | 'regular' | 'bad'
+
+type CommentReactionCounts = Record<CommentReactionKind, number>
+
+type CommentReactionState = {
+  counts: CommentReactionCounts
+  currentUserReaction: CommentReactionKind | null
 }
 
 type AcceptedErrorReportSummary = {
@@ -117,7 +121,9 @@ type PropagationFailurePrompt = {
 export type {
   AcceptedErrorReportSummary,
   BaseDocumentSummary,
-  CommentLikeState,
+  CommentReactionCounts,
+  CommentReactionKind,
+  CommentReactionState,
   CommentSummary,
   DashboardFocusTarget,
   DocumentSummary,

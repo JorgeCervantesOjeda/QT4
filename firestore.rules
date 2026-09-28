@@ -310,40 +310,68 @@ service cloud.firestore {
         || isInitialCommentCreateForNewThread(versionId, threadId);
     }
 
-    function isCommentLikeCreateAllowed(commentLikeId) {
+    function hasValidCommentReactionShape(data) {
+      return data.keys().hasOnly([
+          'projectId',
+          'docId',
+          'versionId',
+          'threadId',
+          'commentId',
+          'userId',
+          'reaction',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasAll([
+          'projectId',
+          'docId',
+          'versionId',
+          'threadId',
+          'commentId',
+          'userId',
+          'reaction',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.projectId is string
+        && data.docId is string
+        && data.versionId is string
+        && data.threadId is string
+        && data.commentId is string
+        && data.userId == request.auth.uid
+        && data.reaction in ['good', 'regular', 'bad'];
+    }
+
+    function isCommentReactionCreateAllowed(commentReactionId) {
       let comment = commentDoc(request.resource.data.commentId).data;
       return isSignedIn()
-        && request.resource.data.keys().hasOnly([
-          'projectId',
-          'docId',
-          'versionId',
-          'threadId',
-          'commentId',
-          'userId',
-          'createdAt'
-        ])
-        && request.resource.data.keys().hasAll([
-          'projectId',
-          'docId',
-          'versionId',
-          'threadId',
-          'commentId',
-          'userId',
-          'createdAt'
-        ])
-        && request.resource.data.projectId is string
-        && request.resource.data.docId is string
-        && request.resource.data.versionId is string
-        && request.resource.data.threadId is string
-        && request.resource.data.commentId is string
-        && request.resource.data.userId == request.auth.uid
-        && commentLikeId == request.resource.data.commentId + '_' + request.auth.uid
+        && hasValidCommentReactionShape(request.resource.data)
+        && commentReactionId == request.resource.data.commentId + '_' + request.auth.uid
         && exists(/databases/$(database)/documents/comments/$(request.resource.data.commentId))
         && comment.projectId == request.resource.data.projectId
         && comment.docId == request.resource.data.docId
         && comment.versionId == request.resource.data.versionId
         && comment.threadId == request.resource.data.threadId
         && canReadReviewArtifacts(request.resource.data.projectId, request.resource.data.versionId);
+    }
+
+    function isCommentReactionUpdateAllowed(commentReactionId) {
+      return isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && commentReactionId == resource.data.commentId + '_' + request.auth.uid
+        && hasValidCommentReactionShape(request.resource.data)
+        && request.resource.data.projectId == resource.data.projectId
+        && request.resource.data.docId == resource.data.docId
+        && request.resource.data.versionId == resource.data.versionId
+        && request.resource.data.threadId == resource.data.threadId
+        && request.resource.data.commentId == resource.data.commentId
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'reaction',
+          'updatedAt'
+        ])
+        && canReadReviewArtifacts(resource.data.projectId, resource.data.versionId);
     }
 
     function isAdminProjectIdBackfill() {
@@ -1044,11 +1072,11 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    match /commentLikes/{commentLikeId} {
+    match /commentReactions/{commentReactionId} {
       allow read: if canReadReviewArtifacts(resource.data.projectId, resource.data.versionId);
-      allow create: if isCommentLikeCreateAllowed(commentLikeId);
-      allow update: if false;
-      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isCommentReactionCreateAllowed(commentReactionId);
+      allow update: if isCommentReactionUpdateAllowed(commentReactionId);
+      allow delete: if false;
     }
 
     match /changeRequests/{crId} {

@@ -10,9 +10,9 @@ import {
 } from 'firebase/firestore'
 import { trackFirestoreListener } from '../../lib/diagnostics/firestoreListeners'
 import { db } from '../../lib/firebase'
-import type { CommentLikeState, CommentSummary, ThreadSummary } from './types'
+import type { CommentReactionKind, CommentReactionState, CommentSummary, ThreadSummary } from './types'
 import {
-  areCommentLikeStatesEqual,
+  areCommentReactionStatesEqual,
   areCommentsByThreadEqual,
   areThreadsEqual,
   isIndexBuildingFirestoreError,
@@ -118,8 +118,8 @@ const useThreadsAndCommentsSubscription = (params: {
   setThreads: Dispatch<SetStateAction<ThreadSummary[]>>
   setVisibleThreadRows: Dispatch<SetStateAction<ThreadSummary[]>>
   setCommentsByThread: Dispatch<SetStateAction<Record<string, CommentSummary[]>>>
-  setCommentLikesByCommentId: Dispatch<SetStateAction<Record<string, CommentLikeState>>>
-  setPendingCommentLikeIds: Dispatch<SetStateAction<Record<string, boolean>>>
+  setCommentReactionsByCommentId: Dispatch<SetStateAction<Record<string, CommentReactionState>>>
+  setPendingCommentReactionIds: Dispatch<SetStateAction<Record<string, boolean>>>
   setSelectedThreadId: Dispatch<SetStateAction<string | null>>
   setNewThreadTitle: Dispatch<SetStateAction<string>>
   setNewCommentBody: Dispatch<SetStateAction<string>>
@@ -140,8 +140,8 @@ const useThreadsAndCommentsSubscription = (params: {
     setThreads,
     setVisibleThreadRows,
     setCommentsByThread,
-    setCommentLikesByCommentId,
-    setPendingCommentLikeIds,
+    setCommentReactionsByCommentId,
+    setPendingCommentReactionIds,
     setSelectedThreadId,
     setNewThreadTitle,
     setNewCommentBody,
@@ -158,8 +158,8 @@ const useThreadsAndCommentsSubscription = (params: {
         setThreads,
         setVisibleThreadRows,
         setCommentsByThread,
-        setCommentLikesByCommentId,
-        setPendingCommentLikeIds,
+        setCommentReactionsByCommentId,
+        setPendingCommentReactionIds,
         setSelectedThreadId,
         setNewThreadTitle,
         setNewCommentBody,
@@ -173,8 +173,8 @@ const useThreadsAndCommentsSubscription = (params: {
       setThreads,
       setVisibleThreadRows,
       setCommentsByThread,
-      setCommentLikesByCommentId,
-      setPendingCommentLikeIds,
+      setCommentReactionsByCommentId,
+      setPendingCommentReactionIds,
       setSelectedThreadId,
       setNewThreadTitle,
       setNewCommentBody,
@@ -289,58 +289,63 @@ const useThreadsAndCommentsSubscription = (params: {
         setError( `Comments failed to load: ${message}` )
       },
     )
-    const commentLikesListener = trackFirestoreListener( {
-      label: 'versions.commentLikes',
+    const commentReactionsListener = trackFirestoreListener( {
+      label: 'versions.commentReactions',
       projectId,
       documentId: docId ?? '',
       versionId: selectedVersionId,
       focus: 'issues',
-      queryDescription: `commentLikes where projectId=${projectId} versionId=${selectedVersionId}`,
+      queryDescription: `commentReactions where projectId=${projectId} versionId=${selectedVersionId}`,
     } )
-    const commentLikesUnsub = onSnapshot(
+    const commentReactionsUnsub = onSnapshot(
       query(
-        collection( db, 'commentLikes' ),
+        collection( db, 'commentReactions' ),
         where( 'projectId', '==', projectId ),
         where( 'versionId', '==', selectedVersionId ),
       ),
       ( snapshot ) => {
-        commentLikesListener.recordSnapshot( {
+        commentReactionsListener.recordSnapshot( {
           size: snapshot.docs.length,
           fromCache: snapshot.metadata.fromCache,
           hasPendingWrites: snapshot.metadata.hasPendingWrites,
         } )
-        const nextLikes: Record<string, CommentLikeState> = {}
-        snapshot.docs.forEach( ( likeSnapshot ) => {
-          const data = likeSnapshot.data()
+        const nextReactions: Record<string, CommentReactionState> = {}
+        snapshot.docs.forEach( ( reactionSnapshot ) => {
+          const data = reactionSnapshot.data()
           const commentId = ( data.commentId as string | undefined ) ?? ''
-          const likeUserId = ( data.userId as string | undefined ) ?? ''
-          if( !commentId || !likeUserId ) {
+          const reactionUserId = ( data.userId as string | undefined ) ?? ''
+          const reaction = data.reaction as CommentReactionKind | undefined
+          if( !commentId || !reactionUserId || !isCommentReactionKind( reaction ) ) {
             return
           }
-          const current = nextLikes[commentId] ?? { count: 0, likedByCurrentUser: false }
-          nextLikes[commentId] = {
-            count: current.count + 1,
-            likedByCurrentUser: current.likedByCurrentUser || likeUserId === userId,
+          const current = nextReactions[commentId] ?? emptyCommentReactionState()
+          nextReactions[commentId] = {
+            counts: {
+              ...current.counts,
+              [reaction]: current.counts[reaction] + 1,
+            },
+            currentUserReaction:
+              reactionUserId === userId ? reaction : current.currentUserReaction,
           }
         } )
-        setCommentLikesByCommentId( ( previous ) =>
-          areCommentLikeStatesEqual( previous, nextLikes ) ? previous : nextLikes,
+        setCommentReactionsByCommentId( ( previous ) =>
+          areCommentReactionStatesEqual( previous, nextReactions ) ? previous : nextReactions,
         )
       },
       ( err ) => {
-        commentLikesListener.recordError( err )
+        commentReactionsListener.recordError( err )
         const message = err instanceof Error ? err.message : 'Unexpected error'
-        reportVersionsErrorRef.current( err, 'versions.subscribeCommentLikes', 'firestore' )
-        setError( `Comment likes failed to load: ${message}` )
+        reportVersionsErrorRef.current( err, 'versions.subscribeCommentReactions', 'firestore' )
+        setError( `Comment reactions failed to load: ${message}` )
       },
     )
     return () => {
       threadsListener.dispose()
       commentsListener.dispose()
-      commentLikesListener.dispose()
+      commentReactionsListener.dispose()
       threadsUnsub()
       commentsUnsub()
-      commentLikesUnsub()
+      commentReactionsUnsub()
       clearCommentsRetryTimeout( commentsRetryTimeoutRef )
     }
   }, [
@@ -354,8 +359,8 @@ const useThreadsAndCommentsSubscription = (params: {
     setThreads,
     setVisibleThreadRows,
     setCommentsByThread,
-    setCommentLikesByCommentId,
-    setPendingCommentLikeIds,
+    setCommentReactionsByCommentId,
+    setPendingCommentReactionIds,
     setSelectedThreadId,
     setNewThreadTitle,
     setNewCommentBody,
@@ -371,8 +376,8 @@ const clearThreadState = (value: {
   setThreads: Dispatch<SetStateAction<ThreadSummary[]>>
   setVisibleThreadRows: Dispatch<SetStateAction<ThreadSummary[]>>
   setCommentsByThread: Dispatch<SetStateAction<Record<string, CommentSummary[]>>>
-  setCommentLikesByCommentId: Dispatch<SetStateAction<Record<string, CommentLikeState>>>
-  setPendingCommentLikeIds: Dispatch<SetStateAction<Record<string, boolean>>>
+  setCommentReactionsByCommentId: Dispatch<SetStateAction<Record<string, CommentReactionState>>>
+  setPendingCommentReactionIds: Dispatch<SetStateAction<Record<string, boolean>>>
   setSelectedThreadId: Dispatch<SetStateAction<string | null>>
   setNewThreadTitle: Dispatch<SetStateAction<string>>
   setNewCommentBody: Dispatch<SetStateAction<string>>
@@ -381,8 +386,8 @@ const clearThreadState = (value: {
   value.setThreads( [] )
   value.setVisibleThreadRows( [] )
   value.setCommentsByThread( {} )
-  value.setCommentLikesByCommentId( {} )
-  value.setPendingCommentLikeIds( {} )
+  value.setCommentReactionsByCommentId( {} )
+  value.setPendingCommentReactionIds( {} )
   value.setSelectedThreadId( null )
   value.setNewThreadTitle( '' )
   value.setNewCommentBody( '' )
@@ -395,6 +400,18 @@ const clearCommentsRetryTimeout = (commentsRetryTimeoutRef: MutableRefObject<num
     commentsRetryTimeoutRef.current = null
   }
 }
+
+const emptyCommentReactionState = (): CommentReactionState => ( {
+  counts: {
+    good: 0,
+    regular: 0,
+    bad: 0,
+  },
+  currentUserReaction: null,
+} )
+
+const isCommentReactionKind = (value: unknown): value is CommentReactionKind =>
+  value === 'good' || value === 'regular' || value === 'bad'
 
 export {
   useRoleSubscriptions,

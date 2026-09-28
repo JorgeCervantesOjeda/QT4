@@ -106,15 +106,15 @@ describe( 'createReviewIssueActions', () => {
     vi.clearAllMocks()
   } )
 
-  it( 'creates a deterministic like document for the current user and comment', async () => {
+  it( 'creates a deterministic reaction document for the current user and comment', async () => {
     firestoreMocks.setDoc.mockResolvedValueOnce( undefined )
-    const setCommentLikesByCommentId = vi.fn()
-    const setPendingCommentLikeIds = vi.fn()
+    const setCommentReactionsByCommentId = vi.fn()
+    const setPendingCommentReactionIds = vi.fn()
     const actions = createReviewIssueActions( {
       canAddComment: true,
       canCreateThread: true,
       canParticipateReview: true,
-      commentLikesByCommentId: {},
+      commentReactionsByCommentId: {},
       commentsByThread: { [selectedThread.id]: comments },
       currentDocumentAuthorId: 'author-1',
       docId: 'doc-1',
@@ -130,14 +130,14 @@ describe( 'createReviewIssueActions', () => {
       selectedThreadComments: comments,
       selectedVersion,
       selectedVersionInActiveReview: true,
-      setCommentLikesByCommentId,
+      setCommentReactionsByCommentId,
       setEmailNotifyMessage: vi.fn(),
       setEmailNotifyStatus: vi.fn(),
       setError: vi.fn(),
       setIsBusy: vi.fn(),
       setNewCommentBody: vi.fn(),
       setNewThreadTitle: vi.fn(),
-      setPendingCommentLikeIds,
+      setPendingCommentReactionIds,
       setPendingThreadStatusChange: vi.fn(),
       setSelectedThreadId: vi.fn(),
       setThreadCreationStatus: vi.fn(),
@@ -149,11 +149,11 @@ describe( 'createReviewIssueActions', () => {
       userId: 'author-1',
     } )
 
-    await actions.handleToggleCommentLike( comments[0] )
+    await actions.handleSetCommentReaction( comments[0], 'good' )
 
     expect( firestoreMocks.doc ).toHaveBeenCalledWith(
       { app: 'test' },
-      'commentLikes',
+      'commentReactions',
       'comment-1_author-1',
     )
     expect( firestoreMocks.setDoc ).toHaveBeenCalledWith(
@@ -165,24 +165,30 @@ describe( 'createReviewIssueActions', () => {
         threadId: 'thread-1',
         commentId: 'comment-1',
         userId: 'author-1',
+        reaction: 'good',
         createdAt: 'server-timestamp',
+        updatedAt: 'server-timestamp',
       } ),
     )
     expect( firestoreMocks.deleteDoc ).not.toHaveBeenCalled()
-    expect( setPendingCommentLikeIds ).toHaveBeenCalled()
-    expect( setCommentLikesByCommentId ).toHaveBeenCalled()
+    expect( setPendingCommentReactionIds ).toHaveBeenCalled()
+    expect( setCommentReactionsByCommentId ).toHaveBeenCalled()
   } )
 
-  it( 'deletes the current user like document when the comment is already liked', async () => {
-    firestoreMocks.deleteDoc.mockResolvedValueOnce( undefined )
+  it( 'updates the current user reaction when the comment already has one', async () => {
+    firestoreMocks.setDoc.mockResolvedValueOnce( undefined )
     const actions = createReviewIssueActions( {
       canAddComment: true,
       canCreateThread: true,
       canParticipateReview: true,
-      commentLikesByCommentId: {
+      commentReactionsByCommentId: {
         'comment-1': {
-          count: 1,
-          likedByCurrentUser: true,
+          counts: {
+            good: 1,
+            regular: 0,
+            bad: 0,
+          },
+          currentUserReaction: 'good',
         },
       },
       commentsByThread: { [selectedThread.id]: comments },
@@ -200,14 +206,14 @@ describe( 'createReviewIssueActions', () => {
       selectedThreadComments: comments,
       selectedVersion,
       selectedVersionInActiveReview: true,
-      setCommentLikesByCommentId: vi.fn(),
+      setCommentReactionsByCommentId: vi.fn(),
       setEmailNotifyMessage: vi.fn(),
       setEmailNotifyStatus: vi.fn(),
       setError: vi.fn(),
       setIsBusy: vi.fn(),
       setNewCommentBody: vi.fn(),
       setNewThreadTitle: vi.fn(),
-      setPendingCommentLikeIds: vi.fn(),
+      setPendingCommentReactionIds: vi.fn(),
       setPendingThreadStatusChange: vi.fn(),
       setSelectedThreadId: vi.fn(),
       setThreadCreationStatus: vi.fn(),
@@ -219,12 +225,13 @@ describe( 'createReviewIssueActions', () => {
       userId: 'author-1',
     } )
 
-    await actions.handleToggleCommentLike( comments[0] )
+    await actions.handleSetCommentReaction( comments[0], 'bad' )
 
-    expect( firestoreMocks.deleteDoc ).toHaveBeenCalledWith(
+    expect( firestoreMocks.setDoc ).toHaveBeenCalledWith(
       expect.objectContaining( { id: 'comment-1_author-1' } ),
+      expect.objectContaining( { reaction: 'bad' } ),
     )
-    expect( firestoreMocks.setDoc ).not.toHaveBeenCalled()
+    expect( firestoreMocks.deleteDoc ).not.toHaveBeenCalled()
   } )
 
   it( 'creates an issue before the AI summary resolves and updates its title in the background', async () => {
@@ -262,7 +269,7 @@ describe( 'createReviewIssueActions', () => {
       canAddComment: true,
       canCreateThread: true,
       canParticipateReview: true,
-      commentLikesByCommentId: {},
+      commentReactionsByCommentId: {},
       commentsByThread: { [selectedThread.id]: comments },
       currentDocumentAuthorId: 'author-1',
       docId: 'doc-1',
@@ -282,10 +289,10 @@ describe( 'createReviewIssueActions', () => {
       setEmailNotifyStatus: vi.fn(),
       setError: vi.fn(),
       setIsBusy: vi.fn(),
-      setCommentLikesByCommentId: vi.fn(),
+      setCommentReactionsByCommentId: vi.fn(),
       setNewCommentBody,
       setNewThreadTitle,
-      setPendingCommentLikeIds: vi.fn(),
+      setPendingCommentReactionIds: vi.fn(),
       setPendingThreadStatusChange: vi.fn(),
       setSelectedThreadId,
       setThreadCreationStatus,
@@ -381,7 +388,7 @@ describe( 'createReviewIssueActions', () => {
       canAddComment: true,
       canCreateThread: true,
       canParticipateReview: true,
-      commentLikesByCommentId: {},
+      commentReactionsByCommentId: {},
       commentsByThread: { [selectedThread.id]: comments },
       currentDocumentAuthorId: 'author-1',
       docId: 'doc-1',
@@ -403,10 +410,10 @@ describe( 'createReviewIssueActions', () => {
       setEmailNotifyStatus: vi.fn(),
       setError: vi.fn(),
       setIsBusy: vi.fn( ( value: boolean ) => calls.push( `busy:${String( value )}` ) ),
-      setCommentLikesByCommentId: vi.fn(),
+      setCommentReactionsByCommentId: vi.fn(),
       setNewCommentBody: vi.fn(),
       setNewThreadTitle: vi.fn(),
-      setPendingCommentLikeIds: vi.fn(),
+      setPendingCommentReactionIds: vi.fn(),
       setPendingThreadStatusChange: vi.fn( () => calls.push( 'pending:null' ) ),
       setSelectedThreadId: vi.fn(),
       setThreadCreationStatus: vi.fn(),

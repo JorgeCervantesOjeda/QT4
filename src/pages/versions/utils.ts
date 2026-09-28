@@ -4,7 +4,7 @@ import { formatApproxCountdown } from "../../lib/reviewWindow";
 import { formatTimestamp } from "../../lib/time";
 import type {
   CommentSummary,
-  CommentLikeState,
+  CommentReactionState,
   DashboardFocusTarget,
   FileRefSummary,
   ProjectMember,
@@ -278,9 +278,9 @@ const areCommentsByThreadEqual = (
   return true;
 };
 
-const areCommentLikeStatesEqual = (
-  left: Record<string, CommentLikeState>,
-  right: Record<string, CommentLikeState>,
+const areCommentReactionStatesEqual = (
+  left: Record<string, CommentReactionState>,
+  right: Record<string, CommentReactionState>,
 ) => {
   const leftKeys = Object.keys(left);
   const rightKeys = Object.keys(right);
@@ -292,8 +292,10 @@ const areCommentLikeStatesEqual = (
     const b = right[key];
     if (
       !b ||
-      a.count !== b.count ||
-      a.likedByCurrentUser !== b.likedByCurrentUser
+      a.currentUserReaction !== b.currentUserReaction ||
+      a.counts.good !== b.counts.good ||
+      a.counts.regular !== b.counts.regular ||
+      a.counts.bad !== b.counts.bad
     ) {
       return false;
     }
@@ -448,7 +450,7 @@ export {
   DOWNLOAD_SLOW_NOTICE_MS,
   DOWNLOAD_TIMEOUT_MS,
   ISSUE_TITLE_MAX_LENGTH,
-  areCommentLikeStatesEqual,
+  areCommentReactionStatesEqual,
   areCommentsByThreadEqual,
   areProjectMembersEqual,
   areStringArraysEqual,

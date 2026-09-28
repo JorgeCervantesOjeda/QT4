@@ -4,7 +4,8 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { versionNumberToString } from "../../domain/types";
 import { formatTimeAgoWithTimestamp } from "../../lib/time";
 import type {
-  CommentLikeState,
+  CommentReactionKind,
+  CommentReactionState,
   CommentSummary,
   FileRefSummary,
   ThreadSummary,
@@ -109,45 +110,71 @@ const useVersionColumns = (params: VersionColumnsParams) =>
   );
 
 type CommentColumnsParams = {
-  commentLikesByCommentId: Record<string, CommentLikeState>;
+  commentReactionsByCommentId: Record<string, CommentReactionState>;
   formatUserLabel: (userId: string) => string;
-  onToggleCommentLike: (comment: CommentSummary) => void;
-  pendingCommentLikeIds: Record<string, boolean>;
+  onSetCommentReaction: (
+    comment: CommentSummary,
+    reaction: CommentReactionKind,
+  ) => void;
+  pendingCommentReactionIds: Record<string, boolean>;
 };
 
-const formatLikeAriaLabel = (comment: CommentSummary, likeState: CommentLikeState) => {
-  const action = likeState.likedByCurrentUser ? "Unlike" : "Like";
-  const likesLabel = likeState.count === 1 ? "1 like" : `${likeState.count} likes`;
-  return `${action} comment ${comment.body} ${likesLabel}`;
+const commentReactionOptions: Array<{
+  emoji: string;
+  kind: CommentReactionKind;
+  label: string;
+}> = [
+  { emoji: "😊", kind: "good", label: "Good" },
+  { emoji: "🤔", kind: "regular", label: "Regular" },
+  { emoji: "😖", kind: "bad", label: "Bad" },
+];
+
+const emptyCommentReactionState: CommentReactionState = {
+  counts: {
+    good: 0,
+    regular: 0,
+    bad: 0,
+  },
+  currentUserReaction: null,
 };
 
-const getLikeHandValues = (count: number) => {
-  const safeCount = Math.max(0, Math.floor(count));
-  const numOfHundreds = Math.floor(safeCount / 100);
-  const numOfTens = Math.floor((safeCount % 100) / 10);
-  const numOfOnes = safeCount % 10;
-  return [
-    ...Array.from({ length: numOfHundreds }, () => 100),
-    ...Array.from({ length: numOfTens }, () => 10),
-    ...Array.from({ length: numOfOnes }, () => 1),
-  ];
+const countOfReactions = (
+  reactionState: CommentReactionState,
+  reaction: CommentReactionKind,
+) => Math.max(0, Math.floor(reactionState.counts[reaction] ?? 0));
+
+const formatReactionAriaLabel = (
+  comment: CommentSummary,
+  reactionState: CommentReactionState,
+  reaction: CommentReactionKind,
+) => {
+  const option = commentReactionOptions.find((item) => item.kind === reaction);
+  const label = option?.label ?? reaction;
+  const count = countOfReactions(reactionState, reaction);
+  const reactionsLabel =
+    count === 1 ? `1 ${label} reaction` : `${count} ${label} reactions`;
+  return `${label} reaction for comment ${comment.body} ${reactionsLabel}`;
 };
 
-const renderLikeHands = (count: number) => {
-  const likeHandValues = getLikeHandValues(count);
-  if (likeHandValues.length === 0) {
+const renderReactionFaces = (reactionState: CommentReactionState) => {
+  const reactionFaces = commentReactionOptions.flatMap((option) =>
+    Array.from({ length: countOfReactions(reactionState, option.kind) }, () =>
+      option,
+    ),
+  );
+  if (reactionFaces.length === 0) {
     return null;
   }
   return (
-    <span className="comment-like-hands" aria-hidden="true">
-      {likeHandValues.map((value, index) => (
+    <span className="comment-reaction-faces" aria-hidden="true">
+      {reactionFaces.map((option, index) => (
         <span
-          key={`${value}_${index}`}
-          className={`comment-like-hand comment-like-hand--${value}`}
-          data-like-value={String(value)}
-          title={`${value} ${value === 1 ? "like" : "likes"}`}
+          key={`${option.kind}_${index}`}
+          className={`comment-reaction-face comment-reaction-face--${option.kind}`}
+          data-comment-reaction-kind={option.kind}
+          title={option.label}
         >
-          👍
+          {option.emoji}
         </span>
       ))}
     </span>
@@ -167,14 +194,13 @@ const useCommentColumns = (params: CommentColumnsParams) =>
         accessorKey: "body",
         cell: (info) => {
           const comment = info.row.original;
-          const likeState = params.commentLikesByCommentId[comment.id] ?? {
-            count: 0,
-            likedByCurrentUser: false,
-          };
+          const reactionState =
+            params.commentReactionsByCommentId[comment.id] ??
+            emptyCommentReactionState;
           return (
-            <span className="comment-body-with-likes">
+            <span className="comment-body-with-reactions">
               <span>{comment.body}</span>
-              {renderLikeHands(likeState.count)}
+              {renderReactionFaces(reactionState)}
             </span>
           );
         },
@@ -188,32 +214,40 @@ const useCommentColumns = (params: CommentColumnsParams) =>
         },
       },
       {
-        header: "Likes",
-        id: "likes",
+        header: "Reactions",
+        id: "reactions",
         enableSorting: false,
         cell: (info) => {
           const comment = info.row.original;
-          const likeState = params.commentLikesByCommentId[comment.id] ?? {
-            count: 0,
-            likedByCurrentUser: false,
-          };
-          const isPending = Boolean(params.pendingCommentLikeIds[comment.id]);
-          const actionLabel = likeState.likedByCurrentUser ? "Unlike" : "Like";
+          const reactionState =
+            params.commentReactionsByCommentId[comment.id] ??
+            emptyCommentReactionState;
+          const isPending = Boolean(params.pendingCommentReactionIds[comment.id]);
           return (
-            <div className="comment-like-cell">
-              <button
-                type="button"
-                className="ghost comment-like-button"
-                aria-label={formatLikeAriaLabel(comment, likeState)}
-                aria-pressed={likeState.likedByCurrentUser}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  params.onToggleCommentLike(comment);
-                }}
-                disabled={isPending}
-              >
-                {isPending ? "Saving" : actionLabel}
-              </button>
+            <div className="comment-reaction-cell" aria-busy={isPending}>
+              {commentReactionOptions.map((option) => (
+                <button
+                  key={option.kind}
+                  type="button"
+                  className="ghost comment-reaction-button"
+                  aria-label={formatReactionAriaLabel(
+                    comment,
+                    reactionState,
+                    option.kind,
+                  )}
+                  aria-pressed={
+                    reactionState.currentUserReaction === option.kind
+                  }
+                  title={isPending ? "Saving" : option.label}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    params.onSetCommentReaction(comment, option.kind);
+                  }}
+                  disabled={isPending}
+                >
+                  {option.emoji}
+                </button>
+              ))}
             </div>
           );
         },

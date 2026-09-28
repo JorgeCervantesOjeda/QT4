@@ -1984,54 +1984,41 @@
   background: #fff8e1;
 }
 
-.comment-body-with-likes {
+.comment-body-with-reactions {
   align-items: baseline;
   display: inline-flex;
   flex-wrap: wrap;
   gap: 6px;
 }
 
-.comment-like-cell {
+.comment-reaction-cell {
   align-items: center;
   display: inline-flex;
   gap: 6px;
   min-width: 0;
 }
 
-.comment-like-button {
-  min-width: 72px;
+.comment-reaction-button {
+  font-size: 1rem;
+  min-width: 36px;
   white-space: nowrap;
 }
 
-.comment-like-button[aria-pressed="true"] {
+.comment-reaction-button[aria-pressed="true"] {
   border-color: rgba( 42, 117, 79, 0.48 );
+  background: rgba( 42, 117, 79, 0.1 );
   color: #2a754f;
 }
 
-.comment-like-hands {
+.comment-reaction-faces {
   display: inline;
-  gap: 2px;
   white-space: nowrap;
 }
 
-.comment-like-hand {
+.comment-reaction-face {
   display: inline-flex;
-  filter: grayscale( 0.15 );
   font-size: 0.95rem;
   line-height: 1;
-}
-
-.comment-like-hand--10 {
-  filter: hue-rotate( 165deg ) saturate( 1.5 );
-}
-
-.comment-like-hand--100 {
-  filter: hue-rotate( 255deg ) saturate( 1.6 );
-}
-
-.comment-like-empty {
-  color: var(--qt-muted);
-  font-size: 0.82rem;
 }
 
 .link {
