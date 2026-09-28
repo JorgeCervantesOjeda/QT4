@@ -766,13 +766,36 @@ service cloud.firestore {
         ]);
     }
 
+    function hasValidNotificationPreferences(profileData) {
+      return !profileData.keys().hasAny(['notificationPreferences'])
+        || (
+          profileData.notificationPreferences is map
+          && profileData.notificationPreferences.keys().hasOnly([
+            'commentEmailEnabled',
+            'hourlyActivityDigestEnabled'
+          ])
+          && profileData.notificationPreferences.commentEmailEnabled is bool
+          && profileData.notificationPreferences.hourlyActivityDigestEnabled is bool
+        );
+    }
+
     match /userProfiles/{userId} {
       allow read: if isSelf(userId) || isAdmin();
       allow create: if isSelf(userId)
-        && request.resource.data.isAdmin == false;
+        && request.resource.data.isAdmin == false
+        && hasValidNotificationPreferences(request.resource.data);
       allow update: if isSelf(userId)
-        && request.resource.data.isAdmin == resource.data.isAdmin;
+        && request.resource.data.isAdmin == resource.data.isAdmin
+        && hasValidNotificationPreferences(request.resource.data);
       allow delete: if false;
+    }
+
+    match /notificationEvents/{eventId} {
+      allow read, create, update, delete: if false;
+    }
+
+    match /notificationDigests/{digestId} {
+      allow read, create, update, delete: if false;
     }
 
     match /userDirectory/{emailKey} {
