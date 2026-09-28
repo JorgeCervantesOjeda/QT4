@@ -14,7 +14,6 @@ import { requestAiAssist } from "../../lib/aiAssist";
 import { db } from "../../lib/firebase";
 import { canAddCommentInWindow } from "../../lib/reviewWindow";
 import { measureSlowUiAction } from "../../lib/slowUiAction";
-import { notifyCommentParticipants } from "./commentNotification";
 import {
   THREAD_STATUS_CONFLICT_MESSAGE,
   isExpectedThreadStatusConflictError,
@@ -345,7 +344,6 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
       }).catch((err) => {
         console.warn("Audit log failed (add comment):", err);
       });
-      await notifyCommentParticipants(params, commentRef.id, commentBody);
       params.setSuccessMessage("The comment was added successfully.");
       await params.reloadAndRestoreSelection(
         lockedVersionId,

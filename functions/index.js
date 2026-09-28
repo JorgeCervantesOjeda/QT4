@@ -1,11 +1,12 @@
 const { onRequest } = require( "firebase-functions/v2/https" )
-const { onDocumentUpdated } = require( "firebase-functions/v2/firestore" )
+const { onDocumentCreated, onDocumentUpdated } = require( "firebase-functions/v2/firestore" )
 const { onSchedule } = require( "firebase-functions/v2/scheduler" )
 const { logger } = require( "firebase-functions" )
 const admin = require( "firebase-admin" )
 const nodemailer = require( "nodemailer" )
 const crypto = require( "node:crypto" )
 const { createAiAssistHandler } = require( "./aiAssist" )
+const { createCommentNotificationHandler } = require( "./commentNotifications" )
 const {
   createPropagateAcceptedErrorReportHandler,
   createRetryPropagatedErrorReportsHandler,
@@ -607,6 +608,16 @@ exports.sendSlowUiActionDigest = onSchedule(
     admin,
     logger,
     getRecipients: normalizeSlowUiActionDigestRecipients,
+    sendTextEmail,
+  } ),
+)
+
+exports.sendCommentNotification = onDocumentCreated(
+  "comments/{commentId}",
+  createCommentNotificationHandler( {
+    admin,
+    appOrigin: getEnvMany( [ "APP_ORIGIN", "QT4_APP_ORIGIN", "PUBLIC_APP_ORIGIN" ], "" ),
+    logger,
     sendTextEmail,
   } ),
 )
