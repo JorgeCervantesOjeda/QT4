@@ -53,6 +53,10 @@ vi.mock( './pages/AdminAuditPage', () => ( {
   default: () => <div>Admin Audit Page</div>,
 } ) )
 
+vi.mock( './pages/AccountSettingsPage', () => ( {
+  default: () => <div>Account Settings Page</div>,
+} ) )
+
 import App from './App'
 
 describe( 'App routes', () => {
@@ -100,5 +104,14 @@ describe( 'App routes', () => {
     await waitFor( () => {
       expect( window.location.pathname ).toBe( '/login' )
     } )
+  } )
+
+  it( 'renders the protected account settings route', async () => {
+    window.history.replaceState( {}, '', '/account' )
+
+    render( <App /> )
+
+    expect( await screen.findByText( 'Account Settings Page' ) ).toBeTruthy()
+    expect( window.location.pathname ).toBe( '/account' )
   } )
 } )

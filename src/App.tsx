@@ -13,6 +13,7 @@ const ProjectsPage = lazy( () => import( './pages/ProjectsPage' ) )
 const RegisterPage = lazy( () => import( './pages/RegisterPage' ) )
 const VersionsPage = lazy( () => import( './pages/VersionsPage' ) )
 const AdminAuditPage = lazy( () => import( './pages/AdminAuditPage' ) )
+const AccountSettingsPage = lazy( () => import( './pages/AccountSettingsPage' ) )
 
 const CHUNK_RECOVERY_KEY_PREFIX = 'qt4_chunk_recovery_'
 const CHUNK_LOAD_ERROR_PATTERNS = [
@@ -182,6 +183,14 @@ function App() {
                   element={
                     <RequireAuth>
                       <VersionsPage />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/account"
+                  element={
+                    <RequireAuth>
+                      <AccountSettingsPage />
                     </RequireAuth>
                   }
                 />

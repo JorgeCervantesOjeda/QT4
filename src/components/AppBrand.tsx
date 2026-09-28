@@ -86,6 +86,9 @@ function AppBrand( { pageTitle }: AppBrandProps ) {
               <p className="brand-session">
                 Signed in as {sessionLabel}
               </p>
+              <a className="brand-session-button" href="/account">
+                Account
+              </a>
             </div>
           ) : null}
         </div>
