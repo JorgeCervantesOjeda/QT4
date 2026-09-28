@@ -8,6 +8,7 @@ import { useErrorChecklistModal } from '../hooks/useErrorChecklistModal'
 import { logAudit } from '../lib/audit'
 import { reportAbnormalError } from '../lib/errorMonitor'
 import { auth, db } from '../lib/firebase'
+import { DEFAULT_NOTIFICATION_PREFERENCES } from '../lib/notificationPreferences'
 
 function RegisterPage() {
   const [email, setEmail] = useState( '' )
@@ -42,6 +43,7 @@ function RegisterPage() {
         {
           email: result.user.email,
           displayName: displayName.trim() || null,
+          notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
           isAdmin: false,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),

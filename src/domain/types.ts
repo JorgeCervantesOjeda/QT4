@@ -1,4 +1,5 @@
-﻿export type Id = string;
+// src/domain/types.ts: Defines core QT4 domain types shared across UI and business logic.
+export type Id = string;
 
 // Roles and permissions
 export type Role = 'leader' | 'member' | 'author' | 'reviewer' | 'admin';
@@ -7,11 +8,17 @@ export interface UserProfile {
   id: Id;
   email: string;
   displayName: string;
+  notificationPreferences: NotificationPreferences;
   roles: Role[];
   isAdmin: boolean;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export type NotificationPreferences = {
+  commentEmailEnabled: boolean;
+  hourlyActivityDigestEnabled: boolean;
 }
 
 // Version states
