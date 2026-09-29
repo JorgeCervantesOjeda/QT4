@@ -26,6 +26,32 @@ const normalizeEmail = (value) => {
   return EMAIL_PATTERN.test( email ) ? email : ""
 }
 
+const normalizeTimestampMillis = (value) => {
+  if( value && typeof value.toMillis === "function" ) {
+    const millis = value.toMillis()
+    return Number.isFinite( millis ) ? millis : Number.POSITIVE_INFINITY
+  }
+  if( value && typeof value.toDate === "function" ) {
+    const date = value.toDate()
+    const millis = date instanceof Date ? date.getTime() : Date.parse( date )
+    return Number.isFinite( millis ) ? millis : Number.POSITIVE_INFINITY
+  }
+  if( value instanceof Date ) {
+    const millis = value.getTime()
+    return Number.isFinite( millis ) ? millis : Number.POSITIVE_INFINITY
+  }
+  if( typeof value === "number" && Number.isFinite( value ) ) {
+    return value
+  }
+  if( typeof value === "string" ) {
+    const millis = Date.parse( value )
+    if( Number.isFinite( millis ) ) {
+      return millis
+    }
+  }
+  return Number.POSITIVE_INFINITY
+}
+
 const normalizeEvent = (snapshot) => {
   const data = typeof snapshot.data === "function" ? snapshot.data() || {} : snapshot
   return {
@@ -47,8 +73,23 @@ const normalizeEvent = (snapshot) => {
     issueTitle: trimSingleLine( data.issueTitle, 240 ) || "Untitled issue",
     commentExcerpt: trimMultiline( data.commentExcerpt, 500 ),
     directUrl: trimSingleLine( data.directUrl, 1000 ),
+    eventAtMillis: normalizeTimestampMillis( data.eventAt ?? data.createdAt ),
   }
 }
+
+const compareDigestEvents = (left, right) => {
+  const leftTime = Number.isFinite( left.eventAtMillis )
+    ? left.eventAtMillis
+    : Number.MAX_SAFE_INTEGER
+  const rightTime = Number.isFinite( right.eventAtMillis )
+    ? right.eventAtMillis
+    : Number.MAX_SAFE_INTEGER
+  return left.digestHourKey.localeCompare( right.digestHourKey )
+    || leftTime - rightTime
+    || left.id.localeCompare( right.id )
+}
+
+const sortDigestEvents = (events) => [ ...events ].sort( compareDigestEvents )
 
 const normalizeProfile = (userId, profile) => ( {
   userId,
@@ -165,7 +206,7 @@ const groupEventsForDigestText = (events, appOrigin) => {
 }
 
 const buildHourlyNotificationDigest = (events, hourKey, options = {}) => {
-  const normalizedEvents = events.map( normalizeEvent )
+  const normalizedEvents = sortDigestEvents( events.map( normalizeEvent ) )
   const subject = `[QT4] Hourly activity summary (${normalizedEvents.length})`
   const projects = groupEventsForDigestText( normalizedEvents, options.appOrigin )
   const eventLines = projects.flatMap( (project) => [
@@ -239,8 +280,9 @@ const createHourlyNotificationDigestJob = ({
   const events = ( snapshot.docs || [] )
     .map( normalizeEvent )
     .filter( (event) => isClosedHourEvent( event, cutoffHourKey ) )
+  const sortedEvents = sortDigestEvents( events )
 
-  if( events.length === 0 ) {
+  if( sortedEvents.length === 0 ) {
     logger.info( "hourlyNotificationDigest skipped", {
       reason: "no_closed_pending_events",
       cutoffHourKey,
@@ -249,7 +291,7 @@ const createHourlyNotificationDigestJob = ({
     return
   }
 
-  for( const group of groupEventsByUserHour( events ) ) {
+  for( const group of groupEventsByUserHour( sortedEvents ) ) {
     const digestRef = db.collection( "notificationDigests" ).doc( group.digestId )
     const existingDigest = readSnapshotData( await digestRef.get() )
     if( [ "sent", "skipped" ].includes( existingDigest?.digestStatus ) ) {

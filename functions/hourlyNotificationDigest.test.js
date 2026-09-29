@@ -135,6 +135,53 @@ test( "buildHourlyNotificationDigest formats related comments for one user and h
   assert.doesNotMatch( digest.text, /commentId=/u )
 } )
 
+test( "buildHourlyNotificationDigest sorts comments chronologically within an issue", () => {
+  const createTimestamp = (iso) => ( {
+    toMillis: () => new Date( iso ).getTime(),
+  } )
+  const digest = buildHourlyNotificationDigest( [
+    {
+      id: "event-late",
+      eventAt: createTimestamp( "2026-09-28T18:45:00.000Z" ),
+      projectLabel: "7 - Project Alpha",
+      actorLabel: "Third User",
+      documentLabel: "DOC-7 - Quality Plan",
+      versionLabel: "1.00",
+      issueTitle: "Missing evidence",
+      commentExcerpt: "Third comment.",
+      directUrl: "/documents/doc-1/versions?threadId=thread-1&focus=comments",
+    },
+    {
+      id: "event-early",
+      eventAt: createTimestamp( "2026-09-28T18:05:00.000Z" ),
+      projectLabel: "7 - Project Alpha",
+      actorLabel: "First User",
+      documentLabel: "DOC-7 - Quality Plan",
+      versionLabel: "1.00",
+      issueTitle: "Missing evidence",
+      commentExcerpt: "First comment.",
+      directUrl: "/documents/doc-1/versions?threadId=thread-1&focus=comments",
+    },
+    {
+      id: "event-middle",
+      eventAt: createTimestamp( "2026-09-28T18:20:00.000Z" ),
+      projectLabel: "7 - Project Alpha",
+      actorLabel: "Second User",
+      documentLabel: "DOC-7 - Quality Plan",
+      versionLabel: "1.00",
+      issueTitle: "Missing evidence",
+      commentExcerpt: "Second comment.",
+      directUrl: "/documents/doc-1/versions?threadId=thread-1&focus=comments",
+    },
+  ], "2026-09-28T18" )
+
+  const firstCommentIndex = digest.text.indexOf( "- First User: First comment." )
+  const secondCommentIndex = digest.text.indexOf( "- Second User: Second comment." )
+  const thirdCommentIndex = digest.text.indexOf( "- Third User: Third comment." )
+  assert.ok( firstCommentIndex < secondCommentIndex )
+  assert.ok( secondCommentIndex < thirdCommentIndex )
+} )
+
 test( "createHourlyNotificationDigestJob sends one email per user and closed hour", async () => {
   const emails = []
   const writes = []
