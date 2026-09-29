@@ -744,6 +744,7 @@
   --table-col-3: 20%;
   --table-col-4: 12%;
   touch-action: pan-x pan-y;
+  overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
 }
 
