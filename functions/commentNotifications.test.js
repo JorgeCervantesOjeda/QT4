@@ -292,6 +292,7 @@ test( "handler sends immediate email only to opted-in related participants", asy
   assert.deepEqual(
     eventWrites.map( (write) => write.data.userId ).sort(),
     [
+      "actor-user",
       "disabled-user",
       "enabled-user",
       "thread-author",

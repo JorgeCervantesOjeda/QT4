@@ -47,13 +47,13 @@ const addParticipant = (participantIds, userId) => {
 
 const buildParticipantIds = ({ comment, comments, latestVersion, thread, version }) => {
   const participantIds = new Set()
+  addParticipant( participantIds, comment.createdBy )
   addParticipant( participantIds, version?.createdBy )
   addParticipant( participantIds, latestVersion?.createdBy )
   ;( Array.isArray( version?.reviewerIds ) ? version.reviewerIds : [] )
     .forEach( (reviewerId) => addParticipant( participantIds, reviewerId ) )
   addParticipant( participantIds, thread?.createdBy )
   comments.forEach( (threadComment) => addParticipant( participantIds, threadComment?.createdBy ) )
-  participantIds.delete( comment.createdBy )
   return [ ...participantIds ]
 }
 
@@ -231,7 +231,9 @@ const createCommentNotificationHandler = ({
     } )
 
     const immediateRecipients = recipients
-      .filter( (recipient) => recipient.preferences.commentEmailEnabled )
+      .filter( (recipient) =>
+        recipient.userId !== comment.createdBy
+        && recipient.preferences.commentEmailEnabled )
       .map( (recipient) => recipient.email )
     if( immediateRecipients.length === 0 ) {
       logger.info( "commentNotification immediate email skipped", {
