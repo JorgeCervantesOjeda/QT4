@@ -436,8 +436,12 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
           versionId: selectedVersion.id,
           threadId: comment.threadId,
         },
-        () =>
-          setDoc(reactionRef, {
+        () => currentReactionState.currentUserReaction
+          ? updateDoc(reactionRef, {
+            reaction,
+            updatedAt: serverTimestamp(),
+          })
+          : setDoc(reactionRef, {
             projectId,
             docId,
             versionId: selectedVersion.id,

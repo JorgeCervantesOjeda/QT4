@@ -174,8 +174,8 @@ describe( 'createReviewIssueActions', () => {
     expect( setCommentReactionsByCommentId ).toHaveBeenCalled()
   } )
 
-  it( 'updates the current user reaction when the comment already has one', async () => {
-    firestoreMocks.setDoc.mockResolvedValueOnce( undefined )
+  it( 'updates the current user reaction without overwriting the creation timestamp', async () => {
+    firestoreMocks.updateDoc.mockResolvedValueOnce( undefined )
     const actions = createReviewIssueActions( {
       canAddComment: true,
       canCreateThread: true,
@@ -225,10 +225,14 @@ describe( 'createReviewIssueActions', () => {
 
     await actions.handleSetCommentReaction( comments[0], 'bad' )
 
-    expect( firestoreMocks.setDoc ).toHaveBeenCalledWith(
+    expect( firestoreMocks.updateDoc ).toHaveBeenCalledWith(
       expect.objectContaining( { id: 'comment-1_author-1' } ),
-      expect.objectContaining( { reaction: 'bad' } ),
+      {
+        reaction: 'bad',
+        updatedAt: 'server-timestamp',
+      },
     )
+    expect( firestoreMocks.setDoc ).not.toHaveBeenCalled()
     expect( firestoreMocks.deleteDoc ).not.toHaveBeenCalled()
   } )
 
