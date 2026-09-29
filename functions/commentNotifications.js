@@ -1,6 +1,7 @@
 // functions/commentNotifications.js: Sends backend comment notifications and stages hourly digest events.
 const { resolveNotificationPreferences } = require( "./notificationPreferences" )
 
+const DEFAULT_APP_ORIGIN = "https://qualiteam-plus.web.app"
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const trimSingleLine = (value, maxLength = 200) =>
@@ -86,8 +87,14 @@ const versionNumberToString = (value) => {
   return `${integerPart}.${String( fraction ).padStart( 2, "0" )}`
 }
 
+const buildProjectLabel = (projectData) =>
+  `${projectData?.shortId ?? "Unassigned"} - ${projectData?.name ?? "Project"}`
+
+const buildDocumentLabel = (documentData) =>
+  `${documentData?.shortId ?? "Unassigned"} - ${documentData?.title ?? "Document"}`
+
 const buildCommentDirectUrl = ({ appOrigin, comment, commentId, thread }) => {
-  const origin = trimSingleLine( appOrigin, 500 ).replace( /\/+$/, "" )
+  const origin = ( trimSingleLine( appOrigin, 500 ) || DEFAULT_APP_ORIGIN ).replace( /\/+$/, "" )
   const query = new URLSearchParams()
   if( comment.projectId ) {
     query.set( "projectId", comment.projectId )
@@ -101,7 +108,7 @@ const buildCommentDirectUrl = ({ appOrigin, comment, commentId, thread }) => {
 }
 
 const buildEmailText = ({ actorLabel, comment, directUrl, documentData, thread, version }) => {
-  const documentLabel = `${documentData?.shortId ?? "Unassigned"} - ${documentData?.title ?? "Document"}`
+  const documentLabel = buildDocumentLabel( documentData )
   return [
     "A new comment was added.",
     `Document: ${documentLabel}`,
@@ -128,9 +135,12 @@ const stageNotificationEvents = async ({
   directUrl,
   documentData,
   now,
+  projectData,
   recipients,
   thread,
+  version,
 }) => {
+  const documentLabel = buildDocumentLabel( documentData )
   await Promise.all(
     recipients.map( (recipient) => db
       .collection( "notificationEvents" )
@@ -140,13 +150,15 @@ const stageNotificationEvents = async ({
         email: recipient.email,
         kind: "comment",
         projectId: comment.projectId,
+        projectLabel: buildProjectLabel( projectData ),
         docId: comment.docId,
         versionId: comment.versionId,
+        versionLabel: versionNumberToString( version?.number ),
         threadId: comment.threadId,
         commentId,
         actorId: comment.createdBy,
         actorLabel,
-        documentLabel: `${documentData?.shortId ?? "Unassigned"} - ${documentData?.title ?? "Document"}`,
+        documentLabel,
         issueTitle: thread?.title || "Untitled issue",
         commentExcerpt: trimMultiline( comment.body, 500 ),
         directUrl,
@@ -178,10 +190,11 @@ const createCommentNotificationHandler = ({
   }
 
   try {
-    const [ thread, version, documentData, comments ] = await Promise.all( [
+    const [ thread, version, documentData, projectData, comments ] = await Promise.all( [
       loadDocument( db, "threads", comment.threadId ),
       loadDocument( db, "versions", comment.versionId ),
       loadDocument( db, "documents", comment.docId ),
+      loadDocument( db, "projects", comment.projectId ),
       loadThreadComments( db, comment.threadId ),
     ] )
     const latestVersion = documentData?.latestVersionId
@@ -211,8 +224,10 @@ const createCommentNotificationHandler = ({
       directUrl,
       documentData,
       now: now(),
+      projectData,
       recipients,
       thread,
+      version,
     } )
 
     const immediateRecipients = recipients
@@ -263,6 +278,7 @@ const createCommentNotificationHandler = ({
 }
 
 module.exports = {
+  DEFAULT_APP_ORIGIN,
   buildDigestHourKey,
   createCommentNotificationHandler,
   stageNotificationEvents,

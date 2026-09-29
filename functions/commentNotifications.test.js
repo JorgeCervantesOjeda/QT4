@@ -73,6 +73,76 @@ test( "handler includes the latest version author when a comment targets an olde
   )
 } )
 
+test( "handler stages digest events with project and version context plus absolute links", async () => {
+  const writes = []
+  const store = {
+    "projects/project-1": {
+      shortId: 7,
+      name: "Project Alpha",
+    },
+    "threads/thread-1": {
+      projectId: "project-1",
+      docId: "doc-1",
+      versionId: "version-1",
+      title: "Missing evidence",
+      createdBy: "thread-author",
+    },
+    "versions/version-1": {
+      projectId: "project-1",
+      docId: "doc-1",
+      number: 100,
+      createdBy: "version-author",
+      reviewerIds: [],
+    },
+    "documents/doc-1": {
+      shortId: 12,
+      title: "Evidence matrix",
+    },
+    "userProfiles/thread-author": {
+      email: "thread@example.com",
+      displayName: "Thread User",
+      notificationPreferences: {
+        commentEmailEnabled: false,
+        hourlyActivityDigestEnabled: true,
+      },
+    },
+    "userProfiles/version-author": {
+      email: "author@example.com",
+      displayName: "Author User",
+      notificationPreferences: {
+        commentEmailEnabled: false,
+        hourlyActivityDigestEnabled: true,
+      },
+    },
+  }
+  const db = createFakeDb( store, writes )
+  const handler = createCommentNotificationHandler( {
+    admin: createAdmin( db ),
+    logger: { error: () => {}, info: () => {}, warn: () => {} },
+    now: () => new Date( "2026-09-28T18:24:00.000Z" ),
+    sendTextEmail: async () => {
+      throw new Error( "should not send immediate email" )
+    },
+  } )
+
+  await handler( createEvent( "comment-1", {
+    projectId: "project-1",
+    docId: "doc-1",
+    versionId: "version-1",
+    threadId: "thread-1",
+    body: "Please add the missing evidence.",
+    createdBy: "actor-user",
+  } ) )
+
+  const eventWrite = writes.find( (write) => write.path.startsWith( "notificationEvents/" ) )
+  assert.equal( eventWrite.data.projectLabel, "7 - Project Alpha" )
+  assert.equal( eventWrite.data.versionLabel, "1.00" )
+  assert.match(
+    eventWrite.data.directUrl,
+    /^https:\/\/qualiteam-plus\.web\.app\/documents\/doc-1\/versions\?/u,
+  )
+} )
+
 const createEvent = (commentId, data) => ( {
   params: { commentId },
   data: createSnapshot( commentId, data ),

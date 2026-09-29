@@ -98,19 +98,41 @@ test( "buildHourlyNotificationDigest formats related comments for one user and h
   const digest = buildHourlyNotificationDigest( [
     {
       id: "event-1",
+      projectLabel: "7 - Project Alpha",
       actorLabel: "Reviewer One",
       documentLabel: "DOC-7 - Quality Plan",
+      versionLabel: "1.00",
       issueTitle: "Missing evidence",
       commentExcerpt: "Please add the missing evidence.",
-      directUrl: "https://qt4.example.test/documents/doc-1/versions?commentId=comment-1",
+      directUrl: "/documents/doc-1/versions?commentId=comment-1&threadId=thread-1&focus=comments",
+      kind: "comment",
+    },
+    {
+      id: "event-2",
+      projectLabel: "7 - Project Alpha",
+      actorLabel: "Reviewer Two",
+      documentLabel: "DOC-7 - Quality Plan",
+      versionLabel: "1.00",
+      issueTitle: "Missing evidence",
+      commentExcerpt: "Second related comment.",
+      directUrl: "/documents/doc-1/versions?commentId=comment-2&threadId=thread-1&focus=comments",
       kind: "comment",
     },
   ], "2026-09-28T18" )
 
   assert.match( digest.subject, /\[QT4\] Hourly activity summary/u )
+  assert.match( digest.text, /Project: 7 - Project Alpha/u )
+  assert.match( digest.text, /Document: DOC-7 - Quality Plan/u )
+  assert.match( digest.text, /Version: 1\.00/u )
   assert.match( digest.text, /Issue: Missing evidence/u )
-  assert.match( digest.text, /Comment: Please add the missing evidence\./u )
-  assert.match( digest.text, /DOC-7 - Quality Plan/u )
+  assert.match(
+    digest.text,
+    /Open issue: https:\/\/qualiteam-plus\.web\.app\/documents\/doc-1\/versions\?threadId=thread-1&focus=comments/u,
+  )
+  assert.match( digest.text, /Comments:\n- Reviewer One: Please add the missing evidence\./u )
+  assert.match( digest.text, /- Reviewer Two: Second related comment\./u )
+  assert.equal( ( digest.text.match( /Open issue:/gu ) || [] ).length, 1 )
+  assert.doesNotMatch( digest.text, /commentId=/u )
 } )
 
 test( "createHourlyNotificationDigestJob sends one email per user and closed hour", async () => {
@@ -166,7 +188,7 @@ test( "createHourlyNotificationDigestJob sends one email per user and closed hou
   assert.deepEqual( emails[0].to, [ "user@example.com" ] )
   assert.match( emails[0].subject, /\[QT4\] Hourly activity summary/u )
   assert.match( emails[0].text, /Issue:/u )
-  assert.match( emails[0].text, /Comment:/u )
+  assert.match( emails[0].text, /Comments:/u )
   const digestWrites = writes.filter( (write) => write.path.startsWith( "notificationDigests/" ) )
   assert.equal( digestWrites[0].id, "user-1_2026-09-28T18" )
   const eventUpdates = writes.filter( (write) => write.path === "notificationEvents/event-1" )

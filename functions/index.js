@@ -631,6 +631,10 @@ exports.sendHourlyNotificationDigest = onSchedule(
   },
   createHourlyNotificationDigestJob( {
     admin,
+    appOrigin: getEnvMany(
+      [ "APP_ORIGIN", "QT4_APP_ORIGIN", "PUBLIC_APP_ORIGIN" ],
+      "https://qualiteam-plus.web.app",
+    ),
     logger,
     getTimeZone: () => getEnv( "NOTIFICATION_DIGEST_TIME_ZONE", "America/Mexico_City" ),
     sendTextEmail,

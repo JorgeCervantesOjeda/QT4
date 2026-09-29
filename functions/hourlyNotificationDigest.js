@@ -1,6 +1,7 @@
 // functions/hourlyNotificationDigest.js: Sends per-user hourly digests for related notification events.
 const { resolveNotificationPreferences } = require( "./notificationPreferences" )
 
+const DEFAULT_APP_ORIGIN = "https://qualiteam-plus.web.app"
 const HOURLY_NOTIFICATION_DIGEST_LIMIT = 500
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -34,8 +35,15 @@ const normalizeEvent = (snapshot) => {
     email: normalizeEmail( data.email ),
     kind: trimSingleLine( data.kind, 32 ) || "comment",
     digestHourKey: trimSingleLine( data.digestHourKey, 32 ),
+    projectId: trimSingleLine( data.projectId, 128 ),
+    projectLabel: trimSingleLine( data.projectLabel, 240 ) || "Project",
+    docId: trimSingleLine( data.docId, 128 ),
+    versionId: trimSingleLine( data.versionId, 128 ),
+    threadId: trimSingleLine( data.threadId, 128 ),
+    commentId: trimSingleLine( data.commentId, 128 ),
     actorLabel: trimSingleLine( data.actorLabel, 200 ) || "Unknown user",
     documentLabel: trimSingleLine( data.documentLabel, 240 ) || "Document",
+    versionLabel: trimSingleLine( data.versionLabel, 80 ) || "Version",
     issueTitle: trimSingleLine( data.issueTitle, 240 ) || "Untitled issue",
     commentExcerpt: trimMultiline( data.commentExcerpt, 500 ),
     directUrl: trimSingleLine( data.directUrl, 1000 ),
@@ -70,18 +78,117 @@ const groupEventsByUserHour = (events) => {
     .sort( (a, b) => a.digestId.localeCompare( b.digestId ) )
 }
 
-const buildHourlyNotificationDigest = (events, hourKey) => {
+const normalizeAppOrigin = (appOrigin) =>
+  ( trimSingleLine( appOrigin, 500 ) || DEFAULT_APP_ORIGIN ).replace( /\/+$/, "" )
+
+const buildAbsoluteAppUrl = (urlValue, appOrigin) => {
+  const normalizedUrlValue = trimSingleLine( urlValue, 1000 )
+  if( !normalizedUrlValue ) {
+    return ""
+  }
+  try {
+    const url = new URL( normalizedUrlValue, normalizeAppOrigin( appOrigin ) )
+    if( url.protocol !== "http:" && url.protocol !== "https:" ) {
+      return ""
+    }
+    return url.toString()
+  } catch {
+    return ""
+  }
+}
+
+const buildIssueUrl = (event, appOrigin) => {
+  const issueUrl = buildAbsoluteAppUrl( event.directUrl, appOrigin )
+  if( !issueUrl ) {
+    return ""
+  }
+  const url = new URL( issueUrl )
+  url.searchParams.delete( "commentId" )
+  return url.toString()
+}
+
+const buildGroupKey = (values) => values
+  .map( (value) => trimSingleLine( value, 240 ) )
+  .join( "\u001f" )
+
+const getOrCreateDigestGroup = (map, key, createGroup) => {
+  const existingGroup = map.get( key )
+  if( existingGroup ) {
+    return existingGroup
+  }
+  const group = createGroup()
+  map.set( key, group )
+  return group
+}
+
+const groupEventsForDigestText = (events, appOrigin) => {
+  const projects = []
+  const projectsByKey = new Map()
+  for( const event of events ) {
+    const projectKey = buildGroupKey( [ event.projectId, event.projectLabel ] )
+    const projectGroup = getOrCreateDigestGroup( projectsByKey, projectKey, () => {
+      const group = { label: event.projectLabel, documents: [], documentsByKey: new Map() }
+      projects.push( group )
+      return group
+    } )
+    const documentKey = buildGroupKey( [ event.docId, event.documentLabel ] )
+    const documentGroup = getOrCreateDigestGroup( projectGroup.documentsByKey, documentKey, () => {
+      const group = { label: event.documentLabel, versions: [], versionsByKey: new Map() }
+      projectGroup.documents.push( group )
+      return group
+    } )
+    const versionKey = buildGroupKey( [ event.versionId, event.versionLabel ] )
+    const versionGroup = getOrCreateDigestGroup( documentGroup.versionsByKey, versionKey, () => {
+      const group = { label: event.versionLabel, issues: [], issuesByKey: new Map() }
+      documentGroup.versions.push( group )
+      return group
+    } )
+    const issueKey = buildGroupKey( [ event.threadId, event.issueTitle ] )
+    const issueGroup = getOrCreateDigestGroup( versionGroup.issuesByKey, issueKey, () => {
+      const group = {
+        title: event.issueTitle,
+        issueUrl: buildIssueUrl( event, appOrigin ),
+        comments: [],
+      }
+      versionGroup.issues.push( group )
+      return group
+    } )
+    if( !issueGroup.issueUrl ) {
+      issueGroup.issueUrl = buildIssueUrl( event, appOrigin )
+    }
+    issueGroup.comments.push( {
+      actorLabel: event.actorLabel,
+      commentExcerpt: event.commentExcerpt,
+    } )
+  }
+  return projects
+}
+
+const buildHourlyNotificationDigest = (events, hourKey, options = {}) => {
   const normalizedEvents = events.map( normalizeEvent )
   const subject = `[QT4] Hourly activity summary (${normalizedEvents.length})`
-  const eventLines = normalizedEvents.flatMap( (event, index) => [
-    `${index + 1}. ${event.kind === "issue" ? "Issue activity" : "Comment activity"}`,
-    `Document: ${event.documentLabel}`,
-    `Issue: ${event.issueTitle}`,
-    `Actor: ${event.actorLabel}`,
-    event.commentExcerpt ? `Comment: ${event.commentExcerpt}` : "",
-    event.directUrl ? `Open: ${event.directUrl}` : "",
+  const projects = groupEventsForDigestText( normalizedEvents, options.appOrigin )
+  const eventLines = projects.flatMap( (project) => [
+    `Project: ${project.label}`,
     "",
-  ].filter( (line) => line !== "" ) )
+    ...project.documents.flatMap( (document) => [
+      `Document: ${document.label}`,
+      "",
+      ...document.versions.flatMap( (version) => [
+        `Version: ${version.label}`,
+        "",
+        ...version.issues.flatMap( (issue) => [
+          `Issue: ${issue.title}`,
+          issue.issueUrl ? `Open issue: ${issue.issueUrl}` : "",
+          "Comments:",
+          ...issue.comments.map( (comment) =>
+            `- ${comment.actorLabel}: ${comment.commentExcerpt || "(no comment text)"}`,
+          ),
+          "",
+        ].filter( (line) => line !== "" ) ),
+      ] ),
+    ] ),
+  ] )
   const text = [
     "QT4 hourly activity summary.",
     "",
@@ -117,6 +224,7 @@ const createHourlyNotificationDigestJob = ({
   logger,
   now = () => new Date(),
   getTimeZone = () => "America/Mexico_City",
+  appOrigin = DEFAULT_APP_ORIGIN,
   sendTextEmail,
 }) => async () => {
   const db = admin.firestore()
@@ -220,7 +328,7 @@ const createHourlyNotificationDigestJob = ({
       continue
     }
 
-    const digest = buildHourlyNotificationDigest( group.events, group.hourKey )
+    const digest = buildHourlyNotificationDigest( group.events, group.hourKey, { appOrigin } )
     try {
       await sendTextEmail( {
         to: [ profile.email ],
@@ -269,7 +377,9 @@ const createHourlyNotificationDigestJob = ({
 }
 
 module.exports = {
+  DEFAULT_APP_ORIGIN,
   HOURLY_NOTIFICATION_DIGEST_LIMIT,
+  buildAbsoluteAppUrl,
   buildHourlyNotificationDigest,
   buildClosedHourCutoffKey,
   createHourlyNotificationDigestJob,
