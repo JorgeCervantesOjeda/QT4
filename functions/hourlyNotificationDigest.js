@@ -54,6 +54,7 @@ const normalizeTimestampMillis = (value) => {
 
 const normalizeEvent = (snapshot) => {
   const data = typeof snapshot.data === "function" ? snapshot.data() || {} : snapshot
+  const eventTimestamp = data.eventAt ?? data.createdAt ?? data.eventAtMillis
   return {
     id: trimSingleLine( snapshot.id || data.id, 128 ),
     ref: snapshot.ref,
@@ -73,7 +74,7 @@ const normalizeEvent = (snapshot) => {
     issueTitle: trimSingleLine( data.issueTitle, 240 ) || "Untitled issue",
     commentExcerpt: trimMultiline( data.commentExcerpt, 500 ),
     directUrl: trimSingleLine( data.directUrl, 1000 ),
-    eventAtMillis: normalizeTimestampMillis( data.eventAt ?? data.createdAt ),
+    eventAtMillis: normalizeTimestampMillis( eventTimestamp ),
   }
 }
 

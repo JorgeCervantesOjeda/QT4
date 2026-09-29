@@ -182,6 +182,84 @@ test( "buildHourlyNotificationDigest sorts comments chronologically within an is
   assert.ok( secondCommentIndex < thirdCommentIndex )
 } )
 
+test( "createHourlyNotificationDigestJob preserves comment chronology in the generated email", async () => {
+  const emails = []
+  const eventTimestamp = (iso) => ( {
+    toMillis: () => new Date( iso ).getTime(),
+  } )
+  const db = createFakeDb( {
+    eventDocs: [
+      createSnapshot( "notificationEvents", "event-a", {
+        userId: "user-1",
+        email: "user@example.com",
+        kind: "comment",
+        digestStatus: "pending",
+        digestHourKey: "2026-09-28T18",
+        eventAt: eventTimestamp( "2026-09-28T18:30:00.000Z" ),
+        projectLabel: "7 - Project Alpha",
+        documentLabel: "DOC-7 - Quality Plan",
+        versionLabel: "1.00",
+        issueTitle: "Missing evidence",
+        actorLabel: "Third User",
+        commentExcerpt: "Third comment.",
+      } ),
+      createSnapshot( "notificationEvents", "event-m", {
+        userId: "user-1",
+        email: "user@example.com",
+        kind: "comment",
+        digestStatus: "pending",
+        digestHourKey: "2026-09-28T18",
+        eventAt: eventTimestamp( "2026-09-28T18:05:00.000Z" ),
+        projectLabel: "7 - Project Alpha",
+        documentLabel: "DOC-7 - Quality Plan",
+        versionLabel: "1.00",
+        issueTitle: "Missing evidence",
+        actorLabel: "First User",
+        commentExcerpt: "First comment.",
+      } ),
+      createSnapshot( "notificationEvents", "event-z", {
+        userId: "user-1",
+        email: "user@example.com",
+        kind: "comment",
+        digestStatus: "pending",
+        digestHourKey: "2026-09-28T18",
+        eventAt: eventTimestamp( "2026-09-28T18:20:00.000Z" ),
+        projectLabel: "7 - Project Alpha",
+        documentLabel: "DOC-7 - Quality Plan",
+        versionLabel: "1.00",
+        issueTitle: "Missing evidence",
+        actorLabel: "Second User",
+        commentExcerpt: "Second comment.",
+      } ),
+    ],
+    profileStore: {
+      "user-1": {
+        email: "user@example.com",
+        notificationPreferences: {
+          hourlyActivityDigestEnabled: true,
+        },
+      },
+    },
+  } )
+  const job = createHourlyNotificationDigestJob( {
+    admin: createAdmin( db ),
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+    now: () => new Date( "2026-09-28T19:05:00.000Z" ),
+    sendTextEmail: async (message) => {
+      emails.push( message )
+    },
+  } )
+
+  await job()
+
+  assert.equal( emails.length, 1 )
+  const firstCommentIndex = emails[0].text.indexOf( "- First User: First comment." )
+  const secondCommentIndex = emails[0].text.indexOf( "- Second User: Second comment." )
+  const thirdCommentIndex = emails[0].text.indexOf( "- Third User: Third comment." )
+  assert.ok( firstCommentIndex < secondCommentIndex )
+  assert.ok( secondCommentIndex < thirdCommentIndex )
+} )
+
 test( "createHourlyNotificationDigestJob sends one email per user and closed hour", async () => {
   const emails = []
   const writes = []
