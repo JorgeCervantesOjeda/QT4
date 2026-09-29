@@ -18,6 +18,7 @@ const deployValidatedRelease = () => {
   runStreamingCommand( 'npm', [ 'run', 'build:prod' ] )
   runStreamingCommand( 'npm', [ 'run', 'verify:prod-build' ] )
   runStreamingCommand( 'npm', [ 'run', 'deploy:functions:prod' ] )
+  runStreamingCommand( 'npm', [ 'run', 'verify:prod-functions-env' ] )
   runStreamingCommand( 'npm', [ 'run', 'deploy:prod' ] )
 }
 

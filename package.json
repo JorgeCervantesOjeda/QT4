@@ -27,6 +27,7 @@
     "build:test": "tsc -b && vite build --mode test",
     "build:prod": "tsc -b && vite build --mode production",
     "verify:prod-build": "node tools/verify-prod-build-config.mjs",
+    "verify:prod-functions-env": "node tools/verify-prod-function-env.mjs",
     "deploy:functions:test": "npx firebase-tools deploy --only functions --project qualiteam-plus-test",
     "deploy:functions:prod": "npx firebase-tools deploy --only functions --project qualiteam-app",
     "deploy:test": "npm run build:test && npx firebase-tools deploy --only hosting:test,firestore,storage --project qualiteam-plus-test",
