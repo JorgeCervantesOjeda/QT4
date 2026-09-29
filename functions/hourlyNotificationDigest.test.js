@@ -1,0 +1,261 @@
+// functions/hourlyNotificationDigest.test.js: Verifies hourly notification digest grouping and idempotency.
+const assert = require( "node:assert/strict" )
+const test = require( "node:test" )
+
+const {
+  buildHourlyNotificationDigest,
+  createHourlyNotificationDigestJob,
+} = require( "./hourlyNotificationDigest" )
+
+const createSnapshot = (collectionName, id, data) => ( {
+  id,
+  exists: Boolean( data ),
+  data: () => data,
+  ref: {
+    path: `${collectionName}/${id}`,
+  },
+} )
+
+const createFakeDb = ({ digestStore = {}, eventDocs = [], profileStore = {}, writes = [] }) => ( {
+  batch() {
+    return {
+      set: (ref, data, options) => {
+        writes.push( { type: "batch-set", path: ref.path, data, options } )
+      },
+      commit: async () => undefined,
+    }
+  },
+  collection(collectionName) {
+    if( collectionName === "notificationEvents" ) {
+      const filters = []
+      return {
+        where(fieldName, op, value) {
+          filters.push( [ fieldName, op, value ] )
+          return this
+        },
+        orderBy(fieldName, direction = "asc") {
+          assert.equal( fieldName, "digestHourKey" )
+          assert.equal( direction, "asc" )
+          return this
+        },
+        limit(limitValue) {
+          assert.equal( limitValue, 500 )
+          return this
+        },
+        get: async () => {
+          assert.deepEqual( filters, [
+            [ "digestStatus", "==", "pending" ],
+            [ "digestHourKey", "<", "2026-09-28T19" ],
+          ] )
+          return { docs: eventDocs }
+        },
+      }
+    }
+    return {
+      doc(documentId) {
+        return {
+          id: documentId,
+          path: `${collectionName}/${documentId}`,
+          get: async () => {
+            if( collectionName === "userProfiles" ) {
+              return createSnapshot( collectionName, documentId, profileStore[documentId] )
+            }
+            if( collectionName === "notificationDigests" ) {
+              return createSnapshot( collectionName, documentId, digestStore[documentId] )
+            }
+            return createSnapshot( collectionName, documentId, null )
+          },
+          set: async (data, options) => {
+            writes.push( {
+              type: "doc-set",
+              id: documentId,
+              path: `${collectionName}/${documentId}`,
+              data,
+              options,
+            } )
+            digestStore[documentId] = {
+              ...( digestStore[documentId] || {} ),
+              ...data,
+            }
+          },
+        }
+      },
+    }
+  },
+} )
+
+const createAdmin = (db) => {
+  const admin = {
+    firestore: () => db,
+  }
+  admin.firestore.FieldValue = {
+    serverTimestamp: () => "server-timestamp",
+  }
+  return admin
+}
+
+test( "buildHourlyNotificationDigest formats related comments for one user and hour", () => {
+  const digest = buildHourlyNotificationDigest( [
+    {
+      id: "event-1",
+      actorLabel: "Reviewer One",
+      documentLabel: "DOC-7 - Quality Plan",
+      issueTitle: "Missing evidence",
+      commentExcerpt: "Please add the missing evidence.",
+      directUrl: "https://qt4.example.test/documents/doc-1/versions?commentId=comment-1",
+      kind: "comment",
+    },
+  ], "2026-09-28T18" )
+
+  assert.match( digest.subject, /\[QT4\] Hourly activity summary/u )
+  assert.match( digest.text, /Issue: Missing evidence/u )
+  assert.match( digest.text, /Comment: Please add the missing evidence\./u )
+  assert.match( digest.text, /DOC-7 - Quality Plan/u )
+} )
+
+test( "createHourlyNotificationDigestJob sends one email per user and closed hour", async () => {
+  const emails = []
+  const writes = []
+  const eventDocs = [
+    createSnapshot( "notificationEvents", "event-1", {
+      userId: "user-1",
+      email: "old@example.com",
+      kind: "comment",
+      digestStatus: "pending",
+      digestHourKey: "2026-09-28T18",
+      actorLabel: "Reviewer One",
+      documentLabel: "DOC-7 - Quality Plan",
+      issueTitle: "Missing evidence",
+      commentExcerpt: "Please add the missing evidence.",
+      directUrl: "https://qt4.example.test/documents/doc-1/versions?commentId=comment-1",
+    } ),
+    createSnapshot( "notificationEvents", "event-current", {
+      userId: "user-1",
+      email: "current@example.com",
+      kind: "comment",
+      digestStatus: "pending",
+      digestHourKey: "2026-09-28T19",
+      issueTitle: "Current hour event",
+    } ),
+  ]
+  const db = createFakeDb( {
+    eventDocs,
+    profileStore: {
+      "user-1": {
+        email: "user@example.com",
+        notificationPreferences: {
+          commentEmailEnabled: true,
+          hourlyActivityDigestEnabled: true,
+        },
+      },
+    },
+    writes,
+  } )
+  const job = createHourlyNotificationDigestJob( {
+    admin: createAdmin( db ),
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+    now: () => new Date( "2026-09-28T19:05:00.000Z" ),
+    sendTextEmail: async (message) => {
+      emails.push( message )
+    },
+  } )
+
+  await job()
+
+  assert.equal( emails.length, 1 )
+  assert.deepEqual( emails[0].to, [ "user@example.com" ] )
+  assert.match( emails[0].subject, /\[QT4\] Hourly activity summary/u )
+  assert.match( emails[0].text, /Issue:/u )
+  assert.match( emails[0].text, /Comment:/u )
+  const digestWrites = writes.filter( (write) => write.path.startsWith( "notificationDigests/" ) )
+  assert.equal( digestWrites[0].id, "user-1_2026-09-28T18" )
+  const eventUpdates = writes.filter( (write) => write.path === "notificationEvents/event-1" )
+  assert.equal( eventUpdates.at( -1 ).data.digestStatus, "sent" )
+  assert.equal( writes.some( (write) => write.path === "notificationEvents/event-current" ), false )
+} )
+
+test( "createHourlyNotificationDigestJob skips already sent user-hour digests", async () => {
+  const emails = []
+  const writes = []
+  const db = createFakeDb( {
+    digestStore: {
+      "user-1_2026-09-28T18": {
+        digestStatus: "sent",
+      },
+    },
+    eventDocs: [
+      createSnapshot( "notificationEvents", "event-1", {
+        userId: "user-1",
+        email: "user@example.com",
+        digestStatus: "pending",
+        digestHourKey: "2026-09-28T18",
+        issueTitle: "Already sent",
+      } ),
+    ],
+    profileStore: {
+      "user-1": {
+        email: "user@example.com",
+        notificationPreferences: {
+          hourlyActivityDigestEnabled: true,
+        },
+      },
+    },
+    writes,
+  } )
+  const job = createHourlyNotificationDigestJob( {
+    admin: createAdmin( db ),
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+    now: () => new Date( "2026-09-28T19:05:00.000Z" ),
+    sendTextEmail: async (message) => {
+      emails.push( message )
+    },
+  } )
+
+  await job()
+
+  assert.equal( emails.length, 0 )
+  assert.equal(
+    writes.some( (write) =>
+      write.path === "notificationDigests/user-1_2026-09-28T18"
+      && write.data.digestStatus !== "sent" ),
+    false,
+  )
+} )
+
+test( "createHourlyNotificationDigestJob marks events skipped when digest preference is off", async () => {
+  const writes = []
+  const db = createFakeDb( {
+    eventDocs: [
+      createSnapshot( "notificationEvents", "event-1", {
+        userId: "user-1",
+        email: "user@example.com",
+        digestStatus: "pending",
+        digestHourKey: "2026-09-28T18",
+        issueTitle: "Preference off",
+      } ),
+    ],
+    profileStore: {
+      "user-1": {
+        email: "user@example.com",
+        notificationPreferences: {
+          hourlyActivityDigestEnabled: false,
+        },
+      },
+    },
+    writes,
+  } )
+  const job = createHourlyNotificationDigestJob( {
+    admin: createAdmin( db ),
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+    now: () => new Date( "2026-09-28T19:05:00.000Z" ),
+    sendTextEmail: async () => {
+      throw new Error( "should not send" )
+    },
+  } )
+
+  await job()
+
+  const eventUpdates = writes.filter( (write) => write.path === "notificationEvents/event-1" )
+  assert.equal( eventUpdates.at( -1 ).data.digestStatus, "skipped" )
+  assert.equal( eventUpdates.at( -1 ).data.digestSkipReason, "preference_disabled" )
+} )

@@ -7,6 +7,7 @@ const nodemailer = require( "nodemailer" )
 const crypto = require( "node:crypto" )
 const { createAiAssistHandler } = require( "./aiAssist" )
 const { createCommentNotificationHandler } = require( "./commentNotifications" )
+const { createHourlyNotificationDigestJob } = require( "./hourlyNotificationDigest" )
 const {
   createPropagateAcceptedErrorReportHandler,
   createRetryPropagatedErrorReportsHandler,
@@ -618,6 +619,20 @@ exports.sendCommentNotification = onDocumentCreated(
     admin,
     appOrigin: getEnvMany( [ "APP_ORIGIN", "QT4_APP_ORIGIN", "PUBLIC_APP_ORIGIN" ], "" ),
     logger,
+    sendTextEmail,
+  } ),
+)
+
+exports.sendHourlyNotificationDigest = onSchedule(
+  {
+    schedule: getEnv( "NOTIFICATION_DIGEST_SCHEDULE", "every hour" ),
+    timeZone: getEnv( "NOTIFICATION_DIGEST_TIME_ZONE", "America/Mexico_City" ),
+    maxInstances: 1,
+  },
+  createHourlyNotificationDigestJob( {
+    admin,
+    logger,
+    getTimeZone: () => getEnv( "NOTIFICATION_DIGEST_TIME_ZONE", "America/Mexico_City" ),
     sendTextEmail,
   } ),
 )
