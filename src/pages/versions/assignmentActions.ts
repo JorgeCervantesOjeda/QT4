@@ -250,11 +250,6 @@ function useAssignmentActions( {
         updatedAt: serverTimestamp(),
         updatedBy: userId,
       } )
-      batch.update( doc( db, 'documents', docId ), {
-        authorId,
-        updatedAt: serverTimestamp(),
-        updatedBy: userId,
-      } )
       await measureSlowUiAction(
         {
           action: 'versions.assignAuthor',

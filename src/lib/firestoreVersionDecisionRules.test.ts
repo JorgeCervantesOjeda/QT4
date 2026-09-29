@@ -81,7 +81,7 @@ const seedVersionDecisionDocuments = async () => {
         type: 'document',
         title: 'Controlled document',
         createdBy: userId,
-        authorId: userId,
+        latestVersionId: reviewVersionId,
         shortId: 7,
       } ),
       setDoc( doc( firestore, 'versions', reviewVersionId ), buildVersion() ),

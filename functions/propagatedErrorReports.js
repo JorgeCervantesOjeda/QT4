@@ -130,7 +130,7 @@ const createPropagatedReportForConfiguration = async ({
       sourceBaseVersionId: sourceReport.baseVersionId,
       derivedConfigurationId: configurationSnapshot.id,
       createdBy: actorId,
-      authorId: actorId,
+      latestVersionId: propagatedVersionRef.id,
       updatedBy: actorId,
       shortId: nextNumber,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),

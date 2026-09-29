@@ -58,7 +58,7 @@ function useDocumentSubscription( {
         }
         const data = snapshot.data()
         const loadedProjectId = ( data.projectId as string ) ?? projectIdFromQuery
-        const loadedAuthorId = ( data.createdBy as string ) ?? ( data.authorId as string ) ?? ''
+        const loadedCreatorId = ( data.createdBy as string ) ?? ''
         const detectedShortId = Number.isFinite( data.shortId ) ? Number( data.shortId ) : null
         const nextBaseProjectId = ( data.baseProjectId as string | undefined ) ?? null
         const nextBaseDocId = ( data.baseDocId as string | undefined ) ?? null
@@ -71,8 +71,7 @@ function useDocumentSubscription( {
           id: snapshot.id,
           projectId: loadedProjectId,
           title: ( data.title as string ) ?? 'Untitled document',
-          createdBy: loadedAuthorId,
-          authorId: ( data.authorId as string | undefined ) ?? loadedAuthorId,
+          createdBy: loadedCreatorId,
           type: nextDocumentType,
           shortId: detectedShortId,
           baseProjectId: nextBaseProjectId,

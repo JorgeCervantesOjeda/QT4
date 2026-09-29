@@ -47,7 +47,6 @@ type ReviewIssueActionParams = {
   canParticipateReview: boolean;
   commentReactionsByCommentId: Record<string, CommentReactionState>;
   commentsByThread: Record<string, CommentSummary[]>;
-  currentDocumentAuthorId: string;
   docId?: string;
   documentData: DocumentSummary | null;
   formatUserLabel: (memberUserId: string) => string;

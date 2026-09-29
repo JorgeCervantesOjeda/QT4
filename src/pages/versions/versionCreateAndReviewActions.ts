@@ -177,6 +177,11 @@ const createVersionCreateAndReviewActions = (
             updatedAt: serverTimestamp(),
             updatedBy: userId,
           });
+          transaction.update(doc(db, "documents", docId), {
+            latestVersionId: versionRef.id,
+            updatedAt: serverTimestamp(),
+            updatedBy: userId,
+          });
           if (latestVersion?.status === "In Review") {
             transaction.update(doc(db, "versions", latestVersion.id), {
               status: "Reviewed",

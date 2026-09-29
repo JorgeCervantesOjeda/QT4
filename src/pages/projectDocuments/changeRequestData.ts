@@ -144,7 +144,7 @@ const createChangeRequestDocument = async (
       baseDocId: selectedBaseVersion.docId,
       baseVersionId: selectedBaseVersion.versionId,
       createdBy: userId,
-      authorId: userId,
+      latestVersionId: versionRef.id,
       updatedBy: userId,
       shortId: nextNumber,
       createdAt: serverTimestamp(),

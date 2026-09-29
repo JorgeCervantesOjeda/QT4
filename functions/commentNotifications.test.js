@@ -12,6 +12,67 @@ const createSnapshot = (id, data) => ( {
   data: () => data,
 } )
 
+test( "handler includes the latest version author when a comment targets an older version", async () => {
+  const writes = []
+  const sentEmails = []
+  const store = {
+    "threads/thread-1": {
+      projectId: "project-1",
+      docId: "doc-1",
+      versionId: "version-old",
+      title: "Missing evidence",
+      createdBy: "thread-author",
+    },
+    "versions/version-old": {
+      projectId: "project-1",
+      docId: "doc-1",
+      number: 1,
+      createdBy: "old-author",
+      reviewerIds: [],
+    },
+    "versions/version-latest": {
+      projectId: "project-1",
+      docId: "doc-1",
+      number: 100,
+      createdBy: "latest-author",
+      reviewerIds: [],
+    },
+    "documents/doc-1": {
+      shortId: 12,
+      title: "Evidence matrix",
+      latestVersionId: "version-latest",
+    },
+    "userProfiles/latest-author": {
+      email: "latest@example.com",
+      notificationPreferences: { commentEmailEnabled: true },
+    },
+  }
+  const db = createFakeDb( store, writes )
+  const handler = createCommentNotificationHandler( {
+    admin: createAdmin( db ),
+    appOrigin: "https://qt4.example.test",
+    logger: { error: () => {}, info: () => {}, warn: () => {} },
+    sendTextEmail: async (message) => {
+      sentEmails.push( message )
+    },
+  } )
+
+  await handler( createEvent( "comment-1", {
+    projectId: "project-1",
+    docId: "doc-1",
+    versionId: "version-old",
+    threadId: "thread-1",
+    body: "Please add the missing evidence.",
+    createdBy: "comment-author",
+  } ) )
+
+  assert.deepEqual( sentEmails[0].to, [ "latest@example.com" ] )
+  assert.equal(
+    writes.filter( (write) => write.path.startsWith( "notificationEvents/" ) )[0].data.userId,
+    "latest-author",
+  )
+} )
+
 const createEvent = (commentId, data) => ( {
   params: { commentId },
   data: createSnapshot( commentId, data ),
@@ -83,7 +144,6 @@ test( "handler sends immediate email only to opted-in related participants", asy
     "documents/doc-1": {
       shortId: 12,
       title: "Evidence matrix",
-      authorId: "document-author",
     },
     "comments/comment-old": {
       threadId: "thread-1",
@@ -130,14 +190,6 @@ test( "handler sends immediate email only to opted-in related participants", asy
         hourlyActivityDigestEnabled: true,
       },
     },
-    "userProfiles/document-author": {
-      email: "document@example.com",
-      displayName: "Document User",
-      notificationPreferences: {
-        commentEmailEnabled: false,
-        hourlyActivityDigestEnabled: true,
-      },
-    },
   }
   const db = createFakeDb( store, writes )
   const handler = createCommentNotificationHandler( {
@@ -171,7 +223,6 @@ test( "handler sends immediate email only to opted-in related participants", asy
     eventWrites.map( (write) => write.data.userId ).sort(),
     [
       "disabled-user",
-      "document-author",
       "enabled-user",
       "thread-author",
       "version-author",

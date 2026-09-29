@@ -64,7 +64,7 @@ const createDerivedDocument = async (
       originVersionId: line.originVersionId,
       incorporatedChangeRequestVersionIds: line.changeRequestVersionIds,
       createdBy: userId,
-      authorId: userId,
+      latestVersionId: versionRef.id,
       updatedBy: userId,
       shortId: nextNumber,
       createdAt: serverTimestamp(),

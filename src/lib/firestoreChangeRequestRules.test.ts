@@ -10,10 +10,12 @@ import {
 import {
   doc,
   setDoc,
+  writeBatch,
 } from 'firebase/firestore'
 import firestoreRules from '../../firestore.rules?raw'
 
 let testEnv: RulesTestEnvironment
+type TestFirestore = ReturnType<ReturnType<RulesTestEnvironment['authenticatedContext']>['firestore']>
 const describeWithFirestoreEmulator = import.meta.env.FIRESTORE_EMULATOR_HOST ? describe : describe.skip
 
 const projectId = 'qt4-change-request-rules'
@@ -55,7 +57,7 @@ const seedRuleDocuments = async () => {
         type: 'document',
         title: 'Shared requirements',
         createdBy: userId,
-        authorId: userId,
+        latestVersionId: baseVersionId,
         shortId: 7,
       } ),
       setDoc( doc( firestore, 'versions', baseVersionId ), {
@@ -71,7 +73,7 @@ const seedRuleDocuments = async () => {
         type: 'document',
         title: 'Target requirements',
         createdBy: userId,
-        authorId: userId,
+        latestVersionId: targetBaseVersionId,
         shortId: 8,
       } ),
       setDoc( doc( firestore, 'versions', targetBaseVersionId ), {
@@ -98,7 +100,7 @@ const buildChangeRequestDocument = (value: {
   baseDocId: value.baseDocId,
   baseVersionId: value.baseVersionId,
   createdBy: userId,
-  authorId: userId,
+  latestVersionId: 'change-request-version-1',
   updatedBy: userId,
   shortId: 31,
 } )
@@ -112,10 +114,29 @@ const buildDerivedDocument = () => ( {
   originVersionId: baseVersionId,
   incorporatedChangeRequestVersionIds: ['change-request-version-1'],
   createdBy: userId,
-  authorId: userId,
+  latestVersionId: 'derived-version-1',
   updatedBy: userId,
   shortId: 32,
 } )
+
+const writeDocumentWithInitialVersion = async (
+  firestore: TestFirestore,
+  documentId: string,
+  documentData: Record<string, unknown>,
+) => {
+  const batch = writeBatch( firestore )
+  batch.set( doc( firestore, 'documents', documentId ), documentData )
+  batch.set( doc( firestore, 'versions', String( documentData.latestVersionId ) ), {
+    projectId: documentData.projectId,
+    docId: documentId,
+    number: 1,
+    status: 'In Creation',
+    createdBy: userId,
+    reviewerIds: [],
+    previousVersionId: null,
+  } )
+  return batch.commit()
+}
 
 describeWithFirestoreEmulator( 'firestore.rules change-request documents', () => {
   beforeAll( async () => {
@@ -142,8 +163,9 @@ describeWithFirestoreEmulator( 'firestore.rules change-request documents', () =>
     const firestore = testEnv.authenticatedContext( userId ).firestore()
 
     await assertSucceeds(
-      setDoc(
-        doc( firestore, 'documents', 'change-request-allowed' ),
+      writeDocumentWithInitialVersion(
+        firestore,
+        'change-request-allowed',
         buildChangeRequestDocument( {
           baseProjectId,
           baseDocId,
@@ -157,8 +179,9 @@ describeWithFirestoreEmulator( 'firestore.rules change-request documents', () =>
     const firestore = testEnv.authenticatedContext( userId ).firestore()
 
     await assertFails(
-      setDoc(
-        doc( firestore, 'documents', 'change-request-denied' ),
+      writeDocumentWithInitialVersion(
+        firestore,
+        'change-request-denied',
         buildChangeRequestDocument( {
           baseProjectId: targetProjectId,
           baseDocId: targetBaseDocId,
@@ -179,8 +202,9 @@ describeWithFirestoreEmulator( 'firestore.rules change-request documents', () =>
     const firestore = testEnv.authenticatedContext( userId ).firestore()
 
     await assertFails(
-      setDoc(
-        doc( firestore, 'documents', 'change-request-base-membership-denied' ),
+      writeDocumentWithInitialVersion(
+        firestore,
+        'change-request-base-membership-denied',
         buildChangeRequestDocument( {
           baseProjectId,
           baseDocId,
@@ -194,10 +218,7 @@ describeWithFirestoreEmulator( 'firestore.rules change-request documents', () =>
     const firestore = testEnv.authenticatedContext( userId ).firestore()
 
     await assertSucceeds(
-      setDoc(
-        doc( firestore, 'documents', 'derived-document-allowed' ),
-        buildDerivedDocument(),
-      ),
+      writeDocumentWithInitialVersion( firestore, 'derived-document-allowed', buildDerivedDocument() ),
     )
   } )
 } )

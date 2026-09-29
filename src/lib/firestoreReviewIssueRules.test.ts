@@ -76,7 +76,7 @@ const seedReviewDocuments = async () => {
         projectId,
         title: 'Document',
         createdBy: 'author-1',
-        authorId: 'author-1',
+        latestVersionId: versionId,
         status: 'In Review',
         createdAt: Timestamp.fromMillis( 800 ),
         updatedAt: Timestamp.fromMillis( 900 ),

@@ -27,7 +27,6 @@ type DocumentSummary = {
   projectId: string
   title: string
   createdBy: string
-  authorId?: string | null
   type: string
   shortId: number | null
   baseProjectId?: string | null

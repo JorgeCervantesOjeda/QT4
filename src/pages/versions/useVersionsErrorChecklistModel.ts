@@ -10,7 +10,6 @@ type UseVersionsErrorChecklistModelParams = {
   canParticipateReview: boolean;
   clockNowMs: number;
   docId?: string;
-  documentAuthorId: string;
   documentData: DocumentSummary | null;
   error: string | null;
   errorReportGate: { isBlocking: boolean; isLoading: boolean };
@@ -39,7 +38,6 @@ const useVersionsErrorChecklistModel = ({
   canParticipateReview,
   clockNowMs,
   docId,
-  documentAuthorId,
   documentData,
   error,
   errorReportGate,
@@ -71,11 +69,6 @@ const useVersionsErrorChecklistModel = ({
         networkAvailable: typeof navigator < "u" ? navigator.onLine : !0,
         hasAnyVersion: versionsLength > 0,
         userIsProjectLeader: isLeader,
-        userIsDocumentAuthor: !!(
-          userId &&
-          documentAuthorId &&
-          userId === documentAuthorId
-        ),
         userIsLatestVersionAuthor: isLatestAuthor,
         userIsSelectedVersionAuthor: isSelectedAuthor,
         userIsReviewer: isReviewer,
@@ -141,7 +134,6 @@ const useVersionsErrorChecklistModel = ({
       canParticipateReview,
       clockNowMs,
       docId,
-      documentAuthorId,
       documentData,
       error,
       errorReportGate.isBlocking,

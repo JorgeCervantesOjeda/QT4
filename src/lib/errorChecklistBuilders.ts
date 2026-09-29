@@ -6,7 +6,6 @@ type VersionsErrorChecklistContext = {
   networkAvailable: boolean
   hasAnyVersion: boolean
   userIsProjectLeader: boolean
-  userIsDocumentAuthor: boolean
   userIsLatestVersionAuthor: boolean
   userIsSelectedVersionAuthor: boolean
   userIsReviewer: boolean

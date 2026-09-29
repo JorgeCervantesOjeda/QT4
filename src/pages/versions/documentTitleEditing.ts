@@ -11,6 +11,7 @@ type UseDocumentTitleEditingParams = {
   docId: string | undefined
   projectId: string
   documentData: DocumentSummary | null
+  latestVersionId: string | null
   userId: string
   userEmail?: string | null
   canEditDocumentTitle: boolean
@@ -25,6 +26,7 @@ function useDocumentTitleEditing( {
   docId,
   projectId,
   documentData,
+  latestVersionId,
   userId,
   userEmail,
   canEditDocumentTitle,
@@ -58,7 +60,7 @@ function useDocumentTitleEditing( {
       return
     }
     if( !canEditDocumentTitle ) {
-      setDocumentTitleError( 'Only the author, project leader, or admin can edit the document title.' )
+      setDocumentTitleError( 'Only the latest version author, project leader, or admin can edit the document title.' )
       return
     }
     const trimmedTitle = documentTitleDraft.trim()
@@ -86,6 +88,7 @@ function useDocumentTitleEditing( {
         },
         () => updateDoc( doc( db, 'documents', docId ), {
           title: trimmedTitle,
+          ...( latestVersionId ? { latestVersionId } : {} ),
           updatedAt: serverTimestamp(),
           updatedBy: userId,
         } ),
@@ -117,6 +120,7 @@ function useDocumentTitleEditing( {
   }, [
     docId,
     documentData,
+    latestVersionId,
     userId,
     canEditDocumentTitle,
     documentTitleDraft,

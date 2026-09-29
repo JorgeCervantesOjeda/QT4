@@ -256,7 +256,7 @@ const toVersionRecord = (snapshot: { id: string; data: () => Record<string, unkn
     docId: ( data.docId as string | undefined ) ?? '',
     number: Number( data.number ?? 0 ),
     status: ( data.status as string | undefined ) ?? '',
-    createdBy: ( data.createdBy as string | undefined ) ?? ( data.authorId as string | undefined ) ?? '',
+    createdBy: ( data.createdBy as string | undefined ) ?? '',
     reviewerIds: ( data.reviewerIds as string[] | undefined ) ?? [],
     hasFile: Boolean( data.hasFile ),
     createdAt: toTimestampDate( data.createdAt ),
@@ -365,16 +365,12 @@ export const buildDashboardTasks = async (
     return snapshots.flatMap( ( snapshot ) => snapshot.docs ).map( toVersionRecord )
   }
   const fetchVersionsForAuthorAcrossProjects = async (statuses: string[]): Promise<VersionRecord[]> => {
-    const authorResults = await Promise.all( statuses.flatMap( ( status ) => ( [
-      fetchVersionsForProjects( [
+    const authorResults = await Promise.all(
+      statuses.map( ( status ) => fetchVersionsForProjects( [
         where( 'createdBy', '==', userId ),
         where( 'status', '==', status ),
-      ] ),
-      fetchVersionsForProjects( [
-        where( 'authorId', '==', userId ),
-        where( 'status', '==', status ),
-      ] ),
-    ] ) ) )
+      ] ) ),
+    )
     return dedupeVersionsById( authorResults.flat() )
   }
 

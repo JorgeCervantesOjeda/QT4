@@ -93,6 +93,7 @@ export interface Document {
   projectId: Id;
   title: string;
   createdBy: Id;
+  latestVersionId?: Id;
   createdAt: string;
   updatedAt: string;
 }

@@ -295,7 +295,6 @@ const useVersionsActionModel = ({
     canParticipateReview: derived.canParticipateReview,
     commentReactionsByCommentId: commentReactionsByCommentId,
     commentsByThread: commentsByThread,
-    currentDocumentAuthorId: derived.currentDocumentAuthorId,
     docId,
     documentData: documentData,
     formatUserLabel: derived.formatUserLabel,

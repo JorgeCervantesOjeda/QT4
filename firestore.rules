@@ -38,12 +38,42 @@ service cloud.firestore {
       return isSignedIn() && projectMemberDoc(projectId).data.role == 'leader';
     }
 
-    function isDocumentAuthor() {
-      let authorId = (
-        resource.data.authorId is string
-        && resource.data.authorId.size() > 0
-      ) ? resource.data.authorId : resource.data.createdBy;
-      return isSignedIn() && authorId == request.auth.uid;
+    function isLatestVersionAuthorForDocument(documentData, documentId) {
+      return isSignedIn()
+        && documentData.latestVersionId is string
+        && documentData.latestVersionId.size() > 0
+        && versionDoc(documentData.latestVersionId).data.docId == documentId
+        && versionDoc(documentData.latestVersionId).data.createdBy == request.auth.uid;
+    }
+
+    function isLatestVersionAuthorForDocumentAfter(documentData, documentId) {
+      return isSignedIn()
+        && documentData.latestVersionId is string
+        && documentData.latestVersionId.size() > 0
+        && versionAfter(documentData.latestVersionId).data.docId == documentId
+        && versionAfter(documentData.latestVersionId).data.createdBy == request.auth.uid;
+    }
+
+    function hasValidLatestVersionPointerAfter(documentData, documentId) {
+      return documentData.latestVersionId is string
+        && documentData.latestVersionId.size() > 0
+        && versionAfter(documentData.latestVersionId).data.projectId == documentData.projectId
+        && versionAfter(documentData.latestVersionId).data.docId == documentId
+        && versionAfter(documentData.latestVersionId).data.number is int
+        && versionAfter(documentData.latestVersionId).data.number > 0
+        && versionAfter(documentData.latestVersionId).data.createdBy is string
+        && versionAfter(documentData.latestVersionId).data.createdBy.size() > 0
+        && versionAfter(documentData.latestVersionId).data.createdBy == request.auth.uid;
+    }
+
+    function isLatestVersionPointerAdvanceAfter(documentData, documentId) {
+      return hasValidLatestVersionPointerAfter(documentData, documentId)
+        && resource.data.latestVersionId is string
+        && resource.data.latestVersionId.size() > 0
+        && versionDoc(resource.data.latestVersionId).data.number is int
+        && versionAfter(documentData.latestVersionId).data.number
+          > versionDoc(resource.data.latestVersionId).data.number
+        && versionAfter(documentData.latestVersionId).data.createdAt == request.time;
     }
 
     function isShortIdAssignment() {
@@ -874,13 +904,22 @@ service cloud.firestore {
         && request.resource.data.title.matches('.*\\S.*')
         && request.resource.data.shortId is int
         && request.resource.data.shortId > 0
-        && request.resource.data.authorId == request.auth.uid
+        && hasValidLatestVersionPointerAfter(request.resource.data, docId)
         && request.resource.data.createdBy == request.auth.uid
         && isValidDocumentCreateByType(request.resource.data);
       allow update: if (
-          (isProjectLeader(resource.data.projectId) || isDocumentAuthor() || isAdmin())
+          (
+            isProjectLeader(resource.data.projectId)
+            || isLatestVersionAuthorForDocument(resource.data, docId)
+            || isLatestVersionAuthorForDocumentAfter(request.resource.data, docId)
+            || isAdmin()
+          )
           && request.resource.data.projectId == resource.data.projectId
           && request.resource.data.createdBy == resource.data.createdBy
+          && (
+            request.resource.data.latestVersionId == resource.data.latestVersionId
+            || isLatestVersionPointerAdvanceAfter(request.resource.data, docId)
+          )
         )
         || isShortIdAssignment();
       allow delete: if false;

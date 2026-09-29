@@ -154,7 +154,7 @@ const loadDocumentAndVersions = async (params: LoadDocumentAndVersionsParams) =>
 
     const documentRaw = documentSnapshot.data()
     const loadedProjectId = ( documentRaw.projectId as string ) ?? projectIdFromQuery
-    const loadedAuthorId = ( documentRaw.createdBy as string ) ?? ( documentRaw.authorId as string ) ?? ''
+    const loadedCreatorId = ( documentRaw.createdBy as string ) ?? ''
     const detectedShortId = Number.isFinite( documentRaw.shortId ) ? Number( documentRaw.shortId ) : null
     const loadedType = ( documentRaw.type as string | undefined ) ?? 'document'
     const loadedBaseProjectId = ( documentRaw.baseProjectId as string | undefined ) ?? null
@@ -167,8 +167,7 @@ const loadDocumentAndVersions = async (params: LoadDocumentAndVersionsParams) =>
       id: documentSnapshot.id,
       projectId: loadedProjectId,
       title: ( documentRaw.title as string ) ?? 'Untitled document',
-      createdBy: loadedAuthorId,
-      authorId: ( documentRaw.authorId as string | undefined ) ?? loadedAuthorId,
+      createdBy: loadedCreatorId,
       type: loadedType,
       shortId: detectedShortId,
       baseProjectId: loadedBaseProjectId,
@@ -286,7 +285,7 @@ const loadDocumentAndVersions = async (params: LoadDocumentAndVersionsParams) =>
     step = 'user-directory'
     const nextDirectoryById = await loadUserDirectory( {
       members,
-      loadedAuthorId,
+      loadedCreatorId,
       nextVersions,
       userId,
       userEmail,
@@ -428,7 +427,7 @@ const updateSelectedVersionState = (value: {
 
 const loadUserDirectory = async (value: {
   members: ProjectMember[]
-  loadedAuthorId: string
+  loadedCreatorId: string
   nextVersions: VersionSummary[]
   userId: string
   userEmail?: string | null
@@ -440,8 +439,8 @@ const loadUserDirectory = async (value: {
       directoryCandidates.add( member.userId )
     }
   } )
-  if( value.loadedAuthorId ) {
-    directoryCandidates.add( value.loadedAuthorId )
+  if( value.loadedCreatorId ) {
+    directoryCandidates.add( value.loadedCreatorId )
   }
   value.nextVersions.forEach( ( versionItem ) => {
     if( versionItem.createdBy ) {

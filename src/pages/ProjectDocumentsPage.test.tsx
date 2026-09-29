@@ -188,7 +188,7 @@ const primeDocumentMocks = () => {
           data: {
             projectId: 'project-1',
             title: 'Controlled Document',
-            createdBy: 'user-reviewer-1',
+            createdBy: 'user-member-1',
             shortId: 17,
             createdAt: new Date( '2026-04-01T10:00:00.000Z' ),
             updatedAt: new Date( '2026-04-02T12:00:00.000Z' ),
@@ -306,7 +306,8 @@ describe( 'pages/ProjectDocumentsPage', () => {
     expect( await screen.findByText( '42 - Alpha Project', {}, { timeout: 10000 } ) ).toBeTruthy()
     expect( await screen.findByRole( 'heading', { name: '17 - Controlled Document' }, { timeout: 10000 } ) ).toBeTruthy()
     expect( screen.getByText( 'Version 0.01 - In Review' ) ).toBeTruthy()
-    expect( screen.getByText( 'Creator: Review Lead' ) ).toBeTruthy()
+    expect( screen.getByText( 'Author: Review Lead' ) ).toBeTruthy()
+    expect( screen.queryByText( 'Creator: Review Lead' ) ).toBeNull()
     expect( screen.getByRole( 'heading', { name: 'Project members' } ) ).toBeTruthy()
     expect( screen.getByRole( 'heading', { name: 'Project members' } ).compareDocumentPosition(
       screen.getByRole( 'heading', { name: 'Create document' } ),
@@ -622,6 +623,8 @@ describe( 'pages/ProjectDocumentsPage', () => {
         && payload.baseProjectId === 'project-2'
         && payload.baseDocId === 'base-document-1'
         && payload.baseVersionId === 'base-version-2'
+        && payload.latestVersionId === 'generated-doc'
+        && payload.authorId === undefined
         && payload.title === 'Change request - v2.00 - Shared Requirements'
     } ) ).toBe( true )
     expect( navigateMock ).toHaveBeenCalledWith( '/documents/generated-doc/versions?projectId=project-1' )

@@ -53,6 +53,7 @@ type DocumentSummary = {
   id: string
   title: string
   createdBy: string
+  latestVersionCreatedBy: string | null
   type: string
   shortId: number | null
   baseProjectId?: string | null
@@ -383,7 +384,9 @@ function ProjectDocumentsPage() {
     () =>
       documents.map( ( documentItem ) => ( {
         ...documentItem,
-        creatorLabel: formatUserLabel( documentItem.createdBy ),
+        authorLabel: documentItem.latestVersionCreatedBy
+          ? formatUserLabel( documentItem.latestVersionCreatedBy )
+          : '—',
         updatedAtMs: documentItem.lastActivityAt ? documentItem.lastActivityAt.getTime() : 0,
       } ) ),
     [ documents, formatUserLabel ],
@@ -454,7 +457,7 @@ function ProjectDocumentsPage() {
     return `${documentItem.shortId ?? 'Unassigned'} - ${documentItem.title}`
   }, [] )
 
-  const documentColumns = useMemo<ColumnDef<DocumentSummary & { creatorLabel: string; updatedAtMs: number }>[]>(
+  const documentColumns = useMemo<ColumnDef<DocumentSummary & { authorLabel: string; updatedAtMs: number }>[]>(
     () => [
       {
         header: 'Short id',
@@ -512,8 +515,8 @@ function ProjectDocumentsPage() {
         cell: ( info ) => String( info.getValue<string | null>() ?? 'In Creation' ),
       },
       {
-        header: 'Creator',
-        accessorKey: 'creatorLabel',
+        header: 'Author',
+        accessorKey: 'authorLabel',
       },
       {
         header: 'Last activity',
@@ -651,7 +654,8 @@ function ProjectDocumentsPage() {
         return {
           id: docSnapshot.id,
           title: ( data.title as string ) ?? '',
-          createdBy: ( data.createdBy as string ) ?? ( data.authorId as string ) ?? '',
+          createdBy: ( data.createdBy as string ) ?? '',
+          latestVersionCreatedBy: null,
           type: ( data.type as string | undefined ) ?? 'document',
           shortId: Number.isFinite( data.shortId ) ? Number( data.shortId ) : null,
           baseProjectId: ( data.baseProjectId as string | undefined ) ?? null,
@@ -773,6 +777,7 @@ function ProjectDocumentsPage() {
             createdAt: resolvedCreatedAt,
             latestVersionId: versionSummary.latestVersionId,
             latestVersionNumber: versionSummary.latestNumber,
+            latestVersionCreatedBy: versionSummary.latestCreatedBy,
             latestStatus: versionSummary.latestStatus,
             latestReviewEndAt: versionSummary.latestReviewEndAt,
             lastActivityAt: resolvedActivity.activityAt,
@@ -854,7 +859,7 @@ function ProjectDocumentsPage() {
       step = 'user-directory'
       const creatorIds = Array.from(
         new Set( [
-          ...baseDocuments.map( ( docItem ) => docItem.createdBy ).filter( Boolean ),
+          ...latestVersions.map( ( entry ) => entry.documentItem.latestVersionCreatedBy ?? '' ).filter( Boolean ),
           ...members.map( ( member ) => member.userId ).filter( Boolean ),
         ] ),
       )
@@ -1391,7 +1396,7 @@ function ProjectDocumentsPage() {
           title: title.trim(),
           type: 'document',
           createdBy: userId,
-          authorId: userId,
+          latestVersionId: versionRef.id,
           updatedBy: userId,
           shortId: nextNumber,
           createdAt: serverTimestamp(),
@@ -1834,7 +1839,11 @@ function ProjectDocumentsPage() {
                           }`
                         : 'No versions yet'}
                     </p>
-                    <p className="muted">Creator: {formatUserLabel( documentItem.createdBy )}</p>
+                    <p className="muted">
+                      Author: {documentItem.latestVersionCreatedBy
+                        ? formatUserLabel( documentItem.latestVersionCreatedBy )
+                        : '—'}
+                    </p>
                     <p className="muted">Created: {formatTimeAgoWithTimestamp( documentItem.createdAt )}</p>
                     <p className="muted">
                       Last activity: {formatTimeAgoWithTimestamp( documentItem.lastActivityAt )}

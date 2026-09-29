@@ -44,14 +44,14 @@ const addParticipant = (participantIds, userId) => {
   }
 }
 
-const buildParticipantIds = ({ comment, comments, documentData, thread, version }) => {
+const buildParticipantIds = ({ comment, comments, latestVersion, thread, version }) => {
   const participantIds = new Set()
   addParticipant( participantIds, version?.createdBy )
+  addParticipant( participantIds, latestVersion?.createdBy )
   ;( Array.isArray( version?.reviewerIds ) ? version.reviewerIds : [] )
     .forEach( (reviewerId) => addParticipant( participantIds, reviewerId ) )
   addParticipant( participantIds, thread?.createdBy )
   comments.forEach( (threadComment) => addParticipant( participantIds, threadComment?.createdBy ) )
-  addParticipant( participantIds, documentData?.authorId || documentData?.createdBy )
   participantIds.delete( comment.createdBy )
   return [ ...participantIds ]
 }
@@ -184,10 +184,13 @@ const createCommentNotificationHandler = ({
       loadDocument( db, "documents", comment.docId ),
       loadThreadComments( db, comment.threadId ),
     ] )
+    const latestVersion = documentData?.latestVersionId
+      ? await loadDocument( db, "versions", documentData.latestVersionId )
+      : version
     const participantIds = buildParticipantIds( {
       comment,
       comments,
-      documentData,
+      latestVersion,
       thread,
       version,
     } )

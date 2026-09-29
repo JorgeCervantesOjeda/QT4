@@ -107,7 +107,7 @@ const createErrorReportActions = (params: ErrorReportActionParams) => {
             baseDocId: docId,
             baseVersionId: latestVersion.id,
             createdBy: userId,
-            authorId: userId,
+            latestVersionId: versionRef.id,
             updatedBy: userId,
             shortId: nextNumber,
             createdAt: serverTimestamp(),

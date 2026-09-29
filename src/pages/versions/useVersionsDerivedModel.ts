@@ -106,24 +106,21 @@ const useVersionsDerivedModel = ({
         : getEffectiveFileStorageProviderHint(),
     [selectedVersion?.id, selectedFileRef],
   );
-  const documentAuthorId = documentData?.createdBy ?? "";
-  const currentDocumentAuthorId = documentData?.authorId ?? documentAuthorId;
-  const latestAuthorId = latestVersion?.createdBy ?? documentAuthorId;
+  const latestVersionAuthorId = latestVersion?.createdBy ?? "";
   const isSelectedAuthor = !!(
     userId &&
-    (selectedVersion
-      ? selectedVersion.createdBy === userId
-      : documentAuthorId === userId)
+    selectedVersion &&
+    selectedVersion.createdBy === userId
   );
   const isLatestAuthor = !!(
     userId &&
-    latestAuthorId &&
-    latestAuthorId === userId
+    latestVersionAuthorId &&
+    latestVersionAuthorId === userId
   );
   const canEditDocumentTitle = !!(
     userId &&
     documentData &&
-    (currentDocumentAuthorId === userId || isLeader || isAdmin)
+    (latestVersionAuthorId === userId || isLeader || isAdmin)
   );
   const {
     isDocumentTitleModalOpen,
@@ -137,6 +134,7 @@ const useVersionsDerivedModel = ({
     docId,
     projectId,
     documentData,
+    latestVersionId: latestVersion?.id ?? null,
     userId,
     userEmail: user?.email,
     canEditDocumentTitle,
@@ -372,7 +370,6 @@ const useVersionsDerivedModel = ({
     canParticipateReview,
     clockNowMs,
     docId,
-    documentAuthorId,
     documentData,
     error,
     errorReportGate,
@@ -409,8 +406,7 @@ const useVersionsDerivedModel = ({
     selectedDownloadProvider,
     effectiveSelectedThreadId,
     getVersionDownloadProvider,
-    documentAuthorId,
-    currentDocumentAuthorId,
+    latestVersionAuthorId,
     isSelectedAuthor,
     isLatestAuthor,
     canEditDocumentTitle,

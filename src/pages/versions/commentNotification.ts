@@ -10,7 +10,7 @@ import type {
 } from "./types";
 
 type CommentNotificationParams = {
-  currentDocumentAuthorId: string;
+  latestVersionAuthorId: string;
   docId?: string;
   documentData: DocumentSummary | null;
   formatUserLabel: (memberUserId: string) => string;
@@ -34,7 +34,7 @@ const notifyCommentParticipants = async (
   commentBody: string,
 ) => {
   const {
-    currentDocumentAuthorId,
+    latestVersionAuthorId,
     documentData,
     projectId,
     selectedThread,
@@ -52,7 +52,7 @@ const notifyCommentParticipants = async (
   selectedThreadComments.forEach(
     (comment) => comment.createdBy && participantIds.add(comment.createdBy),
   );
-  if (currentDocumentAuthorId) participantIds.add(currentDocumentAuthorId);
+  if (latestVersionAuthorId) participantIds.add(latestVersionAuthorId);
   participantIds.delete(userId);
   const recipientEmails = Array.from(participantIds)
     .map((participantId) => params.resolveUserEmail(participantId))
@@ -98,7 +98,7 @@ const notifyCommentParticipants = async (
 Document: ${docLabel}
 Version: ${versionNumberToString(selectedVersion.number)}
 Issue: ${selectedThread.title}
-Document author: ${params.formatUserLabel(currentDocumentAuthorId)}
+Latest version author: ${params.formatUserLabel(latestVersionAuthorId)}
 Comment author: ${params.formatUserLabel(userId)}
 
 Comment:
