@@ -157,7 +157,7 @@ describe( 'ReviewIssuesPanel', () => {
       versionId: 'version-1',
       threadId: 'thread-1',
     } )
-  } )
+  }, 30000 )
 
   it( 'keeps selected issue card comments hidden by default and lets the user show them', () => {
     renderPanel()

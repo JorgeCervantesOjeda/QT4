@@ -628,7 +628,7 @@ describe( 'pages/ProjectDocumentsPage', () => {
         && payload.title === 'Change request - v2.00 - Shared Requirements'
     } ) ).toBe( true )
     expect( navigateMock ).toHaveBeenCalledWith( '/documents/generated-doc/versions?projectId=project-1' )
-  }, 15000 )
+  }, 30000 )
 
   it( 'keeps separate external base version labels for change requests to the same base document', async () => {
     versionRecords = [

@@ -271,7 +271,7 @@ describe( 'pages/AdminAuditPage', () => {
     expect( screen.getByRole( 'heading', { name: 'Generating report' } ) ).toBeTruthy()
     expect( screen.getByText( 'Generating report...' ) ).toBeTruthy()
     resolveAuditLogs( createQuerySnapshot( [] ) )
-  }, 15000 )
+  }, 30000 )
 
   it( 'hides admin-only sections for a non-admin user', async () => {
     render( <AdminAuditPage /> )

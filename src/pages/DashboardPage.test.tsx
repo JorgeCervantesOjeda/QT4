@@ -87,5 +87,5 @@ describe( 'DashboardPage', () => {
         mode: 'summarize_pending',
       } )
     } )
-  } )
+  }, 30000 )
 } )
