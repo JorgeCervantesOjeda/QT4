@@ -625,7 +625,7 @@ exports.sendCommentNotification = onDocumentCreated(
 
 exports.sendHourlyNotificationDigest = onSchedule(
   {
-    schedule: getEnv( "NOTIFICATION_DIGEST_SCHEDULE", "every hour" ),
+    schedule: getEnv( "NOTIFICATION_DIGEST_SCHEDULE", "0 * * * *" ),
     timeZone: getEnv( "NOTIFICATION_DIGEST_TIME_ZONE", "America/Mexico_City" ),
     maxInstances: 1,
   },
