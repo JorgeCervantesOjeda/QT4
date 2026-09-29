@@ -748,6 +748,13 @@
   -webkit-overflow-scrolling: touch;
 }
 
+.data-table--threads .data-table--comments {
+  overflow-x: visible;
+  touch-action: auto;
+  overscroll-behavior-x: auto;
+  -webkit-overflow-scrolling: auto;
+}
+
 .data-table--members {
   --table-col-1: 10%;
   --table-col-2: 12%;

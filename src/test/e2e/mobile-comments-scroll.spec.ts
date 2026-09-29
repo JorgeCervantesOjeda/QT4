@@ -73,7 +73,7 @@ test( 'allows horizontal panning when a touch gesture starts over comment conten
   await expect.poll( () => table.evaluate( ( element ) => element.scrollLeft ) ).toBeGreaterThan( 0 )
 } )
 
-test( 'does not chain a second comment drag into the outer issue table', async ( { page } ) => {
+test( 'moves the outer issue table when a drag starts over nested comment content', async ( { page } ) => {
   await page.goto( '/' )
   const appCssUrl = new URL( '/src/App.css', page.url() ).toString()
   await page.setContent( `
@@ -136,9 +136,6 @@ test( 'does not chain a second comment drag into the outer issue table', async (
   }
 
   await swipeFromComment()
-  await expect.poll( () => innerTable.evaluate( ( element ) => element.scrollLeft ) ).toBeGreaterThan( 0 )
-  await expect( outerTable ).toHaveJSProperty( 'scrollLeft', 0 )
-
-  await swipeFromComment()
-  await expect( outerTable ).toHaveJSProperty( 'scrollLeft', 0 )
+  await expect.poll( () => outerTable.evaluate( ( element ) => element.scrollLeft ) ).toBeGreaterThan( 0 )
+  await expect( innerTable ).toHaveJSProperty( 'scrollLeft', 0 )
 } )
