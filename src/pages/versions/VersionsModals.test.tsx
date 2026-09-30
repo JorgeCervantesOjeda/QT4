@@ -8,6 +8,10 @@ vi.mock( '../../components/ErrorChecklistModal', () => ( {
   default: () => null,
 } ) )
 
+vi.mock( '../../lib/errorMonitor', () => ( {
+  reportUserVisibleError: vi.fn(),
+} ) )
+
 vi.mock( '../../components/ModalDialog', () => ( {
   default: ({ children }: { children: React.ReactNode }) => <div role="dialog">{children}</div>,
 } ) )
@@ -29,6 +33,7 @@ vi.mock( '../../giphy/GiphyProvider', () => ( {
 const renderVersionDecisionModal = (
   isBusy: boolean,
   threadCreationStatus: 'idle' | 'creating' = 'idle',
+  commentCreationStatus: 'idle' | 'adding' = 'idle',
 ) => render(
   <VersionsModals
     isBusy={isBusy}
@@ -60,6 +65,7 @@ const renderVersionDecisionModal = (
     onClosePendingThreadStatusChange={() => undefined}
     onConfirmThreadStatusChange={() => undefined}
     threadCreationStatus={threadCreationStatus}
+    commentCreationStatus={commentCreationStatus}
     uploadStatus="idle"
     uploadMessage=""
     downloadStatus="idle"
@@ -122,6 +128,7 @@ const renderThreadStatusModal = (isBusy: boolean) => render(
     onClosePendingThreadStatusChange={() => undefined}
     onConfirmThreadStatusChange={() => undefined}
     threadCreationStatus="idle"
+    commentCreationStatus="idle"
     uploadStatus="idle"
     uploadMessage=""
     downloadStatus="idle"
@@ -174,6 +181,14 @@ describe( 'versions/VersionsModals', () => {
     expect( screen.getByText( 'Creating the issue...' ) ).toBeTruthy()
   } )
 
+  it( 'shows comment creation progress while the comment is being added', () => {
+    renderVersionDecisionModal( false, 'idle', 'adding' )
+
+    expect( screen.getByRole( 'heading', { name: 'Adding comment' } ) ).toBeTruthy()
+    expect( screen.getAllByTestId( 'giphy-reason' ).some( (element) => element.textContent === 'loading' ) ).toBe( true )
+    expect( screen.getByText( 'Adding the comment...' ) ).toBeTruthy()
+  } )
+
   it( 'shows upload progress without an extra generic Giphy label', () => {
     render(
       <VersionsModals
@@ -206,6 +221,7 @@ describe( 'versions/VersionsModals', () => {
         onClosePendingThreadStatusChange={() => undefined}
         onConfirmThreadStatusChange={() => undefined}
         threadCreationStatus="idle"
+        commentCreationStatus="idle"
         uploadStatus="uploading"
         uploadMessage="Uploading new version..."
         downloadStatus="idle"
@@ -278,6 +294,7 @@ describe( 'versions/VersionsModals', () => {
         onClosePendingThreadStatusChange={() => undefined}
         onConfirmThreadStatusChange={() => undefined}
         threadCreationStatus="idle"
+        commentCreationStatus="idle"
         uploadStatus="idle"
         uploadMessage=""
         downloadStatus="idle"

@@ -45,8 +45,12 @@ vi.mock( '../../lib/firebase', () => ( {
   db: { app: 'test' },
 } ) )
 
+const slowUiActionMocks = vi.hoisted( () => ( {
+  measureSlowUiAction: vi.fn( async ( _metadata: unknown, callback: () => Promise<void> ) => callback() ),
+} ) )
+
 vi.mock( '../../lib/slowUiAction', () => ( {
-  measureSlowUiAction: async ( _metadata: unknown, callback: () => Promise<void> ) => callback(),
+  measureSlowUiAction: slowUiActionMocks.measureSlowUiAction,
 } ) )
 
 vi.mock( './commentNotification', () => ( {
@@ -134,6 +138,7 @@ describe( 'createReviewIssueActions', () => {
       setEmailNotifyStatus: vi.fn(),
       setError: vi.fn(),
       setIsBusy: vi.fn(),
+      setCommentCreationStatus: vi.fn(),
       setNewCommentBody: vi.fn(),
       setNewThreadTitle: vi.fn(),
       setPendingCommentReactionIds,
@@ -209,6 +214,7 @@ describe( 'createReviewIssueActions', () => {
       setEmailNotifyStatus: vi.fn(),
       setError: vi.fn(),
       setIsBusy: vi.fn(),
+      setCommentCreationStatus: vi.fn(),
       setNewCommentBody: vi.fn(),
       setNewThreadTitle: vi.fn(),
       setPendingCommentReactionIds: vi.fn(),
@@ -290,6 +296,7 @@ describe( 'createReviewIssueActions', () => {
       setEmailNotifyStatus: vi.fn(),
       setError: vi.fn(),
       setIsBusy: vi.fn(),
+      setCommentCreationStatus: vi.fn(),
       setCommentReactionsByCommentId: vi.fn(),
       setNewCommentBody,
       setNewThreadTitle,
@@ -410,6 +417,7 @@ describe( 'createReviewIssueActions', () => {
       setEmailNotifyStatus: vi.fn(),
       setError: vi.fn(),
       setIsBusy: vi.fn( ( value: boolean ) => calls.push( `busy:${String( value )}` ) ),
+      setCommentCreationStatus: vi.fn(),
       setCommentReactionsByCommentId: vi.fn(),
       setNewCommentBody: vi.fn(),
       setNewThreadTitle: vi.fn(),
@@ -429,6 +437,94 @@ describe( 'createReviewIssueActions', () => {
 
     expect( calls.indexOf( 'pending:null' ) ).toBeGreaterThan(
       calls.indexOf( 'transaction:done' ),
+    )
+  } )
+
+  it( 'shows comment progress before the transaction and records the action as modal-protected', async () => {
+    const callOrder: string[] = []
+    const setCommentCreationStatus = vi.fn( (value: 'idle' | 'adding') => {
+      callOrder.push( `comment-progress:${value}` )
+    } )
+    slowUiActionMocks.measureSlowUiAction.mockImplementationOnce(
+      async (metadata: unknown, callback: () => Promise<void>) => {
+        const slowActionMetadata = metadata as { hasModal?: boolean }
+        callOrder.push( `slow-action:${String( slowActionMetadata.hasModal )}` )
+        await callback()
+      },
+    )
+    firestoreMocks.runTransaction.mockImplementationOnce( async ( _db, callback ) => {
+      callOrder.push( 'transaction:start' )
+      const transaction = {
+        get: vi.fn()
+          .mockResolvedValueOnce( {
+            exists: () => true,
+            data: () => ( {
+              status: 'In Review',
+              stats: {
+                numThreads: 1,
+                numOpenThreads: 1,
+                numComments: 2,
+                numThreadsWithTwoPlusComments: 1,
+              },
+            } ),
+          } )
+          .mockResolvedValueOnce( {
+            exists: () => true,
+            data: () => ( { status: 'open', commentCount: 2 } ),
+          } ),
+        set: vi.fn(),
+        update: vi.fn(),
+      }
+      await callback( transaction )
+    } )
+    const actions = createReviewIssueActions( {
+      canAddComment: true,
+      canCreateThread: true,
+      canParticipateReview: true,
+      commentReactionsByCommentId: {},
+      commentsByThread: { [selectedThread.id]: comments },
+      docId: 'doc-1',
+      documentData,
+      formatUserLabel: ( memberUserId ) => memberUserId,
+      newCommentBody: 'The source is now documented.',
+      newThreadTitle: '',
+      projectId: 'project-1',
+      reloadAndRestoreSelection: vi.fn(),
+      reportVersionsError: vi.fn(),
+      resolveUserEmail: () => null,
+      selectedThread,
+      selectedThreadComments: comments,
+      selectedVersion,
+      selectedVersionInActiveReview: true,
+      setCommentCreationStatus,
+      setCommentReactionsByCommentId: vi.fn(),
+      setEmailNotifyMessage: vi.fn(),
+      setEmailNotifyStatus: vi.fn(),
+      setError: vi.fn(),
+      setIsBusy: vi.fn(),
+      setNewCommentBody: vi.fn(),
+      setNewThreadTitle: vi.fn(),
+      setPendingCommentReactionIds: vi.fn(),
+      setPendingThreadStatusChange: vi.fn(),
+      setSelectedThreadId: vi.fn(),
+      setThreadCreationStatus: vi.fn(),
+      setSuccessEmailRecipients: vi.fn(),
+      setSuccessMessage: vi.fn(),
+      setWarningMessage: vi.fn(),
+      threads: [selectedThread],
+      userEmail: 'author@example.com',
+      userId: 'author-1',
+    } )
+
+    await actions.handleAddComment()
+
+    expect( setCommentCreationStatus.mock.calls ).toEqual( [ [ 'adding' ], [ 'idle' ] ] )
+    expect( callOrder.indexOf( 'comment-progress:adding' ) ).toBeLessThan(
+      callOrder.indexOf( 'transaction:start' ),
+    )
+    expect( slowUiActionMocks.measureSlowUiAction ).toHaveBeenCalledWith(
+      expect.objectContaining( { action: 'versions.addComment', hasModal: true } ),
+      expect.any( Function ),
     )
   } )
 } )

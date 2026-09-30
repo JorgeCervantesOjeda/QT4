@@ -111,6 +111,9 @@ const useVersionsPageState = () => {
   const [threadCreationStatus, setThreadCreationStatus] = useState<
     "idle" | "creating"
   >("idle");
+  const [commentCreationStatus, setCommentCreationStatus] = useState<
+    "idle" | "adding"
+  >("idle");
   const [isLoadingVersions, setIsLoadingVersions] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -261,6 +264,8 @@ const useVersionsPageState = () => {
     setIsBusy,
     threadCreationStatus,
     setThreadCreationStatus,
+    commentCreationStatus,
+    setCommentCreationStatus,
     isLoadingVersions,
     setIsLoadingVersions,
     error,

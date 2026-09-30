@@ -9,6 +9,7 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import type { Dispatch, SetStateAction } from "react";
+import { flushSync } from "react-dom";
 import { logAudit } from "../../lib/audit";
 import { requestAiAssist } from "../../lib/aiAssist";
 import { db } from "../../lib/firebase";
@@ -67,6 +68,7 @@ type ReviewIssueActionParams = {
   setEmailNotifyStatus: (value: "idle" | "sending") => void;
   setError: (value: string | null) => void;
   setIsBusy: (value: boolean) => void;
+  setCommentCreationStatus: (value: "idle" | "adding") => void;
   setCommentReactionsByCommentId: Dispatch<
     SetStateAction<Record<string, CommentReactionState>>
   >;
@@ -250,6 +252,9 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
     params.setSuccessEmailRecipients(null);
     params.setEmailNotifyStatus("idle");
     params.setEmailNotifyMessage("");
+    flushSync( () => {
+      params.setCommentCreationStatus("adding");
+    } );
     params.setIsBusy(true);
     try {
       const commentRef = doc(collection(db, "comments"));
@@ -264,6 +269,7 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
           docId,
           versionId: selectedVersion.id,
           threadId: selectedThread.id,
+          hasModal: true,
         },
         () => runTransaction(db, async (transaction) => {
           const [versionSnap, threadSnap] = await Promise.all([
@@ -358,6 +364,7 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
     } finally {
       params.setEmailNotifyStatus("idle");
       params.setEmailNotifyMessage("");
+      params.setCommentCreationStatus("idle");
       params.setIsBusy(false);
     }
   };
