@@ -6,93 +6,11 @@ const {
   buildHourlyNotificationDigest,
   createHourlyNotificationDigestJob,
 } = require( "./hourlyNotificationDigest" )
-
-const createSnapshot = (collectionName, id, data) => ( {
-  id,
-  exists: Boolean( data ),
-  data: () => data,
-  ref: {
-    path: `${collectionName}/${id}`,
-  },
-} )
-
-const createFakeDb = ({ digestStore = {}, eventDocs = [], profileStore = {}, writes = [] }) => ( {
-  batch() {
-    return {
-      set: (ref, data, options) => {
-        writes.push( { type: "batch-set", path: ref.path, data, options } )
-      },
-      commit: async () => undefined,
-    }
-  },
-  collection(collectionName) {
-    if( collectionName === "notificationEvents" ) {
-      const filters = []
-      return {
-        where(fieldName, op, value) {
-          filters.push( [ fieldName, op, value ] )
-          return this
-        },
-        orderBy(fieldName, direction = "asc") {
-          assert.equal( fieldName, "digestHourKey" )
-          assert.equal( direction, "asc" )
-          return this
-        },
-        limit(limitValue) {
-          assert.equal( limitValue, 500 )
-          return this
-        },
-        get: async () => {
-          assert.deepEqual( filters, [
-            [ "digestStatus", "==", "pending" ],
-            [ "digestHourKey", "<", "2026-09-28T19" ],
-          ] )
-          return { docs: eventDocs }
-        },
-      }
-    }
-    return {
-      doc(documentId) {
-        return {
-          id: documentId,
-          path: `${collectionName}/${documentId}`,
-          get: async () => {
-            if( collectionName === "userProfiles" ) {
-              return createSnapshot( collectionName, documentId, profileStore[documentId] )
-            }
-            if( collectionName === "notificationDigests" ) {
-              return createSnapshot( collectionName, documentId, digestStore[documentId] )
-            }
-            return createSnapshot( collectionName, documentId, null )
-          },
-          set: async (data, options) => {
-            writes.push( {
-              type: "doc-set",
-              id: documentId,
-              path: `${collectionName}/${documentId}`,
-              data,
-              options,
-            } )
-            digestStore[documentId] = {
-              ...( digestStore[documentId] || {} ),
-              ...data,
-            }
-          },
-        }
-      },
-    }
-  },
-} )
-
-const createAdmin = (db) => {
-  const admin = {
-    firestore: () => db,
-  }
-  admin.firestore.FieldValue = {
-    serverTimestamp: () => "server-timestamp",
-  }
-  return admin
-}
+const {
+  createAdmin,
+  createFakeDb,
+  createSnapshot,
+} = require( "./hourlyNotificationDigest.testUtils" )
 
 test( "buildHourlyNotificationDigest formats related comments for one user and hour", () => {
   const digest = buildHourlyNotificationDigest( [
@@ -131,6 +49,9 @@ test( "buildHourlyNotificationDigest formats related comments for one user and h
   )
   assert.match( digest.text, /Comments:\n- Reviewer One: Please add the missing evidence\./u )
   assert.match( digest.text, /- Reviewer Two: Second related comment\./u )
+  assert.match( digest.html, /<h1[^>]*>QT4 hourly activity summary<\/h1>/u )
+  assert.match( digest.html, /Missing evidence/u )
+  assert.match( digest.html, /href="https:\/\/qualiteam-plus\.web\.app\/documents\/doc-1\/versions\?threadId=thread-1&amp;focus=comments"/u )
   assert.equal( ( digest.text.match( /Open issue:/gu ) || [] ).length, 1 )
   assert.doesNotMatch( digest.text, /commentId=/u )
 } )
@@ -258,6 +179,82 @@ test( "createHourlyNotificationDigestJob preserves comment chronology in the gen
   const thirdCommentIndex = emails[0].text.indexOf( "- Third User: Third comment." )
   assert.ok( firstCommentIndex < secondCommentIndex )
   assert.ok( secondCommentIndex < thirdCommentIndex )
+  assert.match( emails[0].html, /First User:<\/strong> First comment\./u )
+} )
+
+test( "createHourlyNotificationDigestJob includes the complete open conversation", async () => {
+  const emails = []
+  const eventTimestamp = (iso) => ( {
+    toMillis: () => new Date( iso ).getTime(),
+  } )
+  const db = createFakeDb( {
+    eventDocs: [
+      createSnapshot( "notificationEvents", "event-current", {
+        userId: "user-1",
+        email: "user@example.com",
+        kind: "comment",
+        digestStatus: "pending",
+        digestHourKey: "2026-09-28T18",
+        eventAt: eventTimestamp( "2026-09-28T18:30:00.000Z" ),
+        projectLabel: "7 - Project Alpha",
+        documentLabel: "DOC-7 - Quality Plan",
+        versionLabel: "1.00",
+        threadId: "thread-1",
+        commentId: "comment-current",
+        issueTitle: "Missing evidence",
+        actorLabel: "Current User",
+        commentExcerpt: "Current comment.",
+      } ),
+    ],
+    commentDocs: [
+      createSnapshot( "comments", "comment-old", {
+        threadId: "thread-1",
+        body: "Earlier comment from the same open conversation.",
+        createdBy: "old-author",
+        createdAt: eventTimestamp( "2026-09-28T17:30:00.000Z" ),
+      } ),
+      createSnapshot( "comments", "comment-current", {
+        threadId: "thread-1",
+        body: "Current comment.",
+        createdBy: "current-author",
+        createdAt: eventTimestamp( "2026-09-28T18:30:00.000Z" ),
+      } ),
+    ],
+    profileStore: {
+      "user-1": {
+        email: "user@example.com",
+        notificationPreferences: {
+          hourlyActivityDigestEnabled: true,
+        },
+      },
+      "old-author": {
+        displayName: "Earlier Author",
+      },
+      "current-author": {
+        displayName: "Current Author",
+      },
+    },
+    threadStore: {
+      "thread-1": {
+        status: "open",
+        title: "Missing evidence",
+      },
+    },
+  } )
+  const job = createHourlyNotificationDigestJob( {
+    admin: createAdmin( db ),
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+    now: () => new Date( "2026-09-28T19:05:00.000Z" ),
+    sendTextEmail: async (message) => {
+      emails.push( message )
+    },
+  } )
+
+  await job()
+
+  assert.equal( emails.length, 1 )
+  assert.match( emails[0].text, /Earlier Author: Earlier comment from the same open conversation\./u )
+  assert.match( emails[0].text, /Current User: Current comment\./u )
 } )
 
 test( "createHourlyNotificationDigestJob sends one email per user and closed hour", async () => {

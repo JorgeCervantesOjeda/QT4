@@ -309,7 +309,7 @@ const createTransport = () => {
   } )
 }
 
-const sendTextEmail = async ({ to, cc = [], subject, text }) => {
+const sendTextEmail = async ({ to, cc = [], html, subject, text }) => {
   const from = getEnvMany(
     [ "SMTP_FROM", "MAIL_FROM_ADDRESS", "MAIL_SMTP_USER", "SMTP_USER", "QUALITEAM_GMAIL_USER" ],
   )
@@ -323,6 +323,7 @@ const sendTextEmail = async ({ to, cc = [], subject, text }) => {
     cc: cc.length > 0 ? cc : undefined,
     subject,
     text,
+    html,
   } )
 }
 

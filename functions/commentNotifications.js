@@ -1,5 +1,11 @@
 // functions/commentNotifications.js: Sends backend comment notifications and stages hourly digest events.
 const { resolveNotificationPreferences } = require( "./notificationPreferences" )
+const {
+  buildEmailDocument,
+  buildEmailLink,
+  escapeHtml,
+  renderHtmlText,
+} = require( "./emailFormatting" )
 
 const DEFAULT_APP_ORIGIN = "https://qualiteam-plus.web.app"
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -122,6 +128,25 @@ const buildEmailText = ({ actorLabel, comment, directUrl, documentData, thread, 
     "Open this comment directly:",
     directUrl,
   ].join( "\n" )
+}
+
+const buildEmailHtml = ({ actorLabel, comment, directUrl, documentData, thread, version }) => {
+  const documentLabel = buildDocumentLabel( documentData )
+  const issueTitle = thread?.title || "Untitled issue"
+  return buildEmailDocument( {
+    body: [
+      '<h1 style="margin:0 0 20px;color:#172033;font-size:26px;">A new comment was added.</h1>',
+      `<p style="margin:0 0 6px;"><strong>Document:</strong> ${escapeHtml( documentLabel )}</p>`,
+      `<p style="margin:0 0 6px;"><strong>Version:</strong> ${escapeHtml( versionNumberToString( version?.number ) )}</p>`,
+      `<p style="margin:0 0 6px;"><strong>Issue:</strong> ${escapeHtml( issueTitle )}</p>`,
+      `<p style="margin:0 0 20px;"><strong>Comment author:</strong> ${escapeHtml( actorLabel )}</p>`,
+      '<h2 style="margin:0 0 8px;font-size:18px;">Comment</h2>',
+      `<div style="margin:0 0 24px;padding:16px;background:#f4f7fb;border-left:4px solid #0b57d0;border-radius:4px;">${renderHtmlText( comment.body )}</div>`,
+      buildEmailLink( directUrl, "Open this comment directly" ),
+    ].join( "" ),
+    preheader: `${actorLabel} added a comment to ${issueTitle}.`,
+    title: "QT4 — New comment",
+  } )
 }
 
 const buildDigestHourKey = (date) => date.toISOString().slice( 0, 13 )
@@ -256,6 +281,14 @@ const createCommentNotificationHandler = ({
           thread,
           version,
         } ),
+        html: buildEmailHtml( {
+          actorLabel,
+          comment,
+          directUrl,
+          documentData,
+          thread,
+          version,
+        } ),
       } )
       logger.info( "commentNotification immediate email sent", {
         commentId,
@@ -282,6 +315,7 @@ const createCommentNotificationHandler = ({
 module.exports = {
   DEFAULT_APP_ORIGIN,
   buildDigestHourKey,
+  buildEmailHtml,
   createCommentNotificationHandler,
   stageNotificationEvents,
 }

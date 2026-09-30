@@ -3,6 +3,7 @@ const assert = require( "node:assert/strict" )
 const test = require( "node:test" )
 
 const {
+  buildEmailHtml,
   createCommentNotificationHandler,
 } = require( "./commentNotifications" )
 
@@ -287,6 +288,8 @@ test( "handler sends immediate email only to opted-in related participants", asy
   assert.doesNotMatch( sentEmails[0].text, /actor@example\.com/u )
   assert.match( sentEmails[0].text, /Please add the missing evidence/u )
   assert.match( sentEmails[0].text, /https:\/\/qt4\.example\.test\/documents\/doc-1\/versions/u )
+  assert.match( sentEmails[0].html, /<h1[^>]*>A new comment was added\.<\/h1>/u )
+  assert.match( sentEmails[0].html, /Please add the missing evidence/u )
 
   const eventWrites = writes.filter( (write) => write.path.startsWith( "notificationEvents/" ) )
   assert.deepEqual(
@@ -300,5 +303,20 @@ test( "handler sends immediate email only to opted-in related participants", asy
     ],
   )
   assert.equal( eventWrites[0].data.digestHourKey, "2026-09-28T18" )
+} )
+
+test( "buildEmailHtml escapes comment content and renders a direct link", () => {
+  const html = buildEmailHtml( {
+    actorLabel: "Reviewer <One>",
+    comment: { body: "Please use <strong>evidence</strong>." },
+    directUrl: "https://qt4.example.test/documents/doc-1/versions?threadId=thread-1",
+    documentData: { shortId: 12, title: "Evidence matrix" },
+    thread: { title: "Missing evidence" },
+    version: { number: 100 },
+  } )
+
+  assert.match( html, /Reviewer &lt;One&gt;/u )
+  assert.match( html, /Please use &lt;strong&gt;evidence&lt;\/strong&gt;\./u )
+  assert.match( html, /<a href="https:\/\/qt4\.example\.test\/documents\/doc-1\/versions\?threadId=thread-1"/u )
 } )
 

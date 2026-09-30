@@ -1,5 +1,11 @@
 // functions/hourlyNotificationDigest.js: Sends per-user hourly digests for related notification events.
-const { resolveNotificationPreferences } = require( "./notificationPreferences" )
+const {
+  loadOpenConversationDigestEvents,
+  loadUserProfile,
+} = require( "./openConversationDigest" )
+const {
+  buildHourlyNotificationDigestHtml,
+} = require( "./hourlyNotificationDigestHtml" )
 
 const DEFAULT_APP_ORIGIN = "https://qualiteam-plus.web.app"
 const HOURLY_NOTIFICATION_DIGEST_LIMIT = 500
@@ -10,6 +16,9 @@ const trimSingleLine = (value, maxLength = 200) =>
 
 const trimMultiline = (value, maxLength = 1000) =>
   String( value || "" ).replace( /\r\n/g, "\n" ).trim().slice( 0, maxLength )
+
+const normalizeFullCommentText = (value) =>
+  String( value || "" ).replace( /\r\n/g, "\n" ).trim()
 
 const readSnapshotData = (snapshot) => {
   if( !snapshot || snapshot.exists === false ) {
@@ -55,6 +64,7 @@ const normalizeTimestampMillis = (value) => {
 const normalizeEvent = (snapshot) => {
   const data = typeof snapshot.data === "function" ? snapshot.data() || {} : snapshot
   const eventTimestamp = data.eventAt ?? data.createdAt ?? data.eventAtMillis
+  const commentText = normalizeFullCommentText( data.commentText ?? data.commentExcerpt )
   return {
     id: trimSingleLine( snapshot.id || data.id, 128 ),
     ref: snapshot.ref,
@@ -73,6 +83,7 @@ const normalizeEvent = (snapshot) => {
     versionLabel: trimSingleLine( data.versionLabel, 80 ) || "Version",
     issueTitle: trimSingleLine( data.issueTitle, 240 ) || "Untitled issue",
     commentExcerpt: trimMultiline( data.commentExcerpt, 500 ),
+    commentText,
     directUrl: trimSingleLine( data.directUrl, 1000 ),
     eventAtMillis: normalizeTimestampMillis( eventTimestamp ),
   }
@@ -91,12 +102,6 @@ const compareDigestEvents = (left, right) => {
 }
 
 const sortDigestEvents = (events) => [ ...events ].sort( compareDigestEvents )
-
-const normalizeProfile = (userId, profile) => ( {
-  userId,
-  email: normalizeEmail( profile?.email ),
-  preferences: resolveNotificationPreferences( profile?.notificationPreferences ),
-} )
 
 const buildClosedHourCutoffKey = (date) => date.toISOString().slice( 0, 13 )
 
@@ -200,6 +205,7 @@ const groupEventsForDigestText = (events, appOrigin) => {
     }
     issueGroup.comments.push( {
       actorLabel: event.actorLabel,
+      commentText: event.commentText,
       commentExcerpt: event.commentExcerpt,
     } )
   }
@@ -224,7 +230,7 @@ const buildHourlyNotificationDigest = (events, hourKey, options = {}) => {
           issue.issueUrl ? `Open issue: ${issue.issueUrl}` : "",
           "Comments:",
           ...issue.comments.map( (comment) =>
-            `- ${comment.actorLabel}: ${comment.commentExcerpt || "(no comment text)"}`,
+            `- ${comment.actorLabel}: ${comment.commentText || comment.commentExcerpt || "(no comment text)"}`,
           ),
           "",
         ].filter( (line) => line !== "" ) ),
@@ -239,7 +245,8 @@ const buildHourlyNotificationDigest = (events, hourKey, options = {}) => {
     "",
     ...eventLines,
   ].join( "\n" ).trim()
-  return { subject, text }
+  const html = buildHourlyNotificationDigestHtml( { hourKey, normalizedEvents, projects } )
+  return { html, subject, text }
 }
 
 const writeEventStatuses = async ({ admin, db, digestId, events, status, extra = {} }) => {
@@ -254,12 +261,6 @@ const writeEventStatuses = async ({ admin, db, digestId, events, status, extra =
   }
   await batch.commit()
 }
-
-const loadUserProfile = async (db, userId) =>
-  normalizeProfile(
-    userId,
-    readSnapshotData( await db.collection( "userProfiles" ).doc( userId ).get() ),
-  )
 
 const createHourlyNotificationDigestJob = ({
   admin,
@@ -371,12 +372,48 @@ const createHourlyNotificationDigestJob = ({
       continue
     }
 
-    const digest = buildHourlyNotificationDigest( group.events, group.hourKey, { appOrigin } )
+    const conversationData = await loadOpenConversationDigestEvents( {
+      db,
+      events: group.events,
+      hourKey: group.hourKey,
+      logger,
+    } )
+    const skippedEventIds = new Set(
+      conversationData.skippedEventGroups.flatMap( (eventGroup) =>
+        eventGroup.events.map( (event) => event.id ) ),
+    )
+    const deliverableEvents = group.events.filter( (event) => !skippedEventIds.has( event.id ) )
+    if( conversationData.digestEvents.length === 0 ) {
+      await digestRef.set( {
+        digestStatus: "skipped",
+        digestSkipReason: "no_open_conversations",
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true } )
+      for( const eventGroup of conversationData.skippedEventGroups ) {
+        await writeEventStatuses( {
+          admin,
+          db,
+          digestId: group.digestId,
+          events: eventGroup.events,
+          status: "skipped",
+          extra: { digestSkipReason: eventGroup.reason },
+        } )
+      }
+      logger.info( "hourlyNotificationDigest skipped", {
+        reason: "no_open_conversations",
+        digestId: group.digestId,
+        eventCount: group.events.length,
+      } )
+      continue
+    }
+
+    const digest = buildHourlyNotificationDigest( conversationData.digestEvents, group.hourKey, { appOrigin } )
     try {
       await sendTextEmail( {
         to: [ profile.email ],
         subject: digest.subject,
         text: digest.text,
+        html: digest.html,
       } )
       await digestRef.set( {
         digestStatus: "sent",
@@ -387,12 +424,23 @@ const createHourlyNotificationDigestJob = ({
         admin,
         db,
         digestId: group.digestId,
-        events: group.events,
+        events: deliverableEvents,
         status: "sent",
       } )
+      for( const eventGroup of conversationData.skippedEventGroups ) {
+        await writeEventStatuses( {
+          admin,
+          db,
+          digestId: group.digestId,
+          events: eventGroup.events,
+          status: "skipped",
+          extra: { digestSkipReason: eventGroup.reason },
+        } )
+      }
       logger.info( "hourlyNotificationDigest sent", {
         digestId: group.digestId,
         eventCount: group.events.length,
+        conversationCommentCount: conversationData.digestEvents.length,
       } )
     } catch( err ) {
       const cause = trimSingleLine( err instanceof Error ? err.message : "Unexpected email error", 500 )
@@ -405,7 +453,7 @@ const createHourlyNotificationDigestJob = ({
         admin,
         db,
         digestId: group.digestId,
-        events: group.events,
+        events: deliverableEvents,
         status: "failed",
         extra: { lastDigestError: cause },
       } )
