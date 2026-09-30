@@ -34,10 +34,21 @@ vi.mock( '../../lib/audit', () => ( {
 } ) )
 
 const aiAssistMocks = vi.hoisted( () => ( {
+  AiAssistRequestError: class AiAssistRequestError extends Error {
+    code: string
+    httpStatus: number
+
+    constructor( code: string, httpStatus: number, message: string ) {
+      super( message )
+      this.code = code
+      this.httpStatus = httpStatus
+    }
+  },
   requestAiAssist: vi.fn(),
 } ) )
 
 vi.mock( '../../lib/aiAssist', () => ( {
+  AiAssistRequestError: aiAssistMocks.AiAssistRequestError,
   requestAiAssist: aiAssistMocks.requestAiAssist,
 } ) )
 
@@ -242,7 +253,7 @@ describe( 'createReviewIssueActions', () => {
     expect( firestoreMocks.deleteDoc ).not.toHaveBeenCalled()
   } )
 
-  it( 'creates an issue before the AI summary resolves and updates its title in the background', async () => {
+  it( 'uses an AI title even when it is very similar to the initial comment', async () => {
     const createdWrites: Array<{ ref: unknown; data: Record<string, unknown> }> = []
     let resolveAiAssist: ((value: { ok: true; mode: 'draft_issue_title'; result: string }) => void) | undefined
     aiAssistMocks.requestAiAssist.mockImplementationOnce( () => new Promise( (resolve) => {
@@ -321,7 +332,7 @@ describe( 'createReviewIssueActions', () => {
       resolveAiAssist?.( {
         ok: true,
         mode: 'draft_issue_title',
-        result: 'Missing evidence source',
+        result: 'Please add the evidence source used for this value',
       } )
       await actionPromise
     }
@@ -350,17 +361,100 @@ describe( 'createReviewIssueActions', () => {
     resolveAiAssist?.( {
       ok: true,
       mode: 'draft_issue_title',
-      result: 'Missing evidence source',
+        result: 'Please add the evidence source used for this value',
     } )
     await vi.waitFor( () => {
       expect( firestoreMocks.updateDoc ).toHaveBeenCalledWith(
         expect.objectContaining( { id: expect.any( String ) } ),
         expect.objectContaining( {
-          title: 'Missing evidence source',
+          title: 'Please add the evidence source used for this value',
           updatedBy: 'author-1',
         } ),
       )
     } )
+  } )
+
+  it( 'reports a Gemini title failure and opens the existing reportable error flow', async () => {
+    const failure = new aiAssistMocks.AiAssistRequestError(
+      'provider_error',
+      502,
+      'AI provider request failed.',
+    )
+    aiAssistMocks.requestAiAssist.mockRejectedValueOnce( failure )
+    firestoreMocks.runTransaction.mockImplementationOnce( async ( _db, callback ) => {
+      const transaction = {
+        get: vi.fn().mockResolvedValueOnce( {
+          exists: () => true,
+          data: () => ( {
+            stats: {
+              numThreads: 1,
+              numOpenThreads: 1,
+              numComments: 2,
+              numThreadsWithTwoPlusComments: 1,
+            },
+          } ),
+        } ),
+        set: vi.fn(),
+        update: vi.fn(),
+      }
+      await callback( transaction )
+    } )
+    const reportVersionsError = vi.fn()
+    const setError = vi.fn()
+    const setSuccessMessage = vi.fn()
+    const actions = createReviewIssueActions( {
+      canAddComment: true,
+      canCreateThread: true,
+      canParticipateReview: true,
+      commentReactionsByCommentId: {},
+      commentsByThread: { [selectedThread.id]: comments },
+      docId: 'doc-1',
+      documentData,
+      formatUserLabel: ( memberUserId ) => memberUserId,
+      newCommentBody: '',
+      newThreadTitle: 'Please clarify the evidence source.',
+      projectId: 'project-1',
+      reloadAndRestoreSelection: vi.fn(),
+      reportVersionsError,
+      resolveUserEmail: () => null,
+      selectedThread,
+      selectedThreadComments: comments,
+      selectedVersion,
+      selectedVersionInActiveReview: true,
+      setCommentCreationStatus: vi.fn(),
+      setCommentReactionsByCommentId: vi.fn(),
+      setEmailNotifyMessage: vi.fn(),
+      setEmailNotifyStatus: vi.fn(),
+      setError,
+      setIsBusy: vi.fn(),
+      setNewCommentBody: vi.fn(),
+      setNewThreadTitle: vi.fn(),
+      setPendingCommentReactionIds: vi.fn(),
+      setPendingThreadStatusChange: vi.fn(),
+      setSelectedThreadId: vi.fn(),
+      setThreadCreationStatus: vi.fn(),
+      setSuccessEmailRecipients: vi.fn(),
+      setSuccessMessage,
+      setWarningMessage: vi.fn(),
+      threads: [selectedThread],
+      userEmail: 'author@example.com',
+      userId: 'author-1',
+    } )
+
+    await actions.handleCreateThread()
+
+    await vi.waitFor( () => {
+      expect( reportVersionsError ).toHaveBeenCalledWith(
+        failure,
+        'versions.generateIssueTitle',
+        'network',
+        { versionId: 'version-1', threadId: expect.any( String ) },
+      )
+    } )
+    expect( setSuccessMessage ).toHaveBeenCalledWith( null )
+    expect( setError ).toHaveBeenLastCalledWith(
+      expect.stringContaining( 'Gemini could not generate its automatic title (HTTP 502)' ),
+    )
   } )
 
   it( 'keeps the issue status confirmation pending until the status change finishes', async () => {

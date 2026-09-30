@@ -58,6 +58,18 @@ describe( 'ErrorChecklistModal', () => {
     expect( screen.getByRole( 'button', { name: 'Report to admin' } ) ).toBeTruthy()
   } )
 
+  it( 'keeps the admin report button for an automatic Gemini title failure', () => {
+    render(
+      <ErrorChecklistModal
+        error="The issue was created, but Gemini could not generate its automatic title (HTTP 502). The temporary title remains. Gemini error: provider_error. You can report this error to the administrator."
+        checklist={[]}
+        onClose={() => undefined}
+      />,
+    )
+
+    expect( screen.getByRole( 'button', { name: 'Report to admin' } ) ).toBeTruthy()
+  } )
+
   it( 'keeps the admin report button for create issue failures after validation passes', () => {
     render(
       <ErrorChecklistModal

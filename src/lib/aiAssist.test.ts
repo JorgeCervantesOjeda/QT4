@@ -22,7 +22,7 @@ vi.mock( './testFaults', () => ( {
   consumeInjectedTestFault: consumeInjectedTestFaultMock,
 } ) )
 
-import { requestAiAssist } from './aiAssist'
+import { AiAssistRequestError, requestAiAssist } from './aiAssist'
 
 describe( 'lib/aiAssist', () => {
   afterEach( () => {
@@ -150,6 +150,38 @@ describe( 'lib/aiAssist', () => {
     ).rejects.toThrow( 'Injected AI failure.' )
 
     expect( fetchMock ).not.toHaveBeenCalled()
+  } )
+
+  it( 'preserves the safe Gemini failure code for monitoring and user reporting', async () => {
+    vi.stubGlobal( 'fetch', fetchMock )
+    authMock.currentUser = {
+      getIdToken: vi.fn().mockResolvedValue( 'token-123' ),
+    }
+    fetchMock.mockResolvedValueOnce( {
+      ok: false,
+      status: 502,
+      statusText: 'Bad Gateway',
+      headers: {
+        get: vi.fn().mockReturnValue( 'application/json' ),
+      },
+      json: vi.fn().mockResolvedValue( {
+        error: 'AI provider request failed.',
+        code: 'provider_error',
+      } ),
+      text: vi.fn().mockResolvedValue( '' ),
+    } )
+
+    const request = requestAiAssist(
+      { mode: 'draft_issue_title', text: 'Please clarify the source.' },
+      { functionUrl: 'https://example.test/ai-assist' },
+    )
+
+    await expect( request ).rejects.toBeInstanceOf( AiAssistRequestError )
+    await expect( request ).rejects.toMatchObject( {
+      code: 'provider_error',
+      httpStatus: 502,
+      message: expect.stringContaining( 'provider_error' ),
+    } )
   } )
 
   it( 'requires an active user session', async () => {

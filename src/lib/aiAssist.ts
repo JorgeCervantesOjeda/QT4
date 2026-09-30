@@ -21,23 +21,44 @@ type AiAssistOptions = {
   functionUrl?: string
 }
 
+type AiAssistErrorResponse = {
+  error?: unknown
+  code?: unknown
+}
+
+export class AiAssistRequestError extends Error {
+  readonly code: string
+  readonly httpStatus: number
+
+  constructor( code: string, httpStatus: number, message: string ) {
+    super( `AI assist failed (${httpStatus}, ${code}): ${message}` )
+    this.name = 'AiAssistRequestError'
+    this.code = code
+    this.httpStatus = httpStatus
+  }
+}
+
 const configuredFunctionUrl = (
   import.meta.env.VITE_FIREBASE_AI_ASSIST_FUNCTION_URL ?? ''
 ).trim()
 
-const readErrorText = async (resp: Response): Promise<string> => {
+const readErrorResponse = async (resp: Response): Promise<{ code: string; message: string }> => {
   try {
     const contentType = resp.headers.get( 'Content-Type' ) ?? ''
     if( contentType.includes( 'application/json' ) ) {
-      const data = await resp.json() as { error?: unknown }
-      if( typeof data.error === 'string' && data.error.trim() ) {
-        return data.error.trim()
-      }
+      const data = await resp.json() as AiAssistErrorResponse
+      const message = typeof data.error === 'string' && data.error.trim()
+        ? data.error.trim()
+        : resp.statusText
+      const code = typeof data.code === 'string' && data.code.trim()
+        ? data.code.trim()
+        : 'http_error'
+      return { code, message }
     }
     const text = await resp.text()
-    return text || resp.statusText
+    return { code: 'http_error', message: text || resp.statusText }
   } catch {
-    return resp.statusText
+    return { code: 'http_error', message: resp.statusText }
   }
 }
 
@@ -79,12 +100,16 @@ export const requestAiAssist = async (
     body: JSON.stringify( request ),
   } )
   if( !resp.ok ) {
-    const text = await readErrorText( resp )
-    throw new Error( `AI assist failed (${resp.status}): ${text}` )
+    const errorResponse = await readErrorResponse( resp )
+    throw new AiAssistRequestError( errorResponse.code, resp.status, errorResponse.message )
   }
   const data = await resp.json() as Partial<AiAssistResponse>
   if( data.ok !== true || typeof data.result !== 'string' || !data.result.trim() ) {
-    throw new Error( 'AI assist returned an empty response.' )
+    throw new AiAssistRequestError(
+      'provider_empty_response',
+      resp.status,
+      'AI assist returned an empty response.',
+    )
   }
   return {
     ok: true,

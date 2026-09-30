@@ -11,7 +11,7 @@ import {
 import type { Dispatch, SetStateAction } from "react";
 import { flushSync } from "react-dom";
 import { logAudit } from "../../lib/audit";
-import { requestAiAssist } from "../../lib/aiAssist";
+import { AiAssistRequestError, requestAiAssist } from "../../lib/aiAssist";
 import { db } from "../../lib/firebase";
 import { canAddCommentInWindow } from "../../lib/reviewWindow";
 import { measureSlowUiAction } from "../../lib/slowUiAction";
@@ -204,8 +204,10 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
       void updateThreadTitleInBackground({
         commentBody: initialCommentBody,
         docId,
-        fallbackTitle: threadTitle,
         projectId,
+        reportVersionsError: params.reportVersionsError,
+        setError: params.setError,
+        setSuccessMessage: params.setSuccessMessage,
         threadRef,
         userId,
         versionId: selectedVersion.id,
@@ -641,20 +643,25 @@ const restoreCommentReactionState = (
 const updateThreadTitleInBackground = async ({
   commentBody,
   docId,
-  fallbackTitle,
   projectId,
+  reportVersionsError,
+  setError,
+  setSuccessMessage,
   threadRef,
   userId,
   versionId,
 }: {
   commentBody: string;
   docId: string;
-  fallbackTitle: string;
   projectId: string;
+  reportVersionsError: ReportVersionsError;
+  setError: (value: string | null) => void;
+  setSuccessMessage: (value: string | null) => void;
   threadRef: ReturnType<typeof doc>;
   userId: string;
   versionId: string;
 }) => {
+  let aiTitleWasGenerated = false;
   try {
     const response = await requestAiAssist({
       mode: "draft_issue_title",
@@ -662,32 +669,42 @@ const updateThreadTitleInBackground = async ({
     });
     const threadTitle = normalizeIssueTitleInput(response.result).trim();
     if (!threadTitle) {
-      console.warn("AI issue title background update skipped:", {
-        cause: "AI returned an empty title.",
-        fallback: fallbackTitle,
-        impact: "Issue keeps its local summary title.",
-        projectId,
-        docId,
-        versionId,
-        threadId: threadRef.id,
-      });
-      return;
+      throw new AiAssistRequestError(
+        "provider_empty_response",
+        200,
+        "Gemini returned a title that could not be used.",
+      );
     }
+    aiTitleWasGenerated = true;
     await updateDoc(threadRef, {
       title: threadTitle,
       updatedAt: serverTimestamp(),
       updatedBy: userId,
     });
   } catch (err) {
-    console.warn("AI issue title background update failed:", {
+    const source = aiTitleWasGenerated ? "firestore" : "network";
+    const code = err instanceof AiAssistRequestError ? err.code : "unexpected";
+    const httpStatus =
+      err instanceof AiAssistRequestError ? ` (HTTP ${err.httpStatus})` : "";
+    console.warn("AI issue title fallback retained:", {
       cause: err instanceof Error ? err.message : "Unexpected AI title error",
-      fallback: fallbackTitle,
+      code,
       impact: "Issue keeps its local summary title.",
       projectId,
       docId,
       versionId,
       threadId: threadRef.id,
     });
+    reportVersionsError(err, "versions.generateIssueTitle", source, {
+      versionId,
+      threadId: threadRef.id,
+    });
+    setSuccessMessage(null);
+    setError(
+      aiTitleWasGenerated
+        ? "The issue was created, but its automatic title could not be saved. The temporary title remains. You can report this error to the administrator."
+        : `The issue was created, but Gemini could not generate its automatic title${httpStatus}. The temporary title remains. Gemini error: ${code}. You can report this error to the administrator.`,
+    );
   }
 };
 
