@@ -7,6 +7,7 @@ const firestoreMocks = vi.hoisted( () => ( {
   batchCommit: vi.fn<() => Promise<void>>(),
   batchUpdate: vi.fn(),
   doc: vi.fn( ( ...segments: unknown[] ) => ( { segments } ) ),
+  runTransaction: vi.fn<() => Promise<void>>(),
   serverTimestamp: vi.fn( () => 'server-timestamp' ),
 } ) )
 
@@ -18,10 +19,14 @@ const notificationMocks = vi.hoisted( () => ( {
   notifyEmailUsingActiveProvider: vi.fn<() => Promise<void>>(),
 } ) )
 
+const slowUiActionMocks = vi.hoisted( () => ( {
+  measureSlowUiAction: vi.fn( async ( _metadata: unknown, callback: () => Promise<unknown> ) => callback() ),
+} ) )
+
 vi.mock( 'firebase/firestore', () => ( {
   collection: vi.fn( ( ...segments: unknown[] ) => ( { segments } ) ),
   doc: firestoreMocks.doc,
-  runTransaction: vi.fn(),
+  runTransaction: firestoreMocks.runTransaction,
   serverTimestamp: firestoreMocks.serverTimestamp,
   Timestamp: {
     fromDate: (date: Date) => ( { iso: date.toISOString() } ),
@@ -42,6 +47,10 @@ vi.mock( '../../lib/firebase', () => ( {
 
 vi.mock( '../../lib/notifications', () => ( {
   notifyEmailUsingActiveProvider: notificationMocks.notifyEmailUsingActiveProvider,
+} ) )
+
+vi.mock( '../../lib/slowUiAction', () => ( {
+  measureSlowUiAction: slowUiActionMocks.measureSlowUiAction,
 } ) )
 
 import { createVersionCreateAndReviewActions } from './versionCreateAndReviewActions'
@@ -80,6 +89,7 @@ describe( 'createVersionCreateAndReviewActions', () => {
     vi.useFakeTimers()
     vi.setSystemTime( new Date( '2026-04-03T09:00:00.000Z' ) )
     firestoreMocks.batchCommit.mockResolvedValue( undefined )
+    firestoreMocks.runTransaction.mockResolvedValue( undefined )
     auditMocks.logAudit.mockResolvedValue( undefined )
     notificationMocks.notifyEmailUsingActiveProvider.mockResolvedValue( undefined )
   } )
@@ -129,6 +139,39 @@ describe( 'createVersionCreateAndReviewActions', () => {
         reviewDurationDays: 3,
         reviewEndAt: { iso: '2026-04-06T09:00:00.000Z' },
       } ),
+    )
+  } )
+
+  it( 'keeps version creation telemetry modal-protected', async () => {
+    const actions = createVersionCreateAndReviewActions( {
+      canCreateVersion: true,
+      canStartReview: false,
+      docId: 'doc-1',
+      documentData: baseDocument,
+      errorReportGate: { isBlocking: false, isLoading: false },
+      formatUserLabel: (memberUserId) => memberUserId,
+      latestVersion: baseVersion,
+      loadDocumentAndVersions: vi.fn(),
+      projectId: 'project-1',
+      reviewDurationDays: 3,
+      reportVersionsError: vi.fn(),
+      resolveUserEmail: () => null,
+      setEmailNotifyMessage: vi.fn(),
+      setEmailNotifyStatus: vi.fn(),
+      setError: vi.fn(),
+      setIsBusy: vi.fn(),
+      setSuccessEmailRecipients: vi.fn(),
+      setSuccessMessage: vi.fn(),
+      setWarningMessage: vi.fn(),
+      userId: 'author-1',
+      versions: [baseVersion],
+    } )
+
+    await actions.handleCreateVersion()
+
+    expect( slowUiActionMocks.measureSlowUiAction ).toHaveBeenCalledWith(
+      expect.objectContaining( { action: 'versions.createVersion', hasModal: true } ),
+      expect.any( Function ),
     )
   } )
 } )

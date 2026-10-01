@@ -108,8 +108,10 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
     const initialCommentBody = params.newThreadTitle.trim();
     const lockedVersionId = selectedVersion.id;
     params.setError(null);
-    params.setThreadCreationStatus("creating");
-    params.setIsBusy(true);
+    flushSync( () => {
+      params.setThreadCreationStatus("creating");
+      params.setIsBusy(true);
+    } );
     try {
       const threadTitle = buildFallbackIssueTitle(initialCommentBody);
       const threadRef = doc(collection(db, "threads"));
@@ -123,6 +125,7 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
           projectId,
           docId,
           versionId: selectedVersion.id,
+          hasModal: true,
         },
         () => runTransaction(db, async (transaction) => {
           const versionSnap = await transaction.get(versionRef);
@@ -505,6 +508,7 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
           docId: params.docId,
           versionId: params.selectedVersion.id,
           threadId: thread.id,
+          hasModal: true,
         },
         () => runTransaction(db, async (transaction) => {
           const [versionSnap, threadSnap] = await Promise.all([

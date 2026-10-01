@@ -236,6 +236,7 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
           projectId,
           docId,
           versionId: latestVersion.id,
+          hasModal: true,
         },
         () =>
           requestVersionDecision({
@@ -323,6 +324,7 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
           projectId,
           docId,
           versionId: latestVersion.id,
+          hasModal: true,
         },
         () =>
           requestVersionDecision({
@@ -383,6 +385,7 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
           projectId: propagationFailurePrompt.projectId,
           docId: propagationFailurePrompt.docId,
           versionId: propagationFailurePrompt.versionId,
+          hasModal: true,
         },
         () => requestRetryPropagatedErrorReports( {
           projectId: propagationFailurePrompt.projectId,

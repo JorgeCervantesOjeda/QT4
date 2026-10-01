@@ -27,6 +27,10 @@ const propagatedErrorReportsMocks = vi.hoisted( () => ( {
   requestRetryPropagatedErrorReports: vi.fn<() => Promise<unknown>>(),
 } ) )
 
+const slowUiActionMocks = vi.hoisted( () => ( {
+  measureSlowUiAction: vi.fn( async ( _metadata: unknown, callback: () => Promise<unknown> ) => callback() ),
+} ) )
+
 vi.mock( 'firebase/firestore', () => ( {
   collection: vi.fn( ( ...segments: unknown[] ) => ( { segments } ) ),
   doc: firestoreMocks.doc,
@@ -51,7 +55,7 @@ vi.mock( '../../lib/firebase', () => ( {
 } ) )
 
 vi.mock( '../../lib/slowUiAction', () => ( {
-  measureSlowUiAction: async ( _metadata: unknown, callback: () => Promise<void> ) => callback(),
+  measureSlowUiAction: slowUiActionMocks.measureSlowUiAction,
 } ) )
 
 vi.mock( '../../lib/versionDecisions', () => ( {
@@ -196,6 +200,10 @@ describe( 'createVersionDecisionActions', () => {
       docId: 'change-request-1',
       versionId: 'change-request-version-1',
     } )
+    expect( slowUiActionMocks.measureSlowUiAction ).toHaveBeenCalledWith(
+      expect.objectContaining( { action: 'versions.acceptLatestVersion', hasModal: true } ),
+      expect.any( Function ),
+    )
   } )
 
   it( 'asks the user to report or retry when accepting an error report fails propagation', async () => {

@@ -29,6 +29,7 @@ type ErrorReportContext = {
 
 type VersionsModalsProps = {
   isBusy: boolean;
+  isLoadingVersions?: boolean;
   isDocumentTitleModalOpen: boolean;
   documentTitleInputRef: RefObject<HTMLInputElement | null>;
   documentTitleDraft: string;
@@ -77,6 +78,7 @@ type VersionsModalsProps = {
 function VersionsModals(props: VersionsModalsProps) {
   const {
     isBusy,
+    isLoadingVersions = false,
     isDocumentTitleModalOpen,
     documentTitleInputRef,
     documentTitleDraft,
@@ -165,6 +167,33 @@ function VersionsModals(props: VersionsModalsProps) {
     pendingThreadStatusChange?.status === "open"
       ? "Confirm closing this issue."
       : "Confirm reopening this issue.";
+  const pendingVersionActionProgressTitle =
+    pendingVersionAction === "createVersion"
+      ? "Creating new version"
+      : pendingVersionAction === "startReview"
+        ? "Starting review"
+        : "Replacing file";
+  const pendingVersionActionProgressMessage =
+    pendingVersionAction === "createVersion"
+      ? "Creating the new version..."
+      : pendingVersionAction === "startReview"
+        ? "Starting review..."
+        : "Replacing the current file...";
+  const hasDedicatedBusyModal = Boolean(
+    isDocumentTitleModalOpen ||
+      isErrorReportModalOpen ||
+      versionDecisionModal ||
+      propagationFailurePrompt ||
+      pendingVersionAction ||
+      pendingThreadStatusChange ||
+      threadCreationStatus === "creating" ||
+      commentCreationStatus === "adding" ||
+      uploadStatus === "uploading" ||
+      downloadStatus === "downloading" ||
+      emailNotifyStatus === "sending",
+  );
+  const showGenericBusyModal =
+    isBusy && !isLoadingVersions && !hasDedicatedBusyModal;
   const reportPropagationFailure = async () => {
     if( !propagationFailurePrompt ) {
       return;
@@ -364,38 +393,36 @@ function VersionsModals(props: VersionsModalsProps) {
         </ModalDialog>
       ) : null}
       {pendingVersionAction ? (
-        <ModalDialog onClose={onClosePendingVersionAction}>
+        <ModalDialog onClose={isBusy ? undefined : onClosePendingVersionAction}>
           <h3>
-            {pendingVersionAction === "createVersion"
-              ? "Create new version"
-              : pendingVersionAction === "startReview"
-                ? "Start review"
-                : "Replace file"}
+            {isBusy
+              ? pendingVersionActionProgressTitle
+              : pendingVersionAction === "createVersion"
+                ? "Create new version"
+                : pendingVersionAction === "startReview"
+                  ? "Start review"
+                  : "Replace file"}
           </h3>
-          <GiphyInline reason="thinking" mode="inline" />
+          <GiphyInline reason={isBusy ? "loading" : "thinking"} mode="inline" />
           <p className="muted">
-            {pendingVersionAction === "createVersion"
-              ? "Confirm creating a new version."
-              : pendingVersionAction === "startReview"
-                ? `Confirm starting review for the latest version. Duration: ${reviewDurationDays} ${reviewDurationDays === 1 ? "day" : "days"}.`
-                : "Confirm replacing the current file."}
+            {isBusy
+              ? pendingVersionActionProgressMessage
+              : pendingVersionAction === "createVersion"
+                ? "Confirm creating a new version."
+                : pendingVersionAction === "startReview"
+                  ? `Confirm starting review for the latest version. Duration: ${reviewDurationDays} ${reviewDurationDays === 1 ? "day" : "days"}.`
+                  : "Confirm replacing the current file."}
           </p>
-          <div className="actions">
-            <button
-              type="button"
-              onClick={onClosePendingVersionAction}
-              disabled={isBusy}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={onConfirmPendingVersionAction}
-              disabled={isBusy}
-            >
-              Confirm
-            </button>
-          </div>
+          {!isBusy ? (
+            <div className="actions">
+              <button type="button" onClick={onClosePendingVersionAction}>
+                Cancel
+              </button>
+              <button type="button" onClick={onConfirmPendingVersionAction}>
+                Confirm
+              </button>
+            </div>
+          ) : null}
         </ModalDialog>
       ) : null}
       {pendingThreadStatusChange ? (
@@ -427,6 +454,12 @@ function VersionsModals(props: VersionsModalsProps) {
         <ProgressModal
           title="Adding comment"
           message="Adding the comment..."
+        />
+      ) : null}
+      {showGenericBusyModal ? (
+        <ProgressModal
+          title="Saving changes"
+          message="Saving your changes..."
         />
       ) : null}
       {uploadStatus === "uploading" ? (

@@ -1,6 +1,7 @@
 // Firestore actions for assigning authors and reviewers on in-creation versions.
 import { useCallback } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
+import { flushSync } from 'react-dom'
 import { doc, serverTimestamp, updateDoc, writeBatch } from 'firebase/firestore'
 import { logAudit } from '../../lib/audit'
 import { db } from '../../lib/firebase'
@@ -73,7 +74,7 @@ function useAssignmentActions( {
       ? selectedReviewerIds.filter( ( currentId ) => currentId !== reviewerId )
       : [ ...selectedReviewerIds, reviewerId ]
     setSelectedReviewerIds( nextReviewerIds )
-    setIsBusy( true )
+    flushSync( () => setIsBusy( true ) )
     setError( null )
     try {
       await measureSlowUiAction(
@@ -84,6 +85,7 @@ function useAssignmentActions( {
           projectId,
           docId,
           versionId: selectedVersion.id,
+          hasModal: true,
         },
         () => updateDoc( doc( db, 'versions', selectedVersion.id ), {
           reviewerIds: nextReviewerIds,
@@ -149,7 +151,7 @@ function useAssignmentActions( {
     const nextReviewerIds = checked ? allowedReviewerIds : []
     const previousReviewerIds = selectedReviewerIds
     setSelectedReviewerIds( nextReviewerIds )
-    setIsBusy( true )
+    flushSync( () => setIsBusy( true ) )
     setError( null )
     try {
       await measureSlowUiAction(
@@ -160,6 +162,7 @@ function useAssignmentActions( {
           projectId,
           docId,
           versionId: selectedVersion.id,
+          hasModal: true,
         },
         () => updateDoc( doc( db, 'versions', selectedVersion.id ), {
           reviewerIds: nextReviewerIds,
@@ -241,7 +244,7 @@ function useAssignmentActions( {
     const sanitizedReviewerIds = selectedReviewerIds.filter( ( reviewerId ) => reviewerId !== authorId )
     setSelectedAuthorId( authorId )
     setSelectedReviewerIds( sanitizedReviewerIds )
-    setIsBusy( true )
+    flushSync( () => setIsBusy( true ) )
     try {
       const batch = writeBatch( db )
       batch.update( doc( db, 'versions', selectedVersion.id ), {
@@ -258,6 +261,7 @@ function useAssignmentActions( {
           projectId,
           docId,
           versionId: selectedVersion.id,
+          hasModal: true,
         },
         () => batch.commit(),
       )

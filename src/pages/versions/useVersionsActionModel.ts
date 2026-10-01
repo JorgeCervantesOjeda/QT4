@@ -179,25 +179,32 @@ const useVersionsActionModel = ({
   const handleConfirmPendingVersionAction = async () => {
     const action = pendingVersionAction;
     const file = pendingUploadFile;
-    setPendingVersionAction(null);
+    if (!action) {
+      return;
+    }
     setPendingUploadFile(null);
-    if (action === "createVersion") {
-      await handleCreateVersion();
-      return;
-    }
-    if (action === "startReview") {
-      await handleStartReview();
-      return;
-    }
-    if (action === "replaceFile") {
-      if (file) {
-        await handleUploadFile(file);
-      } else {
-        setError("Select a file before replacing the current one.");
+    try {
+      if (action === "createVersion") {
+        await handleCreateVersion();
+        return;
       }
-      if (uploadInputRef.current) {
-        uploadInputRef.current.value = "";
+      if (action === "startReview") {
+        await handleStartReview();
+        return;
       }
+      if (action === "replaceFile") {
+        setPendingVersionAction(null);
+        if (file) {
+          await handleUploadFile(file);
+        } else {
+          setError("Select a file before replacing the current one.");
+        }
+        if (uploadInputRef.current) {
+          uploadInputRef.current.value = "";
+        }
+      }
+    } finally {
+      setPendingVersionAction(null);
     }
   };
 

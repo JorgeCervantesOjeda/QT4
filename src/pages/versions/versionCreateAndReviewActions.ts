@@ -126,6 +126,7 @@ const createVersionCreateAndReviewActions = (
           projectId,
           docId,
           versionId: latestVersion?.id ?? "",
+          hasModal: true,
         },
         () => runTransaction(db, async (transaction) => {
           const counterSnap = await transaction.get(counterRef);
@@ -281,6 +282,7 @@ const createVersionCreateAndReviewActions = (
           projectId,
           docId,
           versionId: latestVersion.id,
+          hasModal: true,
         },
         () => batch.commit(),
       );

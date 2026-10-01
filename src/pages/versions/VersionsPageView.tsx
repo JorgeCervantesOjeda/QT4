@@ -343,6 +343,7 @@ const SelectedVersionPanels = (props: VersionsPageViewProps) => (
 const VersionsPageDialogs = (props: VersionsPageViewProps) => (
   <VersionsModals
     isBusy={props.isBusy}
+    isLoadingVersions={props.isLoadingVersions}
     threadCreationStatus={props.threadCreationStatus}
     commentCreationStatus={props.commentCreationStatus}
     isDocumentTitleModalOpen={props.isDocumentTitleModalOpen}

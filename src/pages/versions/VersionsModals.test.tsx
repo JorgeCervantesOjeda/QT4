@@ -34,6 +34,8 @@ const renderVersionDecisionModal = (
   isBusy: boolean,
   threadCreationStatus: 'idle' | 'creating' = 'idle',
   commentCreationStatus: 'idle' | 'adding' = 'idle',
+  pendingVersionAction: 'createVersion' | 'startReview' | 'replaceFile' | null = null,
+  versionDecisionModal: 'accept' | 'reject' | null = 'accept',
 ) => render(
   <VersionsModals
     isBusy={isBusy}
@@ -50,14 +52,14 @@ const renderVersionDecisionModal = (
     setErrorReportTitle={() => undefined}
     onCloseErrorReportModal={() => undefined}
     onCreateErrorReport={() => undefined}
-    versionDecisionModal="accept"
+    versionDecisionModal={versionDecisionModal}
     onCloseVersionDecisionModal={() => undefined}
     onConfirmVersionDecision={() => undefined}
     propagationFailurePrompt={null}
     onClosePropagationFailurePrompt={() => undefined}
     onReportPropagationFailure={() => undefined}
     onRetryPropagatedErrorReports={() => undefined}
-    pendingVersionAction={null}
+    pendingVersionAction={pendingVersionAction}
     onClosePendingVersionAction={() => undefined}
     onConfirmPendingVersionAction={() => undefined}
     reviewDurationDays={1}
@@ -179,6 +181,22 @@ describe( 'versions/VersionsModals', () => {
     expect( screen.getByRole( 'heading', { name: 'Creating issue' } ) ).toBeTruthy()
     expect( screen.getAllByTestId( 'giphy-reason' ).some( (element) => element.textContent === 'loading' ) ).toBe( true )
     expect( screen.getByText( 'Creating the issue...' ) ).toBeTruthy()
+  } )
+
+  it( 'shows version action progress while the confirmation operation is busy', () => {
+    renderVersionDecisionModal( true, 'idle', 'idle', 'createVersion' )
+
+    expect( screen.getByRole( 'heading', { name: 'Creating new version' } ) ).toBeTruthy()
+    expect( screen.getAllByTestId( 'giphy-reason' ).some( (element) => element.textContent === 'loading' ) ).toBe( true )
+    expect( screen.getByText( 'Creating the new version...' ) ).toBeTruthy()
+    expect( screen.queryByRole( 'button', { name: 'Confirm' } ) ).toBeNull()
+  } )
+
+  it( 'shows generic progress for a busy action without a dedicated modal', () => {
+    renderVersionDecisionModal( true, 'idle', 'idle', null, null )
+
+    expect( screen.getByRole( 'heading', { name: 'Saving changes' } ) ).toBeTruthy()
+    expect( screen.getByText( 'Saving your changes...' ) ).toBeTruthy()
   } )
 
   it( 'shows comment creation progress while the comment is being added', () => {

@@ -356,6 +356,10 @@ describe( 'createReviewIssueActions', () => {
     expect( setSelectedThreadId ).toHaveBeenCalled()
     expect( reloadAndRestoreSelection ).toHaveBeenCalledWith( 'version-1', expect.any( String ) )
     expect( setThreadCreationStatus.mock.calls ).toEqual( [ [ 'creating' ], [ 'idle' ] ] )
+    expect( slowUiActionMocks.measureSlowUiAction ).toHaveBeenCalledWith(
+      expect.objectContaining( { action: 'versions.createThread', hasModal: true } ),
+      expect.any( Function ),
+    )
     expect( firestoreMocks.updateDoc ).not.toHaveBeenCalled()
 
     resolveAiAssist?.( {
