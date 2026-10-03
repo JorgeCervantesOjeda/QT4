@@ -24,6 +24,10 @@ vi.mock( '../../lib/slowUiAction', () => ( {
   measureSlowUiAction: slowUiActionMocks.measureSlowUiAction,
 } ) )
 
+vi.mock( '../../giphy/GiphyProvider', () => ( {
+  GiphyInline: () => null,
+} ) )
+
 const selectedVersion: VersionSummary = {
   id: 'version-1',
   number: 1,
@@ -137,7 +141,7 @@ describe( 'ReviewIssuesPanel', () => {
     slowUiActionMocks.measureSlowUiAction.mockImplementation( async ( _context, operation ) => operation() )
   } )
 
-  it( 'measures explain-issue AI requests as non-modal review actions', async () => {
+  it( 'measures explain-issue AI requests as modal-protected review actions', async () => {
     renderPanel()
 
     fireEvent.click( screen.getByRole( 'button', { name: 'Show comments' } ) )
@@ -152,11 +156,42 @@ describe( 'ReviewIssuesPanel', () => {
     expect( slowUiActionMocks.measureSlowUiAction.mock.calls[0][0] ).toMatchObject( {
       action: 'review.explainIssue',
       page: 'Document Versions',
+      hasModal: true,
       projectId: 'project-1',
       docId: 'doc-1',
       versionId: 'version-1',
       threadId: 'thread-1',
     } )
+  }, 30000 )
+
+  it( 'shows writing progress before the AI request starts', async () => {
+    let progressVisibleBeforeOperation = false
+    let measurementMarkedModal = false
+    slowUiActionMocks.measureSlowUiAction.mockImplementationOnce( async ( context, operation ) => {
+      progressVisibleBeforeOperation = Boolean( screen.queryByRole( 'heading', { name: 'Improving writing' } ) )
+      measurementMarkedModal = context.hasModal === true
+      return operation()
+    } )
+
+    renderPanel()
+
+    fireEvent.click( screen.getByRole( 'button', { name: 'Show comments' } ) )
+    await waitFor( () => {
+      expect( screen.getByPlaceholderText( 'Write a comment' ) ).toBeTruthy()
+    } )
+    expect( ( screen.getByPlaceholderText( 'Write a comment' ) as HTMLTextAreaElement ).value ).toBe( 'Please clarify the evidence source.' )
+    expect( ( screen.getByText( 'Improve writing' ).closest( 'button' ) as HTMLButtonElement ).disabled ).toBe( false )
+    fireEvent.click( screen.getByText( 'Improve writing' ).closest( 'button' ) as HTMLButtonElement )
+
+    await waitFor( () => {
+      expect( aiAssistMocks.requestAiAssist ).toHaveBeenCalledWith( {
+        mode: 'improve_text',
+        text: 'Please clarify the evidence source.',
+        threadId: 'thread-1',
+      } )
+    } )
+    expect( progressVisibleBeforeOperation ).toBe( true )
+    expect( measurementMarkedModal ).toBe( true )
   }, 30000 )
 
   it( 'keeps selected issue card comments hidden by default and lets the user show them', () => {

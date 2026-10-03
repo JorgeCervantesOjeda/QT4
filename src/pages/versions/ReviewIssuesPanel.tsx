@@ -1,8 +1,10 @@
 // Issue and comment workspace for review-time collaboration on the selected version.
 import type { ColumnDef, OnChangeFn, SortingState } from '@tanstack/react-table'
 import type { Dispatch, ReactNode, RefObject, SetStateAction } from 'react'
+import { flushSync } from 'react-dom'
 import { useEffect, useRef, useState } from 'react'
 import DataTable from '../../components/DataTable'
+import ProgressModal from '../../components/ProgressModal'
 import { requestAiAssist } from '../../lib/aiAssist'
 import { measureSlowUiAction } from '../../lib/slowUiAction'
 import type { CommentSummary, ThreadSummary, VersionSummary } from './types'
@@ -379,13 +381,16 @@ function SelectedThreadComments( props: Pick<ReviewIssuesPanelProps,
 
   const explainSelectedThread = async () => {
     const requestKey = `thread:${selectedThread.id}`
-    setActiveAiRequest( requestKey )
-    setThreadAiState( { entityId: selectedThread.id, result: '', error: '' } )
+    flushSync( () => {
+      setActiveAiRequest( requestKey )
+      setThreadAiState( { entityId: selectedThread.id, result: '', error: '' } )
+    } )
     try {
       const response = await measureSlowUiAction(
         {
           action: 'review.explainIssue',
           page: 'Document Versions',
+          hasModal: true,
           projectId,
           docId,
           versionId: selectedVersion.id,
@@ -412,13 +417,16 @@ function SelectedThreadComments( props: Pick<ReviewIssuesPanelProps,
       return
     }
     const requestKey = `draft:${selectedThread.id}`
-    setActiveAiRequest( requestKey )
-    setDraftAiState( { entityId: selectedThread.id, result: '', error: '' } )
+    flushSync( () => {
+      setActiveAiRequest( requestKey )
+      setDraftAiState( { entityId: selectedThread.id, result: '', error: '' } )
+    } )
     try {
       const response = await measureSlowUiAction(
         {
           action: 'review.improveWriting',
           page: 'Document Versions',
+          hasModal: true,
           projectId,
           docId,
           versionId: selectedVersion.id,
@@ -445,91 +453,99 @@ function SelectedThreadComments( props: Pick<ReviewIssuesPanelProps,
   const draftRequestKey = `draft:${selectedThread.id}`
 
   return (
-    <div className="stack">
-      <div className="actions actions--thread-navigation">
-        <p className="thread-navigation-status muted">{threadNavigationStatusLabel}</p>
-        <div className="thread-navigation-buttons">
-          <button type="button" onClick={() => onSelectAdjacentThread( -1 )} disabled={isBusy || !hasPreviousThread}>
-            Previous issue
+    <>
+      {activeAiRequest === threadRequestKey ? (
+        <ProgressModal title="Explaining issue" message="Preparing the issue explanation..." />
+      ) : null}
+      {activeAiRequest === draftRequestKey ? (
+        <ProgressModal title="Improving writing" message="Preparing the writing suggestion..." />
+      ) : null}
+      <div className="stack">
+        <div className="actions actions--thread-navigation">
+          <p className="thread-navigation-status muted">{threadNavigationStatusLabel}</p>
+          <div className="thread-navigation-buttons">
+            <button type="button" onClick={() => onSelectAdjacentThread( -1 )} disabled={isBusy || !hasPreviousThread}>
+              Previous issue
+            </button>
+            <button type="button" onClick={() => onSelectAdjacentThread( 1 )} disabled={isBusy || !hasNextThread}>
+              Next issue
+            </button>
+          </div>
+        </div>
+        <div className="actions">
+          <button type="button" onClick={() => requestThreadStatusChangeConfirmation( selectedThread )} disabled={isBusy}>
+            {selectedThread.status === 'open' ? 'Close issue' : 'Reopen issue'}
           </button>
-          <button type="button" onClick={() => onSelectAdjacentThread( 1 )} disabled={isBusy || !hasNextThread}>
-            Next issue
+          <button
+            type="button"
+            className="ghost"
+            onClick={explainSelectedThread}
+            disabled={isBusy || activeAiRequest !== null}
+          >
+            {activeAiRequest === threadRequestKey ? 'Explaining issue...' : 'Explain issue'}
           </button>
         </div>
+        {selectedThreadAiState || activeAiRequest === threadRequestKey ? (
+          <AiAssistPanel
+            title="Issue explanation"
+            isLoading={activeAiRequest === threadRequestKey}
+            result={selectedThreadAiState?.result ?? ''}
+            error={selectedThreadAiState?.error ?? ''}
+          />
+        ) : null}
+        {selectedThreadComments.length === 0 ? (
+          <p className="muted">No comments yet.</p>
+        ) : (
+          <DataTable
+            key={`qt4_table_versions_thread_comments_${selectedThread.id}`}
+            columns={commentColumns}
+            data={selectedThreadComments}
+            sorting={commentsSorting}
+            onSortingChange={setCommentsSorting}
+            tableClassName="data-table--comments"
+            storageKey={`qt4_table_versions_thread_comments_${selectedThread.id}`}
+            getRowClassName={( row ) =>
+              highlightedCommentId === row.id ? 'data-table-row--selected comment-row--highlight' : ''
+            }
+          />
+        )}
+        {commentWindowCountdownLabel ? <p className="muted">{commentWindowCountdownLabel}</p> : null}
+        <div className="actions actions--capture-row">
+          <textarea
+            ref={commentInputRef}
+            className={`comment-input comment-input--${selectedCommentWindowState}`}
+            value={newCommentBody}
+            onChange={( event ) => setNewCommentBody( event.target.value )}
+            placeholder="Write a comment"
+            disabled={isBusy}
+          />
+          <button type="button" onClick={onAddComment} disabled={isBusy}>
+            Add comment
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={improveDraft}
+            disabled={isBusy || activeAiRequest !== null || !newCommentBody.trim()}
+          >
+            {activeAiRequest === draftRequestKey ? 'Improving writing...' : 'Improve writing'}
+          </button>
+        </div>
+        {selectedDraftAiState || activeAiRequest === draftRequestKey ? (
+          <AiAssistPanel
+            title="Writing suggestion"
+            isLoading={activeAiRequest === draftRequestKey}
+            result={selectedDraftAiState?.result ?? ''}
+            error={selectedDraftAiState?.error ?? ''}
+            action={selectedDraftAiState?.result ? (
+              <button type="button" className="ghost" onClick={() => setNewCommentBody( selectedDraftAiState.result )}>
+                Use improved text
+              </button>
+            ) : null}
+          />
+        ) : null}
       </div>
-      <div className="actions">
-        <button type="button" onClick={() => requestThreadStatusChangeConfirmation( selectedThread )} disabled={isBusy}>
-          {selectedThread.status === 'open' ? 'Close issue' : 'Reopen issue'}
-        </button>
-        <button
-          type="button"
-          className="ghost"
-          onClick={explainSelectedThread}
-          disabled={isBusy || activeAiRequest !== null}
-        >
-          {activeAiRequest === threadRequestKey ? 'Explaining issue...' : 'Explain issue'}
-        </button>
-      </div>
-      {selectedThreadAiState || activeAiRequest === threadRequestKey ? (
-        <AiAssistPanel
-          title="Issue explanation"
-          isLoading={activeAiRequest === threadRequestKey}
-          result={selectedThreadAiState?.result ?? ''}
-          error={selectedThreadAiState?.error ?? ''}
-        />
-      ) : null}
-      {selectedThreadComments.length === 0 ? (
-        <p className="muted">No comments yet.</p>
-      ) : (
-        <DataTable
-          key={`qt4_table_versions_thread_comments_${selectedThread.id}`}
-          columns={commentColumns}
-          data={selectedThreadComments}
-          sorting={commentsSorting}
-          onSortingChange={setCommentsSorting}
-          tableClassName="data-table--comments"
-          storageKey={`qt4_table_versions_thread_comments_${selectedThread.id}`}
-          getRowClassName={( row ) =>
-            highlightedCommentId === row.id ? 'data-table-row--selected comment-row--highlight' : ''
-          }
-        />
-      )}
-      {commentWindowCountdownLabel ? <p className="muted">{commentWindowCountdownLabel}</p> : null}
-      <div className="actions actions--capture-row">
-        <textarea
-          ref={commentInputRef}
-          className={`comment-input comment-input--${selectedCommentWindowState}`}
-          value={newCommentBody}
-          onChange={( event ) => setNewCommentBody( event.target.value )}
-          placeholder="Write a comment"
-          disabled={isBusy}
-        />
-        <button type="button" onClick={onAddComment} disabled={isBusy}>
-          Add comment
-        </button>
-        <button
-          type="button"
-          className="ghost"
-          onClick={improveDraft}
-          disabled={isBusy || activeAiRequest !== null || !newCommentBody.trim()}
-        >
-          {activeAiRequest === draftRequestKey ? 'Improving writing...' : 'Improve writing'}
-        </button>
-      </div>
-      {selectedDraftAiState || activeAiRequest === draftRequestKey ? (
-        <AiAssistPanel
-          title="Writing suggestion"
-          isLoading={activeAiRequest === draftRequestKey}
-          result={selectedDraftAiState?.result ?? ''}
-          error={selectedDraftAiState?.error ?? ''}
-          action={selectedDraftAiState?.result ? (
-            <button type="button" className="ghost" onClick={() => setNewCommentBody( selectedDraftAiState.result )}>
-              Use improved text
-            </button>
-          ) : null}
-        />
-      ) : null}
-    </div>
+    </>
   )
 }
 
