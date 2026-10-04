@@ -14,6 +14,7 @@ import {
   serverTimestamp,
   where,
 } from 'firebase/firestore'
+import { flushSync } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import AppBrand from '../components/AppBrand'
@@ -410,7 +411,9 @@ function ProjectsPage() {
     }
     clearError()
     setSuccessMessage( null )
-    setIsBusy( true )
+    flushSync( () => {
+      setIsBusy( true )
+    } )
     try {
       const counterRef = doc( db, 'counters', 'projects' )
       const projectRef = doc( collection( db, 'projects' ) )
@@ -532,6 +535,10 @@ function ProjectsPage() {
             </div>
           </form>
         </section>
+
+        {isBusy ? (
+          <ProgressModal title="Creating project" message="Creating project..." />
+        ) : null}
 
         {isLoadingProjects && projects.length === 0 ? (
           <ProgressModal title="Loading projects" message="Loading projects..." />

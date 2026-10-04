@@ -1,12 +1,13 @@
 // src/pages/ProjectsPage.test.tsx
 // Verifies project list loading, cards, and error states.
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
   onSnapshotMock,
   getDocMock,
   getDocsMock,
+  runTransactionMock,
   reportAbnormalErrorMock,
   logAuditMock,
   navigateMock,
@@ -14,6 +15,7 @@ const {
   onSnapshotMock: vi.fn(),
   getDocMock: vi.fn(),
   getDocsMock: vi.fn(),
+  runTransactionMock: vi.fn(),
   reportAbnormalErrorMock: vi.fn(),
   logAuditMock: vi.fn(),
   navigateMock: vi.fn(),
@@ -34,7 +36,7 @@ vi.mock( 'firebase/firestore', () => ( {
   getDocs: (...args: unknown[]) => getDocsMock( ...args ),
   onSnapshot: (...args: unknown[]) => onSnapshotMock( ...args ),
   query: ( base: unknown, ...constraints: unknown[] ) => ( { kind: 'query', base, constraints } ),
-  runTransaction: vi.fn(),
+  runTransaction: (...args: unknown[]) => runTransactionMock( ...args ),
   serverTimestamp: vi.fn( () => 'server-timestamp' ),
   where: ( field: string, op: string, value: unknown ) => ( { type: 'where', field, op, value } ),
 } ) )
@@ -231,6 +233,7 @@ describe( 'pages/ProjectsPage', () => {
   beforeEach( () => {
     vi.clearAllMocks()
     primeProjectsMocks()
+    runTransactionMock.mockResolvedValue( undefined )
   } )
 
   afterEach( () => {
@@ -255,6 +258,37 @@ describe( 'pages/ProjectsPage', () => {
     expect( screen.getByText( 'Leader: Member User (member@example.com)' ) ).toBeTruthy()
     expect( screen.queryByText( 'Review Lead (reviewer@example.com)' ) ).toBeNull()
     expect( screen.queryByText( '(member)' ) ).toBeNull()
+  }, 15000 )
+
+  it( 'shows project creation progress before the transaction starts', async () => {
+    let progressVisibleBeforeTransaction = false
+    let resolveTransaction: (() => void) | undefined
+    runTransactionMock.mockImplementationOnce( () => {
+      progressVisibleBeforeTransaction = Boolean(
+        screen.queryByRole( 'heading', { name: 'Creating project' } ),
+      )
+      return new Promise<void>( ( resolve ) => {
+        resolveTransaction = resolve
+      } )
+    } )
+
+    render( <ProjectsPage /> )
+
+    expect( await screen.findByRole( 'heading', { name: '42 - Alpha Project' }, { timeout: 10000 } ) ).toBeTruthy()
+    fireEvent.change( screen.getByRole( 'textbox', { name: 'Name' } ), {
+      target: { value: 'New project' },
+    } )
+    fireEvent.click( screen.getByRole( 'button', { name: 'Create project' } ) )
+
+    await waitFor( () => {
+      expect( progressVisibleBeforeTransaction ).toBe( true )
+      expect( screen.getByRole( 'heading', { name: 'Creating project' } ) ).toBeTruthy()
+    } )
+
+    resolveTransaction?.()
+    await waitFor( () => {
+      expect( screen.getByRole( 'heading', { name: 'Success' } ) ).toBeTruthy()
+    } )
   }, 15000 )
 
   it( 'does not render member editing controls on project cards', async () => {

@@ -320,6 +320,37 @@ describe( 'pages/ProjectDocumentsPage', () => {
     expect( screen.getByRole( 'button', { name: 'Collapse' } ).getAttribute( 'aria-expanded' ) ).toBe( 'true' )
   }, 15000 )
 
+  it( 'shows document creation progress before the transaction starts', async () => {
+    let progressVisibleBeforeTransaction = false
+    let resolveTransaction: (() => void) | undefined
+    runTransactionMock.mockImplementationOnce( () => {
+      progressVisibleBeforeTransaction = Boolean(
+        screen.queryByRole( 'heading', { name: 'Creating document' } ),
+      )
+      return new Promise<void>( ( resolve ) => {
+        resolveTransaction = resolve
+      } )
+    } )
+
+    render( <ProjectDocumentsPage /> )
+
+    expect( await screen.findByRole( 'heading', { name: 'Create document' }, { timeout: 10000 } ) ).toBeTruthy()
+    fireEvent.change( screen.getByRole( 'textbox', { name: 'Title' } ), {
+      target: { value: 'New document' },
+    } )
+    fireEvent.click( screen.getByRole( 'button', { name: 'Create document' } ) )
+
+    await waitFor( () => {
+      expect( progressVisibleBeforeTransaction ).toBe( true )
+      expect( screen.getByRole( 'heading', { name: 'Creating document' } ) ).toBeTruthy()
+    } )
+
+    resolveTransaction?.()
+    await waitFor( () => {
+      expect( screen.getByRole( 'heading', { name: 'Success' } ) ).toBeTruthy()
+    } )
+  }, 15000 )
+
   it( 'validates invalid member email locally on the documents page', async () => {
     render( <ProjectDocumentsPage /> )
 

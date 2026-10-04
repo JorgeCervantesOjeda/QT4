@@ -16,6 +16,7 @@ import {
   setDoc,
   where,
 } from 'firebase/firestore'
+import { flushSync } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import AppBrand from '../components/AppBrand'
@@ -1373,7 +1374,9 @@ function ProjectDocumentsPage() {
     }
     clearError()
     setSuccessMessage( null )
-    setIsBusy( true )
+    flushSync( () => {
+      setIsBusy( true )
+    } )
     try {
       const counterRef = doc( db, 'counters', `documents_${projectId}` )
       const documentRef = doc( collection( db, 'documents' ) )
@@ -1585,6 +1588,9 @@ function ProjectDocumentsPage() {
               </button>
             </div>
           </form>
+          {isBusy ? (
+            <ProgressModal title="Creating document" message="Creating document..." />
+          ) : null}
           <div className="actions">
             <button type="button" onClick={openChangeRequestModal} disabled={!projectId || !project || !userId}>
               New change request

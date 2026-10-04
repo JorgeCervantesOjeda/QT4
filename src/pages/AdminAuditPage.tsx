@@ -24,6 +24,7 @@ import {
   writeBatch,
   where,
 } from 'firebase/firestore'
+import { flushSync } from 'react-dom'
 import { Calendar, dateFnsLocalizer, type Event as CalendarEvent } from 'react-big-calendar'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
 import { useAuth } from '../auth/useAuth'
@@ -1777,7 +1778,6 @@ function AdminAuditPage() {
       return
     }
     setError( null )
-    setIsBusy( true )
     try {
       const now = new Date()
       const fallbackStart = new Date( now )
@@ -1829,6 +1829,9 @@ function AdminAuditPage() {
           { field: 'createdAt', op: '<=', value: end.toISOString() },
           { field: 'createdAt', op: 'orderBy desc', value: null },
         ],
+      } )
+      flushSync( () => {
+        setIsBusy( true )
       } )
       const logsSnapshot = await getDocs(
         query( collection( db, 'auditLogs' ), ...constraints ),
@@ -2309,7 +2312,7 @@ function AdminAuditPage() {
           />
         ) : null}
 
-        {isBusy && logs.length === 0 ? (
+        {isBusy ? (
           <ProgressModal title="Generating report" message="Generating report..." />
         ) : (
           <section className="panel stack">

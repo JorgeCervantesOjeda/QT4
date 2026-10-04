@@ -273,6 +273,85 @@ describe( 'pages/AdminAuditPage', () => {
     resolveAuditLogs( createQuerySnapshot( [] ) )
   }, 30000 )
 
+  it( 'shows audit report progress when refreshing an existing report', async () => {
+    let auditReportCount = 0
+    let progressVisibleBeforeSecondQuery = false
+    let resolveSecondAuditLogs: (snapshot: ReturnType<typeof createQuerySnapshot>) => void = () => undefined
+    const secondAuditLogsPromise = new Promise<ReturnType<typeof createQuerySnapshot>>( (resolve) => {
+      resolveSecondAuditLogs = resolve
+    } )
+    currentUserState.user = {
+      uid: 'user-admin-1',
+      email: 'admin@example.com',
+      displayName: 'Admin User',
+      getIdToken: vi.fn().mockResolvedValue( 'admin-token' ),
+    }
+    getDocMock.mockImplementation( async ( docRef: { collection: string; id: string } ) => {
+      if( docRef.collection === 'userProfiles' && docRef.id === 'user-admin-1' ) {
+        return createDocSnapshot( {
+          id: 'user-admin-1',
+          data: { isAdmin: true },
+        } )
+      }
+      return createMissingSnapshot( docRef.id )
+    } )
+    getDocsMock.mockImplementation( async ( queryArg: unknown ) => {
+      const collectionName = getCollectionName( queryArg )
+      if( collectionName === 'userDirectory' ) {
+        return createQuerySnapshot( [
+          {
+            id: 'user-admin-1',
+            data: {
+              userId: 'user-admin-1',
+              email: 'admin@example.com',
+              displayName: 'Admin User',
+            },
+          },
+        ] )
+      }
+      if( collectionName === 'auditLogs' ) {
+        auditReportCount += 1
+        if( auditReportCount === 1 ) {
+          return createQuerySnapshot( [
+            {
+              id: 'audit-log-1',
+              data: {
+                actorId: 'user-admin-1',
+                action: 'updateVersion',
+                entityType: 'version',
+                entityId: 'version-1',
+                createdAt: { toDate: () => new Date( '2026-04-10T12:00:00.000Z' ) },
+              },
+            },
+          ] )
+        }
+        progressVisibleBeforeSecondQuery = Boolean(
+          screen.queryByRole( 'heading', { name: 'Generating report' } ),
+        )
+        return secondAuditLogsPromise
+      }
+      return createQuerySnapshot( [] )
+    } )
+
+    render( <AdminAuditPage /> )
+
+    expect( await screen.findByRole( 'heading', { name: 'Admin Audit' }, { timeout: 10000 } ) ).toBeTruthy()
+    await waitFor( () => {
+      expect( ( screen.getByLabelText( 'User' ) as HTMLSelectElement ).value ).toBe( 'user-admin-1' )
+    } )
+    fireEvent.click( screen.getByRole( 'button', { name: 'Run report' } ) )
+    expect( ( await screen.findByTestId( 'audit-table', {}, { timeout: 10000 } ) ).textContent ).toBe( '1 rows' )
+
+    fireEvent.click( screen.getByRole( 'button', { name: 'Run report' } ) )
+
+    await waitFor( () => {
+      expect( progressVisibleBeforeSecondQuery ).toBe( true )
+      expect( screen.getByRole( 'heading', { name: 'Generating report' } ) ).toBeTruthy()
+    } )
+
+    resolveSecondAuditLogs( createQuerySnapshot( [] ) )
+  }, 30000 )
+
   it( 'hides admin-only sections for a non-admin user', async () => {
     render( <AdminAuditPage /> )
 
