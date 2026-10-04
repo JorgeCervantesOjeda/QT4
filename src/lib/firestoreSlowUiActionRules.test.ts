@@ -24,6 +24,7 @@ const adminId = 'admin-1'
 const buildSlowUiAction = (overrides: Record<string, unknown> = {}) => ( {
   action: 'review.explainIssue',
   page: 'Document Versions',
+  appVersion: '4.11.2',
   route: '/projects/project-1/documents/doc-1/versions',
   hasModal: false,
   userId,

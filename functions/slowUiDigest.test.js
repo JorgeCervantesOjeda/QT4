@@ -25,6 +25,7 @@ test( "buildSlowUiActionDigest groups slow actions by page and action", () => {
       id: "event-1",
       action: "review.explainIssue",
       page: "Document Versions",
+      appVersion: "4.11.2",
       route: "/projects/p1/documents/d1/versions",
       durationMs: 1220,
       thresholdMs: 1000,
@@ -39,6 +40,7 @@ test( "buildSlowUiActionDigest groups slow actions by page and action", () => {
       id: "event-2",
       action: "review.explainIssue",
       page: "Document Versions",
+      appVersion: "4.11.2",
       durationMs: 2100,
       thresholdMs: 1000,
       userId: "user-2",
@@ -50,6 +52,8 @@ test( "buildSlowUiActionDigest groups slow actions by page and action", () => {
   assert.match( digest.text, /Document Versions \/ review\.explainIssue/u )
   assert.match( digest.text, /count=2/u )
   assert.match( digest.text, /max=2100ms/u )
+  assert.match( digest.text, /QT4 version\(s\): 4\.11\.2/u )
+  assert.match( digest.text, /qt4=4\.11\.2/u )
   assert.match( digest.text, /user=user-1/u )
   assert.doesNotMatch( digest.text, /example\.com/u )
 } )
@@ -61,6 +65,7 @@ test( "createSlowUiActionDigestJob emails pending events and marks them reported
     createSnapshot( "event-1", {
       action: "review.explainIssue",
       page: "Document Versions",
+      appVersion: "4.11.2",
       durationMs: 1220,
       thresholdMs: 1000,
       userId: "user-1",
@@ -114,6 +119,7 @@ test( "createSlowUiActionDigestJob emails pending events and marks them reported
   assert.equal( emails.length, 1 )
   assert.deepEqual( emails[0].to, [ "admin@example.com" ] )
   assert.match( emails[0].text, /event-1/u )
+  assert.match( emails[0].text, /QT4 version\(s\): 4\.11\.2/u )
   assert.equal( updates.length, 1 )
   assert.equal( updates[0].data.reportedAt, "server-timestamp" )
   assert.equal( updates[0].data.digestStatus, "sent" )

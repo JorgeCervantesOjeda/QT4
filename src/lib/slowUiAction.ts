@@ -15,6 +15,7 @@ type SlowUiActionEvent = Required<Pick<
   SlowUiActionContext,
   'action' | 'page' | 'hasModal'
 >> & {
+  appVersion: string
   route: string
   userId: string
   projectId: string
@@ -45,6 +46,7 @@ const buildSlowUiActionEvent = (
   action: trimSingleLine( context.action, 120 ) || 'unknown',
   page: trimSingleLine( context.page, 120 ) || 'unknown',
   hasModal: context.hasModal === true,
+  appVersion: __APP_VERSION__,
   route: trimSingleLine( context.route, 240 ),
   userId: trimSingleLine( context.userId, 128 ),
   projectId: trimSingleLine( context.projectId, 128 ),
@@ -75,6 +77,7 @@ const reportSlowUiActionToFirestore = async (event: SlowUiActionEvent): Promise<
   await addDoc( collection( db, 'slowUiActions' ), {
     action: event.action,
     page: event.page,
+    appVersion: event.appVersion,
     route: event.route,
     hasModal: event.hasModal,
     userId,

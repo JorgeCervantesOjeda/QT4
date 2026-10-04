@@ -44,6 +44,7 @@ describe( 'lib/slowUiAction', () => {
       action: 'review.explainComment',
       page: 'Document Versions',
       hasModal: false,
+      appVersion: __APP_VERSION__,
       route: '',
       userId: 'user-1',
       projectId: 'project-1',

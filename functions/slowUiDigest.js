@@ -20,6 +20,7 @@ const readEvent = (snapshot) => {
     id: snapshot.id,
     action: trimSingleLine( data.action, 120 ) || "unknown",
     page: trimSingleLine( data.page, 120 ) || "unknown",
+    appVersion: trimSingleLine( data.appVersion, 40 ) || "unknown",
     route: trimSingleLine( data.route, 240 ),
     userId: trimSingleLine( data.userId, 128 ) || "unknown",
     projectId: trimSingleLine( data.projectId, 128 ),
@@ -66,6 +67,7 @@ const buildSlowUiActionDigest = (events, now = new Date()) => {
       id: trimSingleLine( event.id, 128 ) || "unknown",
       action: trimSingleLine( event.action, 120 ) || "unknown",
       page: trimSingleLine( event.page, 120 ) || "unknown",
+      appVersion: trimSingleLine( event.appVersion, 40 ) || "unknown",
       route: trimSingleLine( event.route, 240 ),
       userId: trimSingleLine( event.userId, 128 ) || "unknown",
       projectId: trimSingleLine( event.projectId, 128 ),
@@ -79,6 +81,8 @@ const buildSlowUiActionDigest = (events, now = new Date()) => {
     }
   ) )
   const groups = groupDigestEvents( normalizedEvents )
+  const appVersions = [ ...new Set( normalizedEvents.map( (event) => event.appVersion ) ) ]
+    .sort()
   const subject = `[QT4][UX] ${normalizedEvents.length} slow non-modal action${normalizedEvents.length === 1 ? "" : "s"}`
   const groupLines = groups.slice( 0, 20 ).flatMap( (group) => {
     const averageDurationMs = Math.round( group.totalDurationMs / Math.max( group.count, 1 ) )
@@ -95,6 +99,7 @@ const buildSlowUiActionDigest = (events, now = new Date()) => {
       `- ${event.durationMs}ms ${event.page}/${event.action}`,
       `event=${event.id}`,
       `user=${event.userId}`,
+      `qt4=${event.appVersion}`,
       event.projectId ? `project=${event.projectId}` : "",
       event.docId ? `doc=${event.docId}` : "",
       event.versionId ? `version=${event.versionId}` : "",
@@ -106,6 +111,7 @@ const buildSlowUiActionDigest = (events, now = new Date()) => {
     "",
     `Digest generated at: ${now.toISOString()}`,
     `Pending events included: ${normalizedEvents.length}`,
+    `QT4 version(s): ${appVersions.join( ", " ) || "unknown"}`,
     "",
     "Groups:",
     ...groupLines,

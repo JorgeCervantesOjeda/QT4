@@ -1209,6 +1209,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           'action',
           'page',
+          'appVersion',
           'route',
           'hasModal',
           'userId',
@@ -1226,6 +1227,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasAll([
           'action',
           'page',
+          'appVersion',
           'route',
           'hasModal',
           'userId',
@@ -1247,6 +1249,9 @@ service cloud.firestore {
         && request.resource.data.page is string
         && request.resource.data.page.matches('.*\\S.*')
         && request.resource.data.page.size() <= 120
+        && request.resource.data.appVersion is string
+        && request.resource.data.appVersion.matches('.*\\S.*')
+        && request.resource.data.appVersion.size() <= 40
         && request.resource.data.route is string
         && request.resource.data.route.size() <= 240
         && request.resource.data.projectId is string
