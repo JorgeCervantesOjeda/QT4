@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lista lineal adaptativa Focus + Context</title>
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #08090b;
+  --panel: #111318;
+  --line: rgba(255,255,255,.15);
+  --muted: #9da4b0;
+  --accent: #00e6b8;
+  --card-w: 126px;
+  --card-h: 184px;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(25,34,40,.9), transparent 42%),
+    var(--bg);
+  color: #fff;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.app {
+  width: min(1200px, 100vw);
+  min-height: 680px;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 12px;
+  padding: 22px 18px 18px;
+}
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.status {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.status strong {
+  font-size: 22px;
+  letter-spacing: .01em;
+}
+.status .active-id { color: var(--accent); }
+.status small { color: var(--muted); }
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,.04);
+  border-radius: 14px;
+}
+.controls label { color: #cbd0d7; font-size: 13px; }
+.controls output {
+  min-width: 2ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.controls input[type="range"] { width: 160px; accent-color: var(--accent); }
+
+.carousel {
+  position: relative;
+  width: 100%;
+  min-height: 520px;
+  overflow: hidden;
+  border-radius: 24px;
+  border: 1px solid rgba(255,255,255,.08);
+  background:
+    linear-gradient(to bottom, rgba(255,255,255,.025), transparent 38%),
+    radial-gradient(ellipse at 50% 83%, rgba(0,230,184,.07), transparent 42%);
+  isolation: isolate;
+  touch-action: pan-y;
+  outline: none;
+}
+.carousel.is-dragging {
+  cursor: grabbing;
+}
+.carousel.is-dragging .card {
+  transition: none;
+  cursor: grabbing;
+}
+.carousel::after {
+  content: "";
+  position: absolute;
+  left: 8%; right: 8%; bottom: 70px;
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgba(255,255,255,.18), transparent);
+}
+.stage {
+  position: absolute;
+  inset: 0;
+  perspective: 1300px;
+  perspective-origin: 50% 44%;
+}
+.card {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: var(--card-w);
+  height: var(--card-h);
+  margin-left: calc(var(--card-w) / -2);
+  margin-top: calc(var(--card-h) / -2);
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transform-origin: center center;
+  transform-style: preserve-3d;
+  transition:
+    transform .55s cubic-bezier(.2,.8,.2,1),
+    opacity .45s ease,
+    filter .45s ease;
+  will-change: transform, opacity;
+}
+.card[aria-hidden="true"] {
+  pointer-events: none;
+  opacity: 0 !important;
+}
+.card-shell {
+  width: 100%; height: 100%;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.22);
+  background: linear-gradient(145deg, hsl(var(--hue) 78% 54%), hsl(calc(var(--hue) + 24) 84% 32%));
+  box-shadow: 0 18px 42px rgba(0,0,0,.52);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  align-items: center;
+  padding: 12px;
+  overflow: hidden;
+  backface-visibility: hidden;
+  transition: border-color .25s ease, box-shadow .25s ease;
+}
+.card:not([data-active="true"]):hover {
+  z-index: 2600 !important;
+}
+.card:hover .card-shell,
+.card:focus-visible .card-shell {
+  border-color: rgba(255,255,255,.8);
+  box-shadow: 0 20px 48px rgba(0,0,0,.55), 0 0 0 2px rgba(0,230,184,.24);
+}
+.card:focus-visible { outline: none; }
+.card-id {
+  justify-self: center;
+  min-width: 62px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(0,0,0,.64);
+  border: 1px solid rgba(255,255,255,.26);
+  font-size: 14px;
+  font-weight: 750;
+  letter-spacing: .03em;
+  transition: transform .35s ease, background .35s ease, color .35s ease;
+}
+.card-mark {
+  font-size: 30px;
+  opacity: .42;
+  text-shadow: 0 2px 10px rgba(0,0,0,.35);
+}
+.card-detail {
+  min-height: 30px;
+  font-size: 12px;
+  line-height: 1.25;
+  font-weight: 650;
+  opacity: .95;
+  transition: opacity .25s ease, transform .25s ease;
+}
+.card[data-lod="context"] .card-detail {
+  opacity: 0;
+  transform: translateY(5px);
+}
+.card[data-active="true"] .card-id {
+  background: var(--accent);
+  color: #03110d;
+  transform: scale(1.08);
+  border-color: rgba(255,255,255,.85);
+}
+.card[data-active="true"] .card-shell {
+  border-color: rgba(255,255,255,.74);
+  box-shadow: 0 25px 60px rgba(0,0,0,.65), 0 0 38px rgba(0,230,184,.14);
+}
+.nav {
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.22);
+  background: rgba(6,8,10,.72);
+  color: white;
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  cursor: pointer;
+  z-index: 3000;
+  backdrop-filter: blur(8px);
+  transition: transform .2s ease, background .2s ease;
+}
+.nav:hover { transform: scale(1.08); background: rgba(255,255,255,.14); }
+.nav:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.prev { left: 18px; }
+.next { right: 18px; }
+
+.edge-hint {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--muted);
+  font-size: 13px;
+  background: rgba(0,0,0,.35);
+  border: 1px solid rgba(255,255,255,.09);
+  padding: 6px 12px;
+  border-radius: 999px;
+  pointer-events: none;
+}
+.help {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+.sr-only {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0);
+  white-space: nowrap; border: 0;
+}
+
+.nav:disabled {
+  opacity: .22;
+  cursor: default;
+  transform: translateY(-50%) scale(.96);
+  pointer-events: none;
+}
+@media (max-width: 720px) {
+  :root { --card-w: 108px; --card-h: 158px; }
+  .app { min-height: 600px; padding-inline: 10px; }
+  .carousel { min-height: 450px; }
+  .prev { left: 8px; }
+  .next { right: 8px; }
+  .controls input[type="range"] { width: 120px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card, .card-id, .card-detail, .nav { transition-duration: .01ms !important; }
+}
+</style>
+</head>
+<body>
+<main class="app">
+  <header class="toolbar">
+    <div class="status">
+      <strong>Enfoque: <span class="active-id" id="activeLabel">ID 1</span></strong>
+      <small id="visibleLabel">20/20 visibles</small>
+    </div>
+    <div class="controls">
+      <label for="countRange">Tarjetas</label>
+      <input id="countRange" type="range" min="5" max="60" value="20" step="1">
+      <output id="countOutput" for="countRange">20</output>
+    </div>
+  </header>
+
+  <section
+    class="carousel"
+    id="carousel"
+    aria-label="Tarjetas"
+    aria-roledescription="lista navegable"
+    tabindex="0"
+  >
+    <div class="stage" id="stage"></div>
+    <button class="nav prev" type="button" aria-label="Tarjeta anterior">&#10094;</button>
+    <button class="nav next" type="button" aria-label="Tarjeta siguiente">&#10095;</button>
+    <div class="edge-hint" id="edgeHint">Clic · rueda · arrastra · ← →</div>
+    <div class="sr-only" id="live" aria-live="polite" aria-atomic="true"></div>
+  </section>
+
+  <div class="help">
+    Lista lineal: no hay wrap entre la última y la primera. ≤ 30: se conserva todo el contexto. &gt; 30: se mantiene una ventana de contexto alrededor del foco.
+  </div>
+</main>
+
+<script>
+(() => {
+  const ALL_VISIBLE_LIMIT = 30;
+  const CONTEXT_TOTAL_LIMIT = 25;
+
+  const stage = document.getElementById('stage');
+  const carousel = document.getElementById('carousel');
+  const activeLabel = document.getElementById('activeLabel');
+  const visibleLabel = document.getElementById('visibleLabel');
+  const edgeHint = document.getElementById('edgeHint');
+  const live = document.getElementById('live');
+  const countRange = document.getElementById('countRange');
+  const countOutput = document.getElementById('countOutput');
+  const prevButton = document.querySelector('.prev');
+  const nextButton = document.querySelector('.next');
+
+  let totalCards = Number(countRange.value);
+  let activeIndex = 0;
+  let cards = [];
+  let dragStartX = null;
+  let dragStartY = null;
+  let dragPointerId = null;
+  let dragStarted = false;
+  let dragBaseCenter = 0;
+  let dragVisualCenter = 0;
+  let suppressClick = false;
+  let wheelAccumulator = 0;
+  let wheelTimer = null;
+
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+  const clampIndex = index => clamp(index, 0, totalCards - 1);
+
+  function visibleWindow(center) {
+    if (totalCards <= ALL_VISIBLE_LIMIT) return [0, totalCards - 1];
+
+    const count = Math.min(CONTEXT_TOTAL_LIMIT, totalCards);
+    const half = Math.floor(count / 2);
+    const pivot = clamp(Math.round(center), 0, totalCards - 1);
+    let start = pivot - half;
+    let end = start + count - 1;
+
+    if (start < 0) {
+      end -= start;
+      start = 0;
+    }
+    if (end > totalCards - 1) {
+      start -= end - (totalCards - 1);
+      end = totalCards - 1;
+    }
+    return [Math.max(0, start), Math.min(totalCards - 1, end)];
+  }
+
+  function dragPixelsPerCard(center = activeIndex) {
+    const rect = carousel.getBoundingClientRect();
+    const maxX = Math.max(220, Math.min(505, rect.width / 2 - 78));
+    const [start, end] = visibleWindow(center);
+    const maxDistance = Math.max(1, Math.abs(start - center), Math.abs(end - center));
+    const alpha = 0.82;
+    const firstNeighborX = maxX * Math.log1p(alpha) / Math.log1p(alpha * maxDistance);
+    return Math.max(72, Math.min(135, firstNeighborX));
+  }
+
+  function createCards(total) {
+    stage.replaceChildren();
+    cards = [];
+    for (let i = 0; i < total; i++) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'card';
+      button.dataset.index = i;
+      button.style.setProperty('--hue', String(Math.round((i / total) * 360)));
+      button.setAttribute('aria-label', `Tarjeta ${i + 1} de ${total}`);
+      button.innerHTML = `
+        <span class="card-shell">
+          <span class="card-id">ID ${i + 1}</span>
+          <span class="card-mark" aria-hidden="true">✦</span>
+          <span class="card-detail">Tarjeta ${i + 1}<br><span style="font-weight:450;opacity:.75">contenido de ejemplo</span></span>
+        </span>`;
+      stage.appendChild(button);
+      cards.push(button);
+    }
+  }
+
+  function layout(center = activeIndex, isDragging = false) {
+    center = clamp(center, 0, totalCards - 1);
+    const rect = carousel.getBoundingClientRect();
+    const maxX = Math.max(220, Math.min(505, rect.width / 2 - 78));
+    const [windowStart, windowEnd] = visibleWindow(center);
+    const maxDistance = Math.max(1, Math.abs(windowStart - center), Math.abs(windowEnd - center));
+    const nearestIndex = clampIndex(Math.round(center));
+    let visibleCount = 0;
+
+    cards.forEach((card, index) => {
+      const d = index - center;              // distancia LINEAL: nunca hace wrap
+      const ad = Math.abs(d);
+      const visible = index >= windowStart && index <= windowEnd;
+      card.setAttribute('aria-hidden', visible ? 'false' : 'true');
+
+      if (!visible) {
+        card.style.transform = 'translate3d(0, 120px, -500px) scale(.2)';
+        card.style.zIndex = '0';
+        card.tabIndex = -1;
+        return;
+      }
+
+      visibleCount++;
+      const norm = Math.min(1, ad / maxDistance);
+
+      // Fisheye 1-D lineal: mucha resolución cerca del foco y compresión progresiva lejos.
+      const alpha = 0.82;
+      const mapped = Math.log1p(alpha * ad) / Math.log1p(alpha * maxDistance);
+      const x = Math.sign(d) * maxX * mapped;
+
+      const scale = 1 - 0.66 * Math.pow(norm, 0.72);
+      const y = 12 + 78 * Math.pow(norm, 1.55);
+      const z = -270 * Math.pow(norm, 1.18);
+      const rotateY = Math.abs(d) < .001 ? 0 : -Math.sign(d) * (8 + 47 * Math.pow(norm, .9));
+      const opacity = 1 - 0.58 * Math.pow(norm, 1.15);
+      const blur = norm > .78 ? .7 : 0;
+
+      card.style.transform = `translate3d(${x}px, ${y}px, ${z}px) rotateY(${rotateY}deg) scale(${scale})`;
+      card.style.opacity = String(opacity);
+      card.style.filter = `saturate(${1 - .42 * norm}) brightness(${1 - .24 * norm}) blur(${blur}px)`;
+      card.style.zIndex = String(2000 - Math.round(ad * 50));
+      card.dataset.active = index === nearestIndex ? 'true' : 'false';
+      card.dataset.lod = ad <= 3 ? 'detail' : 'context';
+      card.tabIndex = !isDragging && index === activeIndex ? 0 : -1;
+    });
+
+    activeLabel.textContent = `ID ${nearestIndex + 1}`;
+    visibleLabel.textContent = `${visibleCount}/${totalCards} visibles`;
+
+    // Los límites son parte de la interacción: no se puede saltar de N a 1.
+    prevButton.disabled = nearestIndex === 0;
+    nextButton.disabled = nearestIndex === totalCards - 1;
+
+    if (nearestIndex === 0) {
+      edgeHint.textContent = `Inicio de la lista · clic · rueda · arrastra · →`;
+    } else if (nearestIndex === totalCards - 1) {
+      edgeHint.textContent = `Fin de la lista · clic · rueda · arrastra · ←`;
+    } else if (totalCards <= ALL_VISIBLE_LIMIT) {
+      edgeHint.textContent = `Lista completa visible · clic para enfocar · rueda · arrastra · ← →`;
+    } else {
+      edgeHint.textContent = `${totalCards - visibleCount} fuera de contexto · clic para enfocar · rueda · arrastra · ← →`;
+    }
+  }
+
+  function setActive(index, announce = false, focusCard = false) {
+    activeIndex = clampIndex(index);
+    layout();
+    if (announce) live.textContent = `Tarjeta ${activeIndex + 1} de ${totalCards}`;
+    if (focusCard) cards[activeIndex]?.focus({ preventScroll: true });
+  }
+
+  function step(delta, focusCard = false) {
+    const next = clampIndex(activeIndex + delta);
+    if (next !== activeIndex) setActive(next, true, focusCard);
+  }
+
+  nextButton.addEventListener('click', () => step(1));
+  prevButton.addEventListener('click', () => step(-1));
+
+  carousel.addEventListener('keydown', event => {
+    if (event.key === 'ArrowRight') { event.preventDefault(); step(1, true); }
+    else if (event.key === 'ArrowLeft') { event.preventDefault(); step(-1, true); }
+    else if (event.key === 'PageDown') { event.preventDefault(); step(5, true); }
+    else if (event.key === 'PageUp') { event.preventDefault(); step(-5, true); }
+    else if (event.key === 'Home') { event.preventDefault(); setActive(0, true, true); }
+    else if (event.key === 'End') { event.preventDefault(); setActive(totalCards - 1, true, true); }
+  });
+
+  carousel.addEventListener('wheel', event => {
+    if (Math.abs(event.deltaY) < Math.abs(event.deltaX)) return;
+    event.preventDefault();
+    wheelAccumulator += event.deltaY;
+    if (Math.abs(wheelAccumulator) >= 55) {
+      step(wheelAccumulator > 0 ? 1 : -1);
+      wheelAccumulator = 0;
+    }
+    clearTimeout(wheelTimer);
+    wheelTimer = setTimeout(() => { wheelAccumulator = 0; }, 120);
+  }, { passive: false });
+
+  carousel.addEventListener('pointerdown', event => {
+    if (event.target.closest('.nav')) return;
+    dragStartX = event.clientX;
+    dragStartY = event.clientY;
+    dragPointerId = event.pointerId;
+    dragStarted = false;
+    dragBaseCenter = activeIndex;
+    dragVisualCenter = activeIndex;
+  });
+
+  carousel.addEventListener('pointermove', event => {
+    if (dragStartX == null || event.pointerId !== dragPointerId) return;
+    const dx = event.clientX - dragStartX;
+    const dy = event.clientY - dragStartY;
+
+    if (!dragStarted && Math.hypot(dx, dy) > 8) {
+      dragStarted = true;
+      carousel.classList.add('is-dragging');
+      carousel.setPointerCapture?.(event.pointerId);
+    }
+    if (!dragStarted) return;
+    event.preventDefault();
+
+    const proposed = dragBaseCenter - dx / dragPixelsPerCard(dragBaseCenter);
+    dragVisualCenter = clamp(proposed, 0, totalCards - 1); // tope duro: no hay wrap
+    layout(dragVisualCenter, true);
+  });
+
+  carousel.addEventListener('pointerup', event => {
+    if (dragStartX == null || event.pointerId !== dragPointerId) return;
+    const wasDrag = dragStarted;
+    const snapIndex = clampIndex(Math.round(dragVisualCenter));
+
+    dragStartX = dragStartY = dragPointerId = null;
+    dragStarted = false;
+    if (!wasDrag) return;
+
+    suppressClick = true;
+    setTimeout(() => { suppressClick = false; }, 0);
+    carousel.classList.remove('is-dragging');
+    requestAnimationFrame(() => setActive(snapIndex, true, false));
+  });
+
+  carousel.addEventListener('pointercancel', () => {
+    const snapIndex = clampIndex(Math.round(dragVisualCenter));
+    dragStartX = dragStartY = dragPointerId = null;
+    dragStarted = false;
+    carousel.classList.remove('is-dragging');
+    setActive(snapIndex, false, false);
+  });
+
+  carousel.addEventListener('click', event => {
+    if (suppressClick) { suppressClick = false; return; }
+    const card = event.target.closest('.card');
+    if (!card || card.getAttribute('aria-hidden') === 'true') return;
+    setActive(Number(card.dataset.index), true, true);
+  });
+
+  countRange.addEventListener('input', () => {
+    totalCards = Number(countRange.value);
+    countOutput.value = String(totalCards);
+    activeIndex = clamp(activeIndex, 0, totalCards - 1);
+    createCards(totalCards);
+    layout();
+  });
+
+  window.addEventListener('resize', () => layout());
+
+  createCards(totalCards);
+  layout();
+})();
+</script>
+</body>
+</html>

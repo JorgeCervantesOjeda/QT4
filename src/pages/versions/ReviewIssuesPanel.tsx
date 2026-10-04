@@ -4,6 +4,7 @@ import type { Dispatch, ReactNode, RefObject, SetStateAction } from 'react'
 import { flushSync } from 'react-dom'
 import { useEffect, useRef, useState } from 'react'
 import DataTable from '../../components/DataTable'
+import FocusContextCarousel from '../../components/FocusContextCarousel'
 import ProgressModal from '../../components/ProgressModal'
 import { requestAiAssist } from '../../lib/aiAssist'
 import { measureSlowUiAction } from '../../lib/slowUiAction'
@@ -11,6 +12,7 @@ import type { CommentSummary, ThreadSummary, VersionSummary } from './types'
 import {
   areThreadsEqual,
 } from './utils'
+import type { ListViewMode } from './viewModes'
 
 type CommentWindowMeta = {
   state: string
@@ -35,8 +37,8 @@ type ReviewIssuesPanelProps = {
   onCreateThread: () => void
   isLoadingThreads: boolean
   threads: ThreadSummary[]
-  threadsViewMode: 'card' | 'table'
-  setThreadsViewMode: Dispatch<SetStateAction<'card' | 'table'>>
+  threadsViewMode: ListViewMode
+  setThreadsViewMode: Dispatch<SetStateAction<ListViewMode>>
   threadColumns: ColumnDef<ThreadSummary>[]
   threadsSorting: SortingState
   setThreadsSorting: OnChangeFn<SortingState>
@@ -242,7 +244,54 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
       <div className="actions">
         <ViewToggle label="Issue view" value={threadsViewMode} onChange={setThreadsViewMode} />
       </div>
-      {threadsViewMode === 'table' ? (
+      {threadsViewMode === 'focus' ? (
+        <>
+          <FocusContextCarousel
+            items={threads}
+            selectedId={effectiveSelectedThreadId ?? threads[0]?.id ?? null}
+            getItemId={( thread ) => thread.id}
+            getItemLabel={( thread ) => `Issue ${thread.title}`}
+            ariaLabel="Review issues in focus view"
+            onSelect={handleSelectIssue}
+            renderItem={( thread ) => {
+              const commentWindowMeta = getThreadCommentWindowMeta( thread )
+              return (
+                <div className="focus-context-carousel__content">
+                  <h4>{thread.title}</h4>
+                  <p className="muted">Status: {thread.status}</p>
+                  <p className="muted">Created by: {formatUserLabel( thread.createdBy )}</p>
+                  <p className="muted">Comments: {commentsByThread[thread.id]?.length ?? thread.commentCount}</p>
+                  <p className={`thread-window thread-window--${commentWindowMeta.state}`}>
+                    Comment window: {commentWindowMeta.label}
+                  </p>
+                </div>
+              )
+            }}
+          />
+          {effectiveSelectedThreadId && issueConversation ? (
+            <div ref={expandedConversationRef} className="issue-conversation-expanded">
+              <div className="actions issue-conversation-expanded__toolbar">
+                <button type="button" className="ghost" onClick={toggleSelectedIssueConversation}>
+                  {showIssueComments ? 'Hide comments' : 'Show comments'}
+                </button>
+                {(() => {
+                  const selectedFocusThread = threads.find( ( thread ) => thread.id === effectiveSelectedThreadId )
+                  return selectedFocusThread ? (
+                    <button
+                      type="button"
+                      onClick={() => requestThreadStatusChangeConfirmation( selectedFocusThread )}
+                      disabled={isBusy}
+                    >
+                      {selectedFocusThread.status === 'open' ? 'Close' : 'Reopen'}
+                    </button>
+                  ) : null
+                })()}
+              </div>
+              {showIssueComments ? issueConversation : null}
+            </div>
+          ) : null}
+        </>
+      ) : threadsViewMode === 'table' ? (
         <DataTable
           key={`qt4_table_versions_threads_${selectedVersion.id}`}
           columns={threadColumns}
@@ -581,8 +630,8 @@ function ViewToggle( {
   onChange,
 }: {
   label: string
-  value: 'card' | 'table'
-  onChange: Dispatch<SetStateAction<'card' | 'table'>>
+  value: ListViewMode
+  onChange: Dispatch<SetStateAction<ListViewMode>>
 } ) {
   return (
     <label className="field">
@@ -593,6 +642,9 @@ function ViewToggle( {
         </button>
         <button type="button" aria-pressed={value === 'table'} onClick={() => onChange( 'table' )}>
           Table
+        </button>
+        <button type="button" aria-pressed={value === 'focus'} onClick={() => onChange( 'focus' )}>
+          Focus
         </button>
       </div>
     </label>

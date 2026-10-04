@@ -245,6 +245,24 @@ describe( 'ReviewIssuesPanel', () => {
     expect( screen.getAllByText( 'Please add evidence.' ) ).toHaveLength( 1 )
   } )
 
+  it( 'offers focus navigation for issue review while keeping comments outside the carousel', () => {
+    const selectThreadKeepingViewport = vi.fn()
+    renderPanel( {
+      threads: [ selectedThread, secondThread ],
+      threadsViewMode: 'focus',
+      selectThreadKeepingViewport,
+    } )
+
+    expect( screen.getByRole( 'region', { name: 'Review issues in focus view' } ) ).toBeTruthy()
+    expect( screen.getByText( 'Item 1 of 2' ) ).toBeTruthy()
+    expect( screen.getByRole( 'button', { name: 'Show comments' } ) ).toBeTruthy()
+    expect( screen.queryByText( 'Please add evidence.' ) ).toBeNull()
+
+    fireEvent.click( screen.getByRole( 'button', { name: 'Next item' } ) )
+
+    expect( selectThreadKeepingViewport ).toHaveBeenCalledWith( 'thread-2' )
+  } )
+
   it( 'keeps the comment visibility preference when selecting another issue', () => {
     function StatefulPanel() {
       const [selectedThreadId, setSelectedThreadId] = useState( selectedThread.id )

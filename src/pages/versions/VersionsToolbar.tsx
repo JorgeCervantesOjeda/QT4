@@ -2,6 +2,7 @@
 import type { RefObject } from 'react'
 import { versionNumberToString } from '../../domain/types'
 import type { VersionSummary } from './types'
+import type { ListViewMode } from './viewModes'
 
 type VersionsToolbarProps = {
   versionsActionsRef: RefObject<HTMLDivElement | null>
@@ -9,7 +10,7 @@ type VersionsToolbarProps = {
   selectedVersion: VersionSummary | null
   isBusy: boolean
   createButtonLabel: string
-  viewMode: 'card' | 'table'
+  viewMode: ListViewMode
   versionSelectStatusClassName: (version?: Pick<VersionSummary, 'status' | 'reviewEndAt'> | null) => string
   versionStatusColor: (version?: Pick<VersionSummary, 'status' | 'reviewEndAt'> | null) => string
   selectVersionAndClearThreadQuery: (versionId: string | null) => void
@@ -18,7 +19,7 @@ type VersionsToolbarProps = {
   requestStartReviewConfirmation: () => void
   requestVersionDecisionConfirmation: (decision: 'accept' | 'reject') => void
   requestErrorReportCreation: () => void
-  setViewMode: (viewMode: 'card' | 'table') => void
+  setViewMode: (viewMode: ListViewMode) => void
 }
 
 function VersionsToolbar( {
@@ -114,6 +115,13 @@ function VersionsToolbar( {
               onClick={() => setViewMode( 'table' )}
             >
               Table
+            </button>
+            <button
+              type="button"
+              aria-pressed={viewMode === 'focus'}
+              onClick={() => setViewMode( 'focus' )}
+            >
+              Focus
             </button>
           </div>
         </label>

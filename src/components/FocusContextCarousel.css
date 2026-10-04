@@ -1,0 +1,96 @@
+/* src/components/FocusContextCarousel.css */
+/* Visual context and motion for the linear focus carousel. */
+.focus-context-carousel {
+  display: grid;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.focus-context-carousel:focus-visible {
+  outline: 2px solid var(--color-accent, #8c3b2f);
+  outline-offset: 0.25rem;
+}
+
+.focus-context-carousel__toolbar {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.focus-context-carousel__toolbar button {
+  min-width: 2.5rem;
+}
+
+.focus-context-carousel__position {
+  margin: 0;
+  min-width: 7rem;
+  text-align: center;
+}
+
+.focus-context-carousel__viewport {
+  min-height: 14rem;
+  overflow: hidden;
+  position: relative;
+}
+
+.focus-context-carousel__track {
+  align-items: stretch;
+  display: flex;
+  justify-content: center;
+  min-height: 14rem;
+  position: relative;
+}
+
+.focus-context-carousel__card {
+  background: var(--color-surface, #fffaf4);
+  border: 1px solid var(--color-border, #d7c8bc);
+  border-radius: 0.75rem;
+  box-shadow: 0 0.35rem 1rem rgb(60 35 20 / 14%);
+  color: inherit;
+  left: 50%;
+  min-height: 12rem;
+  opacity: var(--carousel-opacity);
+  padding: 1rem;
+  position: absolute;
+  top: 0;
+  transform: translateX(calc(-50% + var(--carousel-offset))) scale(var(--carousel-scale));
+  transition: opacity 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+  width: min(30rem, 78%);
+}
+
+.focus-context-carousel__card[data-focus='true'] {
+  border-color: var(--color-accent, #8c3b2f);
+  box-shadow: 0 0.65rem 1.5rem rgb(60 35 20 / 22%);
+  opacity: 1;
+  z-index: 20;
+}
+
+.focus-context-carousel__card:focus-visible {
+  outline: 2px solid var(--color-accent, #8c3b2f);
+  outline-offset: 0.2rem;
+}
+
+.focus-context-carousel__card:not([data-focus='true']):hover {
+  opacity: 0.78;
+}
+
+.focus-context-carousel__empty {
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .focus-context-carousel__card {
+    transition: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .focus-context-carousel__card {
+    width: min(34rem, 86%);
+  }
+
+  .focus-context-carousel__card:not([data-focus='true']) {
+    opacity: 0.2;
+  }
+}

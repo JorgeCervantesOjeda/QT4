@@ -15,8 +15,16 @@ import type {
   ThreadSummary,
   VersionSummary,
 } from "./types";
+import type { ListViewMode } from "./viewModes";
 
-const readStoredViewMode = (storageKey: string): "card" | "table" => {
+const readStoredViewMode = (storageKey: string): ListViewMode => {
+  const storedView = window.localStorage.getItem(storageKey);
+  return storedView === "table" || storedView === "card" || storedView === "focus"
+    ? storedView
+    : "card";
+};
+
+const readStoredCardTableViewMode = (storageKey: string): "card" | "table" => {
   const storedView = window.localStorage.getItem(storageKey);
   return storedView === "table" || storedView === "card" ? storedView : "card";
 };
@@ -72,14 +80,14 @@ const useVersionsPageState = () => {
   const [errorReportTitleError, setErrorReportTitleError] = useState<
     string | null
   >(null);
-  const [viewMode, setViewMode] = useState<"card" | "table">(() =>
+  const [viewMode, setViewMode] = useState<ListViewMode>(() =>
     readStoredViewMode("qt4_versions_view"),
   );
-  const [threadsViewMode, setThreadsViewMode] = useState<"card" | "table">(() =>
+  const [threadsViewMode, setThreadsViewMode] = useState<ListViewMode>(() =>
     readStoredViewMode("qt4_versions_threads_view"),
   );
   const [commentsViewMode, setCommentsViewMode] = useState<"card" | "table">(
-    () => readStoredViewMode("qt4_versions_thread_comments_view"),
+    () => readStoredCardTableViewMode("qt4_versions_thread_comments_view"),
   );
   const [versionSorting, setVersionSorting] = useState<SortingState>([
     {

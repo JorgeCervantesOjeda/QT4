@@ -24,6 +24,7 @@ import type {
   ThreadSummary,
   VersionSummary,
 } from "./types";
+import type { ListViewMode } from "./viewModes";
 
 type VersionsPageViewProps = {
   acceptedErrorReports: AcceptedErrorReportSummary[];
@@ -156,12 +157,12 @@ type VersionsPageViewProps = {
     React.SetStateAction<PropagationFailurePrompt | null>
   >;
   setThreadsSorting: React.Dispatch<React.SetStateAction<SortingState>>;
-  setThreadsViewMode: React.Dispatch<React.SetStateAction<"card" | "table">>;
+  setThreadsViewMode: React.Dispatch<React.SetStateAction<ListViewMode>>;
   setVersionDecisionModal: React.Dispatch<
     React.SetStateAction<"accept" | "reject" | null>
   >;
   setVersionSorting: React.Dispatch<React.SetStateAction<SortingState>>;
-  setViewMode: React.Dispatch<React.SetStateAction<"card" | "table">>;
+  setViewMode: React.Dispatch<React.SetStateAction<ListViewMode>>;
   setVisibleThreadRows: React.Dispatch<React.SetStateAction<ThreadSummary[]>>;
   successEmailRecipients: { to: string[]; cc: string[] } | null;
   successMessage: string | null;
@@ -171,7 +172,7 @@ type VersionsPageViewProps = {
   threadReportLabel: string;
   threads: ThreadSummary[];
   threadsSorting: SortingState;
-  threadsViewMode: "card" | "table";
+  threadsViewMode: ListViewMode;
   uploadInputRef: React.RefObject<HTMLInputElement | null>;
   uploadMessage: string;
   uploadStatus: "idle" | "uploading" | "success" | "error";
@@ -191,7 +192,7 @@ type VersionsPageViewProps = {
   versions: VersionSummary[];
   versionFileRefsById: Record<string, FileRefSummary>;
   versionsActionsRef: React.RefObject<HTMLDivElement | null>;
-  viewMode: "card" | "table";
+  viewMode: ListViewMode;
   warningMessage: string | null;
 };
 

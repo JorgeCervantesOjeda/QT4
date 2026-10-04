@@ -4,6 +4,7 @@ import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from 'reac
 import type { SortingState } from '@tanstack/react-table'
 import type { CommentSummary, DashboardFocusTarget, ThreadSummary, VersionSummary } from './types'
 import { buildCommentAnchorId } from './utils'
+import type { ListViewMode } from './viewModes'
 
 type UseThreadQueryNavigationParams = {
   threadIdFromQuery: string
@@ -230,9 +231,9 @@ function useDashboardFocus( {
 }
 
 type UseVersionPreferencesParams = {
-  viewMode: 'card' | 'table'
+  viewMode: ListViewMode
   versionSorting: SortingState
-  threadsViewMode: 'card' | 'table'
+  threadsViewMode: ListViewMode
   commentsViewMode: 'card' | 'table'
   setVersionSorting: Dispatch<SetStateAction<SortingState>>
 }
