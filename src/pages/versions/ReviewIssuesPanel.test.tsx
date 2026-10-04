@@ -258,6 +258,10 @@ describe( 'ReviewIssuesPanel', () => {
     expect( screen.getByRole( 'button', { name: 'Show comments' } ) ).toBeTruthy()
     expect( screen.queryByText( 'Please add evidence.' ) ).toBeNull()
 
+    fireEvent.click( screen.getByRole( 'button', { name: /Missing evidence/u } ) )
+
+    expect( screen.getByRole( 'button', { name: 'Hide comments' } ) ).toBeTruthy()
+
     fireEvent.click( screen.getByRole( 'button', { name: 'Next item' } ) )
 
     expect( selectThreadKeepingViewport ).toHaveBeenCalledWith( 'thread-2' )

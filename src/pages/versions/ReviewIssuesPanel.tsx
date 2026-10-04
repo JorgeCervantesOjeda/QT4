@@ -253,17 +253,23 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
             getItemLabel={( thread ) => `Issue ${thread.title}`}
             ariaLabel="Review issues in focus view"
             onSelect={handleSelectIssue}
-            renderItem={( thread ) => {
+            onSelectedClick={toggleSelectedIssueConversation}
+            renderItem={( thread, { distance, isSelected } ) => {
               const commentWindowMeta = getThreadCommentWindowMeta( thread )
+              const showDetail = isSelected || Math.abs( distance ) <= 3
               return (
                 <div className="focus-context-carousel__content">
                   <h4>{thread.title}</h4>
                   <p className="muted">Status: {thread.status}</p>
-                  <p className="muted">Created by: {formatUserLabel( thread.createdBy )}</p>
-                  <p className="muted">Comments: {commentsByThread[thread.id]?.length ?? thread.commentCount}</p>
-                  <p className={`thread-window thread-window--${commentWindowMeta.state}`}>
-                    Comment window: {commentWindowMeta.label}
-                  </p>
+                  {showDetail ? (
+                    <>
+                      <p className="muted">Created by: {formatUserLabel( thread.createdBy )}</p>
+                      <p className="muted">Comments: {commentsByThread[thread.id]?.length ?? thread.commentCount}</p>
+                      <p className={`thread-window thread-window--${commentWindowMeta.state}`}>
+                        Comment window: {commentWindowMeta.label}
+                      </p>
+                    </>
+                  ) : null}
                 </div>
               )
             }}

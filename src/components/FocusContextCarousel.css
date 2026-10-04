@@ -1,5 +1,5 @@
 /* src/components/FocusContextCarousel.css */
-/* Visual context and motion for the linear focus carousel. */
+/* 3D focus-context geometry and interaction states inspired by the supplied linear carousel sample. */
 .focus-context-carousel {
   display: grid;
   gap: 0.75rem;
@@ -14,56 +14,93 @@
 .focus-context-carousel__toolbar {
   align-items: center;
   display: flex;
-  gap: 0.75rem;
   justify-content: center;
 }
 
-.focus-context-carousel__toolbar button {
-  min-width: 2.5rem;
-}
-
 .focus-context-carousel__position {
+  font-variant-numeric: tabular-nums;
   margin: 0;
   min-width: 7rem;
   text-align: center;
 }
 
-.focus-context-carousel__viewport {
-  min-height: 14rem;
-  overflow: hidden;
-  position: relative;
+.focus-context-carousel__selection-notice {
+  margin: 0;
+  text-align: center;
 }
 
-.focus-context-carousel__track {
-  align-items: stretch;
-  display: flex;
-  justify-content: center;
-  min-height: 14rem;
+.focus-context-carousel__viewport {
+  background:
+    linear-gradient(to bottom, rgb(255 255 255 / 3%), transparent 38%),
+    radial-gradient(ellipse at 50% 83%, rgb(140 59 47 / 12%), transparent 42%);
+  border: 1px solid var(--color-border, #d7c8bc);
+  border-radius: 1.25rem;
+  isolation: isolate;
+  min-height: 32rem;
+  overflow: hidden;
+  perspective: 81.25rem;
+  perspective-origin: 50% 44%;
   position: relative;
+  touch-action: pan-y;
+}
+
+.focus-context-carousel__viewport::after {
+  background: linear-gradient(to right, transparent, rgb(80 58 45 / 22%), transparent);
+  bottom: 4.4rem;
+  content: '';
+  height: 1px;
+  left: 8%;
+  position: absolute;
+  right: 8%;
+}
+
+.focus-context-carousel__stage {
+  inset: 0;
+  perspective: 81.25rem;
+  perspective-origin: 50% 44%;
+  position: absolute;
+  transform-style: preserve-3d;
 }
 
 .focus-context-carousel__card {
   background: var(--color-surface, #fffaf4);
   border: 1px solid var(--color-border, #d7c8bc);
-  border-radius: 0.75rem;
-  box-shadow: 0 0.35rem 1rem rgb(60 35 20 / 14%);
+  border-radius: 1rem;
+  box-shadow: 0 1.1rem 2.6rem rgb(60 35 20 / 26%);
   color: inherit;
+  cursor: pointer;
+  height: min(22rem, calc(100% - 6rem));
   left: 50%;
-  min-height: 12rem;
+  max-width: 34rem;
+  min-height: 15rem;
   opacity: var(--carousel-opacity);
+  overflow: auto;
   padding: 1rem;
   position: absolute;
-  top: 0;
-  transform: translateX(calc(-50% + var(--carousel-offset))) scale(var(--carousel-scale));
-  transition: opacity 180ms ease, transform 180ms ease, box-shadow 180ms ease;
-  width: min(30rem, 78%);
+  top: 46%;
+  transform: translate3d(calc(-50% + var(--carousel-x)), calc(-50% + var(--carousel-y)), var(--carousel-z)) rotateY(var(--carousel-rotation)) scale(var(--carousel-scale));
+  transform-origin: center center;
+  transform-style: preserve-3d;
+  transition: transform 550ms cubic-bezier(.2, .8, .2, 1), opacity 450ms ease, filter 450ms ease, box-shadow 250ms ease;
+  width: min(30rem, 72%);
+  filter: saturate(var(--carousel-saturation, 1)) brightness(var(--carousel-brightness, 1)) blur(var(--carousel-blur));
+  will-change: transform, opacity;
 }
 
 .focus-context-carousel__card[data-focus='true'] {
   border-color: var(--color-accent, #8c3b2f);
-  box-shadow: 0 0.65rem 1.5rem rgb(60 35 20 / 22%);
+  box-shadow: 0 1.5rem 3.6rem rgb(60 35 20 / 35%), 0 0 2.4rem rgb(140 59 47 / 16%);
   opacity: 1;
-  z-index: 20;
+}
+
+.focus-context-carousel__card[data-lod='context'] {
+  min-height: 12rem;
+}
+
+.focus-context-carousel__card:hover,
+.focus-context-carousel__card:focus-visible {
+  border-color: var(--color-accent, #8c3b2f);
+  box-shadow: 0 1.25rem 3rem rgb(60 35 20 / 32%), 0 0 0 2px rgb(140 59 47 / 18%);
 }
 
 .focus-context-carousel__card:focus-visible {
@@ -71,26 +108,116 @@
   outline-offset: 0.2rem;
 }
 
-.focus-context-carousel__card:not([data-focus='true']):hover {
-  opacity: 0.78;
+.focus-context-carousel__card h3,
+.focus-context-carousel__card h4 {
+  margin-top: 0;
+}
+
+.focus-context-carousel__card p:last-child {
+  margin-bottom: 0;
+}
+
+.focus-context-carousel__nav {
+  align-items: center;
+  background: rgb(45 33 28 / 78%);
+  border: 1px solid var(--color-border, #d7c8bc);
+  border-radius: 50%;
+  color: inherit;
+  display: grid;
+  font-size: 1.5rem;
+  height: 3.25rem;
+  justify-content: center;
+  position: absolute;
+  top: 46%;
+  transform: translateY(-50%);
+  transition: transform 200ms ease, background 200ms ease;
+  width: 3.25rem;
+  z-index: 3000;
+}
+
+.focus-context-carousel__nav:hover:not(:disabled) {
+  background: var(--color-accent, #8c3b2f);
+  transform: translateY(-50%) scale(1.08);
+}
+
+.focus-context-carousel__nav:focus-visible {
+  outline: 2px solid var(--color-accent, #8c3b2f);
+  outline-offset: 0.2rem;
+}
+
+.focus-context-carousel__nav:disabled {
+  cursor: default;
+  opacity: 0.28;
+  transform: translateY(-50%) scale(0.96);
+}
+
+.focus-context-carousel__nav--previous {
+  left: 1rem;
+}
+
+.focus-context-carousel__nav--next {
+  right: 1rem;
+}
+
+.focus-context-carousel__edge-hint {
+  background: rgb(45 33 28 / 62%);
+  border: 1px solid rgb(80 58 45 / 22%);
+  border-radius: 999px;
+  bottom: 1rem;
+  color: var(--color-muted, #76675f);
+  font-size: 0.8rem;
+  left: 50%;
+  margin: 0;
+  padding: 0.35rem 0.75rem;
+  pointer-events: none;
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  z-index: 3000;
+}
+
+.focus-context-carousel--dragging {
+  cursor: grabbing;
+}
+
+.focus-context-carousel--dragging .focus-context-carousel__card {
+  cursor: grabbing;
+  transition: none;
 }
 
 .focus-context-carousel__empty {
   margin: 0;
 }
 
-@media (prefers-reduced-motion: reduce) {
+@media (max-width: 760px) {
+  .focus-context-carousel__viewport {
+    min-height: 28rem;
+  }
+
   .focus-context-carousel__card {
-    transition: none;
+    height: min(20rem, calc(100% - 5rem));
+    width: 86%;
+  }
+
+  .focus-context-carousel__nav--previous {
+    left: 0.5rem;
+  }
+
+  .focus-context-carousel__nav--next {
+    right: 0.5rem;
+  }
+
+  .focus-context-carousel__edge-hint {
+    font-size: 0.7rem;
+    max-width: calc(100% - 6rem);
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 
-@media (max-width: 760px) {
-  .focus-context-carousel__card {
-    width: min(34rem, 86%);
-  }
-
-  .focus-context-carousel__card:not([data-focus='true']) {
-    opacity: 0.2;
+@media (prefers-reduced-motion: reduce) {
+  .focus-context-carousel__card,
+  .focus-context-carousel__nav {
+    transition: none;
   }
 }

@@ -93,23 +93,30 @@ function VersionListPanel( {
           getItemLabel={( version ) => `Version ${versionNumberToString( version.number )}`}
           ariaLabel="Document versions in focus view"
           onSelect={openReviewIssuesForVersion}
-          renderItem={( version ) => (
-            <div className="focus-context-carousel__content">
-              <h3>Version {versionNumberToString( version.number )}</h3>
-              <p className="muted">{version.status}</p>
-              <p className="muted">Author: {formatUserLabel( version.createdBy )}</p>
-              <p className="muted">Created: {formatTimeAgoWithTimestamp( version.createdAt )}</p>
-              <p className="muted">Last activity: {formatTimeAgoWithTimestamp( version.activityAt ?? version.createdAt )}</p>
-              <p className="muted">Reviewers: {version.reviewerIds.length}</p>
-              <p className="muted">
-                Issues: {version.numThreads} - Open: {version.numOpenThreads} - Comments: {version.numComments}
-              </p>
-              <p className="muted">
-                Uploaded: {!version.hasFile ? 'No' : version.fileRefId ? 'Yes' : 'Missing metadata'}
-              </p>
-              <p className="muted">Review period: {formatReviewPeriodLabel( version, clockNowMs )}</p>
-            </div>
-          )}
+          renderItem={( version, { distance, isSelected } ) => {
+            const showDetail = isSelected || Math.abs( distance ) <= 3
+            return (
+              <div className="focus-context-carousel__content">
+                <h3>Version {versionNumberToString( version.number )}</h3>
+                <p className="muted">{version.status}</p>
+                {showDetail ? (
+                  <>
+                    <p className="muted">Author: {formatUserLabel( version.createdBy )}</p>
+                    <p className="muted">Created: {formatTimeAgoWithTimestamp( version.createdAt )}</p>
+                    <p className="muted">Last activity: {formatTimeAgoWithTimestamp( version.activityAt ?? version.createdAt )}</p>
+                    <p className="muted">Reviewers: {version.reviewerIds.length}</p>
+                    <p className="muted">
+                      Issues: {version.numThreads} - Open: {version.numOpenThreads} - Comments: {version.numComments}
+                    </p>
+                    <p className="muted">
+                      Uploaded: {!version.hasFile ? 'No' : version.fileRefId ? 'Yes' : 'Missing metadata'}
+                    </p>
+                    <p className="muted">Review period: {formatReviewPeriodLabel( version, clockNowMs )}</p>
+                  </>
+                ) : null}
+              </div>
+            )
+          }}
         />
         {focusVersion && hasLinkedFileMetadata( focusVersion ) ? (
           <div className="actions focus-context-carousel__selected-actions">
