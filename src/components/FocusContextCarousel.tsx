@@ -1,7 +1,8 @@
 // src/components/FocusContextCarousel.tsx
 // Presents a linear focus-context list with bounded 3D geometry and direct keyboard and pointer navigation.
 // Fractional visual coordinates are computed here because drag state cannot be represented by CSS alone; CSS consumes the resulting variables.
-import type { CSSProperties, KeyboardEvent, PointerEvent, ReactNode } from 'react'
+// The viewport bounds are measured only to classify clicks in its empty lateral hit areas, not for responsive layout.
+import type { CSSProperties, KeyboardEvent, MouseEvent, PointerEvent, ReactNode } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import './FocusContextCarousel.css'
 
@@ -75,7 +76,7 @@ const getVisibleRange = ( countOfItems: number, centerIndex: number ): VisibleRa
 }
 
 const getEdgeHint = ( focusIndex: number, countOfItems: number, countOfVisibleItems: number ) => {
-  const interactionHint = 'clic · arrastra · ← →'
+  const interactionHint = 'clic lateral · arrastra · ← →'
   if( focusIndex === 0 ) {
     return `Inicio de la lista · ${interactionHint}`
   }
@@ -220,6 +221,21 @@ function FocusContextCarousel<Item>( {
       selectAt( items.length - 1, true )
     }
   }
+  const handleViewportClick = ( event: MouseEvent<HTMLDivElement> ) => {
+    const target = event.target
+    if(
+      target instanceof Element &&
+      target.closest( '.focus-context-carousel__card, .focus-context-carousel__nav, .focus-context-carousel__edge-hint' )
+    ) {
+      return
+    }
+    const viewportRect = event.currentTarget.getBoundingClientRect()
+    if( viewportRect.width <= 0 ) {
+      return
+    }
+    const midpoint = viewportRect.left + viewportRect.width / 2
+    stepBy( event.clientX < midpoint ? -1 : 1, true )
+  }
   const handlePointerDown = ( event: PointerEvent<HTMLElement> ) => {
     const target = event.target
     if( target instanceof Element && target.closest( '.focus-context-carousel__toolbar' ) ) {
@@ -319,7 +335,7 @@ function FocusContextCarousel<Item>( {
           {selectionNotice}
         </p>
       ) : null}
-      <div className="focus-context-carousel__viewport">
+      <div className="focus-context-carousel__viewport" onClick={handleViewportClick}>
         <div className="focus-context-carousel__stage">
           {visibleItems.map( ( item, visibleOffset ) => {
             const itemIndex = visibleRange.startIndex + visibleOffset

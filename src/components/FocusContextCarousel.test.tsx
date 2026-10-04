@@ -110,6 +110,30 @@ describe( 'FocusContextCarousel', () => {
     expect( onSelect ).not.toHaveBeenCalled()
   } )
 
+  it( 'uses empty lateral viewport areas as adjacent navigation targets', () => {
+    const onSelect = renderCarousel( 'version-3', createItems( 5 ) )
+    const region = screen.getByRole( 'region', { name: 'Document versions' } )
+    const viewport = region.querySelector( '.focus-context-carousel__viewport' ) as HTMLElement
+
+    vi.spyOn( viewport, 'getBoundingClientRect' ).mockReturnValue( {
+      bottom: 500,
+      height: 500,
+      left: 0,
+      right: 1000,
+      top: 0,
+      width: 1000,
+      x: 0,
+      y: 0,
+      toJSON: () => ( {} ),
+    } )
+
+    fireEvent.click( viewport, { clientX: 100, clientY: 200 } )
+    fireEvent.click( viewport, { clientX: 900, clientY: 200 } )
+
+    expect( onSelect ).toHaveBeenNthCalledWith( 1, 'version-2' )
+    expect( onSelect ).toHaveBeenNthCalledWith( 2, 'version-3' )
+  } )
+
   it( 'keeps a context window of at most twenty-five cards for long lists', () => {
     const longItems = createItems( 40 )
     renderCarousel( 'version-20', longItems )
