@@ -1,5 +1,4 @@
-// src/pages/ProjectsPage.tsx
-// Lists projects, handles project creation, and shows project-level feedback.
+// src/pages/ProjectsPage.tsx: Lists projects, handles project creation, and shows project-level feedback.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ColumnDef, SortingState } from '@tanstack/react-table'
 import {
@@ -422,6 +421,7 @@ function ProjectsPage() {
         {
           action: 'projects.createProject',
           page: 'Projects',
+          hasModal: true,
           userId,
           projectId: projectRef.id,
         },

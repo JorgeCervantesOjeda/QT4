@@ -1,6 +1,7 @@
-// Document title edit modal state and Firestore update flow.
+// src/pages/versions/documentTitleEditing.ts: Manages document-title editing and its persistence feedback.
 import { useCallback, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
+import { flushSync } from 'react-dom'
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { logAudit } from '../../lib/audit'
 import { db } from '../../lib/firebase'
@@ -76,12 +77,13 @@ function useDocumentTitleEditing( {
     setDocumentTitleError( null )
     setError( null )
     setSuccessMessage( null )
-    setIsBusy( true )
+    flushSync( () => setIsBusy( true ) )
     try {
       await measureSlowUiAction(
         {
           action: 'versions.updateDocumentTitle',
           page: 'Document Versions',
+          hasModal: true,
           userId,
           projectId,
           docId,

@@ -1,6 +1,6 @@
-// src/pages/versions/reviewDurationActions.ts
-// Creates Firestore actions for configuring review duration before review starts.
+// src/pages/versions/reviewDurationActions.ts: Creates Firestore actions for configuring review duration before review starts.
 import type { Dispatch, SetStateAction } from 'react'
+import { flushSync } from 'react-dom'
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { logAudit } from '../../lib/audit'
 import { db } from '../../lib/firebase'
@@ -54,7 +54,7 @@ const createReviewDurationActions = (params: ReviewDurationActionParams) => {
           : version,
       ),
     )
-    params.setIsBusy( true )
+    flushSync( () => params.setIsBusy( true ) )
     try {
       await measureSlowUiAction(
         {
@@ -64,6 +64,7 @@ const createReviewDurationActions = (params: ReviewDurationActionParams) => {
           projectId: params.projectId,
           docId: params.docId,
           versionId: selectedVersion.id,
+          hasModal: true,
         },
         () => updateDoc( doc( db, 'versions', selectedVersion.id ), {
           reviewDurationDays: nextReviewDurationDays,

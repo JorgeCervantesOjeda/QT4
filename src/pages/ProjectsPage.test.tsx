@@ -11,6 +11,7 @@ const {
   reportAbnormalErrorMock,
   logAuditMock,
   navigateMock,
+  measureSlowUiActionMock,
 } = vi.hoisted( () => ( {
   onSnapshotMock: vi.fn(),
   getDocMock: vi.fn(),
@@ -19,6 +20,7 @@ const {
   reportAbnormalErrorMock: vi.fn(),
   logAuditMock: vi.fn(),
   navigateMock: vi.fn(),
+  measureSlowUiActionMock: vi.fn( async ( _metadata: unknown, operation: () => Promise<unknown> ) => operation() ),
 } ) )
 
 vi.mock( 'firebase/firestore', () => ( {
@@ -93,6 +95,10 @@ vi.mock( '../lib/errorMonitor', () => ( {
 
 vi.mock( '../lib/firebase', () => ( {
   db: { kind: 'db' },
+} ) )
+
+vi.mock( '../lib/slowUiAction', () => ( {
+  measureSlowUiAction: measureSlowUiActionMock,
 } ) )
 
 import ProjectsPage from './ProjectsPage'
@@ -289,6 +295,13 @@ describe( 'pages/ProjectsPage', () => {
     await waitFor( () => {
       expect( screen.getByRole( 'heading', { name: 'Success' } ) ).toBeTruthy()
     } )
+    expect( measureSlowUiActionMock ).toHaveBeenCalledWith(
+      expect.objectContaining( {
+        action: 'projects.createProject',
+        hasModal: true,
+      } ),
+      expect.any( Function ),
+    )
   }, 15000 )
 
   it( 'does not render member editing controls on project cards', async () => {

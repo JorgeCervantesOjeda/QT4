@@ -167,6 +167,8 @@ function VersionsModals(props: VersionsModalsProps) {
     pendingThreadStatusChange?.status === "open"
       ? "Confirm closing this issue."
       : "Confirm reopening this issue.";
+  const errorReportProgressTitle = "Creating error report";
+  const errorReportProgressMessage = "Creating the error report...";
   const pendingVersionActionProgressTitle =
     pendingVersionAction === "createVersion"
       ? "Creating new version"
@@ -237,11 +239,12 @@ function VersionsModals(props: VersionsModalsProps) {
     <>
       {isDocumentTitleModalOpen ? (
         <ModalDialog
-          onClose={onCloseDocumentTitleModal}
+          onClose={isBusy ? undefined : onCloseDocumentTitleModal}
           initialFocusRef={documentTitleInputRef}
         >
-          <h3>Edit document title</h3>
-          <GiphyInline reason="thinking" mode="inline" />
+          <h3>{isBusy ? "Saving document title" : "Edit document title"}</h3>
+          <GiphyInline reason={isBusy ? "loading" : "thinking"} mode="inline" />
+          {isBusy ? <p className="muted">Saving the document title...</p> : null}
           <label className="field">
             <span>Title</span>
             <input
@@ -256,28 +259,23 @@ function VersionsModals(props: VersionsModalsProps) {
           {documentTitleError ? (
             <p className="error">{documentTitleError}</p>
           ) : null}
-          <div className="actions">
-            <button
-              type="button"
-              onClick={onCloseDocumentTitleModal}
-              disabled={isBusy}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={onSaveDocumentTitle}
-              disabled={isBusy}
-            >
-              Save title
-            </button>
-          </div>
+          {!isBusy ? (
+            <div className="actions">
+              <button type="button" onClick={onCloseDocumentTitleModal}>
+                Cancel
+              </button>
+              <button type="button" onClick={onSaveDocumentTitle}>
+                Save title
+              </button>
+            </div>
+          ) : null}
         </ModalDialog>
       ) : null}
       {isErrorReportModalOpen ? (
-        <ModalDialog onClose={onCloseErrorReportModal}>
-          <h3>Create error report</h3>
-          <GiphyInline reason="thinking" mode="inline" />
+        <ModalDialog onClose={isBusy ? undefined : onCloseErrorReportModal}>
+          <h3>{isBusy ? errorReportProgressTitle : "Create error report"}</h3>
+          <GiphyInline reason={isBusy ? "loading" : "thinking"} mode="inline" />
+          {isBusy ? <p className="muted">{errorReportProgressMessage}</p> : null}
           <label className="field">
             <span>Title</span>
             <input
@@ -285,23 +283,26 @@ function VersionsModals(props: VersionsModalsProps) {
               value={errorReportTitle}
               onChange={(event) => setErrorReportTitle(event.target.value)}
               placeholder="Enter error report title"
+              disabled={isBusy}
             />
           </label>
           {errorReportTitleError ? (
             <p className="error">{errorReportTitleError}</p>
           ) : null}
-          <div className="actions">
-            <button type="button" onClick={onCloseErrorReportModal}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => onCreateErrorReport(errorReportTitle)}
-              disabled={isBusy}
-            >
-              Confirm
-            </button>
-          </div>
+          {!isBusy ? (
+            <div className="actions">
+              <button type="button" onClick={onCloseErrorReportModal}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => onCreateErrorReport(errorReportTitle)}
+                disabled={isBusy}
+              >
+                Confirm
+              </button>
+            </div>
+          ) : null}
         </ModalDialog>
       ) : null}
       {versionDecisionModal ? (

@@ -192,6 +192,134 @@ describe( 'versions/VersionsModals', () => {
     expect( screen.queryByRole( 'button', { name: 'Confirm' } ) ).toBeNull()
   } )
 
+  it( 'shows error-report creation progress while the modal operation is busy', () => {
+    render(
+      <VersionsModals
+        isBusy={true}
+        isDocumentTitleModalOpen={false}
+        documentTitleInputRef={{ current: null }}
+        documentTitleDraft=""
+        documentTitleError={null}
+        setDocumentTitleDraft={() => undefined}
+        onCloseDocumentTitleModal={() => undefined}
+        onSaveDocumentTitle={() => undefined}
+        isErrorReportModalOpen={true}
+        errorReportTitle="Missing source"
+        errorReportTitleError={null}
+        setErrorReportTitle={() => undefined}
+        onCloseErrorReportModal={() => undefined}
+        onCreateErrorReport={() => undefined}
+        versionDecisionModal={null}
+        onCloseVersionDecisionModal={() => undefined}
+        onConfirmVersionDecision={() => undefined}
+        propagationFailurePrompt={null}
+        onClosePropagationFailurePrompt={() => undefined}
+        onReportPropagationFailure={() => undefined}
+        onRetryPropagatedErrorReports={() => undefined}
+        pendingVersionAction={null}
+        onClosePendingVersionAction={() => undefined}
+        onConfirmPendingVersionAction={() => undefined}
+        reviewDurationDays={1}
+        pendingThreadStatusChange={null}
+        onClosePendingThreadStatusChange={() => undefined}
+        onConfirmThreadStatusChange={() => undefined}
+        threadCreationStatus="idle"
+        commentCreationStatus="idle"
+        uploadStatus="idle"
+        uploadMessage=""
+        downloadStatus="idle"
+        downloadMessage=""
+        emailNotifyStatus="idle"
+        emailNotifyMessage=""
+        successMessage={null}
+        successEmailRecipients={null}
+        successOkButtonRef={{ current: null }}
+        onCloseSuccessMessage={() => undefined}
+        error={null}
+        errorChecklist={[]}
+        onCloseError={() => undefined}
+        errorReportContext={{
+          projectId: 'project-1',
+          docId: 'doc-1',
+          pageLabel: 'Document Versions',
+          projectLabel: 'Project',
+          docLabel: 'Document',
+          versionLabel: 'Version',
+          threadLabel: 'Issue',
+        }}
+      />,
+    )
+
+    expect( screen.getByRole( 'heading', { name: 'Creating error report' } ) ).toBeTruthy()
+    expect( screen.getByText( 'Creating the error report...' ) ).toBeTruthy()
+    expect( screen.getAllByTestId( 'giphy-reason' ).some( (element) => element.textContent === 'loading' ) ).toBe( true )
+    expect( screen.queryByRole( 'button', { name: 'Confirm' } ) ).toBeNull()
+  } )
+
+  it( 'shows title-update progress while the document title modal operation is busy', () => {
+    render(
+      <VersionsModals
+        isBusy={true}
+        isDocumentTitleModalOpen={true}
+        documentTitleInputRef={{ current: null }}
+        documentTitleDraft="Updated protocol"
+        documentTitleError={null}
+        setDocumentTitleDraft={() => undefined}
+        onCloseDocumentTitleModal={() => undefined}
+        onSaveDocumentTitle={() => undefined}
+        isErrorReportModalOpen={false}
+        errorReportTitle=""
+        errorReportTitleError={null}
+        setErrorReportTitle={() => undefined}
+        onCloseErrorReportModal={() => undefined}
+        onCreateErrorReport={() => undefined}
+        versionDecisionModal={null}
+        onCloseVersionDecisionModal={() => undefined}
+        onConfirmVersionDecision={() => undefined}
+        propagationFailurePrompt={null}
+        onClosePropagationFailurePrompt={() => undefined}
+        onReportPropagationFailure={() => undefined}
+        onRetryPropagatedErrorReports={() => undefined}
+        pendingVersionAction={null}
+        onClosePendingVersionAction={() => undefined}
+        onConfirmPendingVersionAction={() => undefined}
+        reviewDurationDays={1}
+        pendingThreadStatusChange={null}
+        onClosePendingThreadStatusChange={() => undefined}
+        onConfirmThreadStatusChange={() => undefined}
+        threadCreationStatus="idle"
+        commentCreationStatus="idle"
+        uploadStatus="idle"
+        uploadMessage=""
+        downloadStatus="idle"
+        downloadMessage=""
+        emailNotifyStatus="idle"
+        emailNotifyMessage=""
+        successMessage={null}
+        successEmailRecipients={null}
+        successOkButtonRef={{ current: null }}
+        onCloseSuccessMessage={() => undefined}
+        error={null}
+        errorChecklist={[]}
+        onCloseError={() => undefined}
+        errorReportContext={{
+          projectId: 'project-1',
+          docId: 'doc-1',
+          pageLabel: 'Document Versions',
+          projectLabel: 'Project',
+          docLabel: 'Document',
+          versionLabel: 'Version',
+          threadLabel: 'Issue',
+        }}
+      />,
+    )
+
+    expect( screen.getByRole( 'heading', { name: 'Saving document title' } ) ).toBeTruthy()
+    expect( screen.getByText( 'Saving the document title...' ) ).toBeTruthy()
+    expect( screen.getAllByTestId( 'giphy-reason' ).some( (element) => element.textContent === 'loading' ) ).toBe( true )
+    expect( screen.queryByRole( 'button', { name: 'Save title' } ) ).toBeNull()
+  } )
+
   it( 'shows generic progress for a busy action without a dedicated modal', () => {
     renderVersionDecisionModal( true, 'idle', 'idle', null, null )
 

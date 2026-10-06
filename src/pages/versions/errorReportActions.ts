@@ -85,6 +85,7 @@ const createErrorReportActions = (params: ErrorReportActionParams) => {
         {
           action: "versions.createErrorReport",
           page: "Document Versions",
+          hasModal: true,
           userId,
           projectId,
           docId,
