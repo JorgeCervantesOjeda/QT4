@@ -5,8 +5,10 @@ import { auth } from './firebase'
 import { getRecentDiagnostics, logClientDiagnostic } from './diagnostics/clientDiagnostics'
 import { getRouteDiagnosticContext } from './diagnostics/routeContext'
 import { getActiveFirestoreListeners } from './diagnostics/firestoreListeners'    
+import { buildCommonMonitorDiagnostics, mergeMonitorDiagnosticDetails } from './monitoringDiagnostics'
 
 export type MonitorSource = 'firestore' | 'storage' | 'auth' | 'ui' | 'network' | 'unknown'
+export type MonitorDiagnosticDetails = Record<string, unknown>
 type MonitorSeverity = 'low' | 'medium' | 'high'
 type MonitorCategory = 'permission' | 'runtime' | 'network' | 'auth' | 'firebase' | 'unknown'
 
@@ -40,6 +42,7 @@ type ReportAbnormalErrorInput = {
   userId?: string
   userEmail?: string | null
   focus?: string
+  diagnosticDetails?: MonitorDiagnosticDetails
 }
 
 type ReportUserVisibleErrorInput = {
@@ -60,6 +63,7 @@ type ReportUserVisibleErrorInput = {
   userId?: string
   userEmail?: string | null
   focus?: string
+  diagnosticDetails?: MonitorDiagnosticDetails
 }
 
 type NormalizedError = {
@@ -517,6 +521,22 @@ export const reportAbnormalError = async (input: ReportAbnormalErrorInput): Prom
   }
 
   const user = auth.currentUser
+  const actorId = input.userId ?? monitorContext.userId ?? user?.uid ?? ''
+  const diagnosticDetails = mergeMonitorDiagnosticDetails(
+    buildCommonMonitorDiagnostics( {
+      action,
+      appVersion: APP_VERSION,
+      docId: resolvedDocId,
+      online: routeContext.online,
+      projectId: resolvedProjectId,
+      source: classified.source,
+      threadId: resolvedThreadId,
+      userId: actorId,
+      versionId: resolvedVersionId,
+      visibilityState: routeContext.visibilityState,
+    } ),
+    input.diagnosticDetails,
+  )
   return sendMonitorPayload( {
     fingerprint,
     category: classified.category,
@@ -530,7 +550,7 @@ export const reportAbnormalError = async (input: ReportAbnormalErrorInput): Prom
     route,
     pageUrl: buildPageUrl( input.pageUrl || monitorContext.pageUrl ),
     action,
-    actorId: input.userId ?? monitorContext.userId ?? user?.uid ?? '',
+    actorId,
     actorEmail: input.userEmail ?? monitorContext.userEmail ?? user?.email ?? '',
     projectId: resolvedProjectId,
     docId: resolvedDocId,
@@ -541,6 +561,7 @@ export const reportAbnormalError = async (input: ReportAbnormalErrorInput): Prom
     visibilityState: routeContext.visibilityState,
     activeFirestoreListeners: getActiveFirestoreListeners(),
     recentDiagnostics: getRecentDiagnostics(),
+    diagnosticDetails,
     pageLabel: trimMultiline( input.pageLabel ?? '', 200 ),
     projectLabel: trimMultiline( input.projectLabel ?? '', 200 ),
     docLabel: trimMultiline( input.docLabel ?? '', 200 ),
@@ -573,6 +594,23 @@ export const reportUserVisibleError = async (input: ReportUserVisibleErrorInput)
   const messageRaw = trimMultiline( input.message || 'User-visible error reported', MAX_MESSAGE_LENGTH )
   const messageNormalized = normalizeMessageForFingerprint( messageRaw )
   const uniqueFingerprint = `user-report-${Date.now().toString( 36 )}-${Math.random().toString( 36 ).slice( 2, 10 )}`
+  const actorId = input.userId ?? monitorContext.userId ?? user?.uid ?? ''
+  const action = trimAndCollapseWhitespace( input.action ?? 'ui.reportVisibleError', 120 )
+  const diagnosticDetails = mergeMonitorDiagnosticDetails(
+    buildCommonMonitorDiagnostics( {
+      action,
+      appVersion: APP_VERSION,
+      docId: resolvedDocId,
+      online: routeContext.online,
+      projectId: resolvedProjectId,
+      source,
+      threadId: resolvedThreadId,
+      userId: actorId,
+      versionId: resolvedVersionId,
+      visibilityState: routeContext.visibilityState,
+    } ),
+    input.diagnosticDetails,
+  )
   return sendMonitorPayload( {
     fingerprint: uniqueFingerprint,
     category: resolveMonitorCategory( source ),
@@ -585,8 +623,8 @@ export const reportUserVisibleError = async (input: ReportUserVisibleErrorInput)
     stack: '',
     route,
     pageUrl: buildPageUrl( input.pageUrl || monitorContext.pageUrl ),
-    action: trimAndCollapseWhitespace( input.action ?? 'ui.reportVisibleError', 120 ),
-    actorId: input.userId ?? monitorContext.userId ?? user?.uid ?? '',
+    action,
+    actorId,
     actorEmail: input.userEmail ?? monitorContext.userEmail ?? user?.email ?? '',
     projectId: resolvedProjectId,
     docId: resolvedDocId,
@@ -597,6 +635,7 @@ export const reportUserVisibleError = async (input: ReportUserVisibleErrorInput)
     visibilityState: routeContext.visibilityState,
     activeFirestoreListeners: getActiveFirestoreListeners(),
     recentDiagnostics: getRecentDiagnostics(),
+    diagnosticDetails,
     userAgent: trimAndCollapseWhitespace( window.navigator.userAgent ?? '', 400 ),
     appBuild: APP_BUILD,
     appVersion: APP_VERSION,

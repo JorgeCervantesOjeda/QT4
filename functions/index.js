@@ -12,6 +12,8 @@ const {
   createPropagateAcceptedErrorReportHandler,
   createRetryPropagatedErrorReportsHandler,
 } = require( "./propagatedErrorReports" )
+const { normalizeMonitorDetails } = require( "./monitorDetails" )
+const { buildMonitorEmailText } = require( "./monitorEmail" )
 const { createSlowUiActionDigestJob } = require( "./slowUiDigest" )
 const { createVersionDecisionHandler } = require( "./versionDecisions" )
 
@@ -227,6 +229,7 @@ const normalizeMonitorPayload = (body, decoded, req) => {
     visibilityState: normalizeMonitorField( body.visibilityState, 32 ),
     activeFirestoreListeners: normalizeMonitorListeners( body.activeFirestoreListeners ),
     recentDiagnostics: normalizeMonitorDiagnostics( body.recentDiagnostics ),
+    diagnosticDetails: normalizeMonitorDetails( body.diagnosticDetails ),
     clientTimestamp: normalizeMonitorField( body.clientTimestamp, 64 ),
   }
   if( !normalized.fingerprint ) {
@@ -459,6 +462,7 @@ exports.reportClientMonitorEvent = onRequest( { cors: false, maxInstances: 10, i
           appVersion: payload.appVersion,
           online: payload.online,
           visibilityState: payload.visibilityState,
+          diagnosticDetails: payload.diagnosticDetails,
           lastSeenAt: serverTimestamp,
           updatedAt: serverTimestamp,
           occurrenceCount: admin.firestore.FieldValue.increment( 1 ),
@@ -491,6 +495,7 @@ exports.reportClientMonitorEvent = onRequest( { cors: false, maxInstances: 10, i
         appVersion: payload.appVersion,
         online: payload.online,
         visibilityState: payload.visibilityState,
+        diagnosticDetails: payload.diagnosticDetails,
         dedupeWindowMinutes,
         dedupeBucket,
         occurrenceCount: 1,
@@ -505,51 +510,7 @@ exports.reportClientMonitorEvent = onRequest( { cors: false, maxInstances: 10, i
 
     if( shouldAttemptEmail ) {
       const consoleUrl = buildMonitorConsoleUrl( docId )
-      const projectLine = payload.projectLabel || payload.projectId || "-"
-      const documentLine = payload.docLabel || payload.docId || "-"
-      const versionLine = payload.versionLabel || payload.versionId || "-"
-      const threadLine = payload.threadLabel || payload.threadId || "-"
-      const emailText = [
-        `QT4 abnormal client error detected.`,
-        ``,
-        `Severity: ${payload.severity}`,
-        `Category: ${payload.category}`,
-        `Source: ${payload.source}`,
-        `Action: ${payload.action}`,
-        `Page: ${payload.pageLabel || payload.route || "(unknown)"}`,
-        `Code: ${payload.code || "(none)"}`,
-        `Actor: ${payload.actorId || "(unknown)"}`,
-        `Actor email: ${payload.actorEmail || "(unknown)"}`,
-        `Project: ${projectLine}`,
-        `Document: ${documentLine}`,
-        `Version: ${versionLine}`,
-        `Issue: ${threadLine}`,
-        `Fingerprint: ${payload.fingerprint}`,
-        `Client timestamp: ${payload.clientTimestamp || "-"}`,
-        `Build: ${payload.appBuild || "-"}`,
-        `App version: ${payload.appVersion || payload.appBuild || "-"}`,
-        `Online: ${payload.online === null ? "unknown" : payload.online ? "yes" : "no"}`,
-        `Visibility: ${payload.visibilityState || "unknown"}`,
-        `Active Firestore listeners: ${payload.activeFirestoreListeners.length}`,
-        ``,
-        payload.route ? `Route: ${payload.route}` : "",
-        payload.projectId ? `Project ID: ${payload.projectId}` : "",
-        payload.docId ? `Document ID: ${payload.docId}` : "",
-        payload.versionId ? `Version ID: ${payload.versionId}` : "",
-        payload.threadId ? `Issue ID: ${payload.threadId}` : "",
-        payload.route || payload.projectId || payload.docId || payload.versionId || payload.threadId ? `` : "",
-        `Message:`,
-        payload.messageRaw,
-        payload.stack ? `\nStack:\n${payload.stack}` : "",
-        payload.pageUrl ? `\nPage URL:\n${payload.pageUrl}` : "",
-        payload.activeFirestoreListeners.length > 0
-          ? `\nActive listeners:\n${JSON.stringify( payload.activeFirestoreListeners, null, 2 )}`
-          : "",
-        payload.recentDiagnostics.length > 0
-          ? `\nRecent diagnostics:\n${JSON.stringify( payload.recentDiagnostics, null, 2 )}`
-          : "",
-        consoleUrl ? `\nFirestore event:\n${consoleUrl}` : "",
-      ].filter( Boolean ).join( "\n" )
+      const emailText = buildMonitorEmailText( { payload, consoleUrl } )
 
       try {
         await sendTextEmail( {

@@ -102,6 +102,20 @@ describe( 'lib/errorMonitor', () => {
         docId: 'doc-1',
         appBuild: APP_METADATA.appVersion,
         appVersion: APP_METADATA.appVersion,
+        diagnosticDetails: expect.objectContaining( {
+          diagnosticVersion: 1,
+          operation: expect.objectContaining( {
+            action: 'global.unhandledrejection',
+            source: 'ui',
+          } ),
+          resources: expect.objectContaining( {
+            projectId: 'project-1',
+            docId: 'doc-1',
+          } ),
+          session: expect.objectContaining( {
+            authenticated: expect.any( Boolean ),
+          } ),
+        } ),
       } ),
     )
   } )

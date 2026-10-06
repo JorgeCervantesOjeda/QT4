@@ -11,9 +11,11 @@ import {
 import type { Dispatch, SetStateAction } from "react";
 import { flushSync } from "react-dom";
 import { logAudit } from "../../lib/audit";
+import type { MonitorDiagnosticDetails } from "../../lib/errorMonitor";
 import { AiAssistRequestError, requestAiAssist } from "../../lib/aiAssist";
 import { db } from "../../lib/firebase";
 import { canAddCommentInWindow } from "../../lib/reviewWindow";
+import { buildReviewIssueDiagnostics } from "./reviewIssueDiagnostics";
 import { measureSlowUiAction } from "../../lib/slowUiAction";
 import {
   THREAD_STATUS_CONFLICT_MESSAGE,
@@ -39,7 +41,11 @@ type ReportVersionsError = (
   error: unknown,
   action: string,
   source?: "firestore" | "storage" | "auth" | "ui" | "network" | "unknown",
-  overrides?: { versionId?: string | null; threadId?: string | null },
+  overrides?: {
+    versionId?: string | null;
+    threadId?: string | null;
+    diagnosticDetails?: MonitorDiagnosticDetails;
+  },
 ) => void;
 
 type ReviewIssueActionParams = {
@@ -107,6 +113,7 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
     }
     const initialCommentBody = params.newThreadTitle.trim();
     const lockedVersionId = selectedVersion.id;
+    let transactionDiagnostics: MonitorDiagnosticDetails | null = null;
     params.setError(null);
     flushSync( () => {
       params.setThreadCreationStatus("creating");
@@ -117,6 +124,8 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
       const threadRef = doc(collection(db, "threads"));
       const commentRef = doc(collection(db, "comments"));
       const versionRef = doc(db, "versions", selectedVersion.id);
+      const memberRef = doc(db, "projectMembers", `${projectId}_${userId}`);
+      const profileRef = doc(db, "userProfiles", userId);
       await measureSlowUiAction(
         {
           action: "versions.createThread",
@@ -128,10 +137,36 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
           hasModal: true,
         },
         () => runTransaction(db, async (transaction) => {
-          const versionSnap = await transaction.get(versionRef);
-          if (!versionSnap.exists()) throw new Error("Version not found.");
+          const [versionSnap, memberSnap, profileSnap] = await Promise.all([
+            transaction.get(versionRef),
+            transaction.get(memberRef),
+            transaction.get(profileRef),
+          ]);
+          if (!versionSnap || !versionSnap.exists()) throw new Error("Version not found.");
           const versionData = versionSnap.data();
           const currentStats = readVersionStats(versionData);
+          transactionDiagnostics = buildReviewIssueDiagnostics({
+            actorId: userId,
+            clientGate: {
+              canCreateThread: params.canCreateThread,
+              canParticipateReview: params.canParticipateReview,
+              selectedVersionInActiveReview: params.selectedVersionInActiveReview,
+              hasInitialComment: initialCommentBody.length > 0,
+            },
+            clientVersion: {
+              id: selectedVersion.id,
+              status: selectedVersion.status,
+              createdBy: selectedVersion.createdBy,
+              reviewerCount: selectedVersion.reviewerIds.length,
+            },
+            docId,
+            memberData: memberSnap?.exists() ? memberSnap.data() : null,
+            nowMs: Date.now(),
+            profileData: profileSnap?.exists() ? profileSnap.data() : null,
+            projectId,
+            versionData,
+            versionId: selectedVersion.id,
+          });
           transaction.set(threadRef, {
             projectId,
             docId,
@@ -218,8 +253,27 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
       await params.reloadAndRestoreSelection(lockedVersionId, threadRef.id);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unexpected error";
+      const diagnosticDetails = transactionDiagnostics ?? {
+        diagnosticScope: "versions.createThread",
+        diagnosticDisclaimer: "Client-side diagnostic; Firestore remains authoritative.",
+        collectionReadCompleted: false,
+        likelyCauses: ["transaction_read_failed_before_diagnostics"],
+        clientGate: {
+          canCreateThread: params.canCreateThread,
+          canParticipateReview: params.canParticipateReview,
+          selectedVersionInActiveReview: params.selectedVersionInActiveReview,
+          hasInitialComment: initialCommentBody.length > 0,
+        },
+        clientVersion: {
+          id: selectedVersion.id,
+          status: selectedVersion.status,
+          createdBy: selectedVersion.createdBy,
+          reviewerCount: selectedVersion.reviewerIds.length,
+        },
+      };
       params.reportVersionsError(err, "versions.createThread", "firestore", {
         versionId: selectedVersion.id,
+        diagnosticDetails,
       });
       params.setError(message);
     } finally {

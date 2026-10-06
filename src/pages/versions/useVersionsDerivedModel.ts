@@ -2,7 +2,8 @@
 // Derives permissions, labels, columns, and reporting helpers for VersionsPage.
 import { useCallback, useMemo } from "react";
 import { FIRST_VERSION_NUMBER, versionNumberToString } from "../../domain/types";
-import { reportAbnormalError } from "../../lib/errorMonitor";
+import { reportAbnormalError, type MonitorDiagnosticDetails } from "../../lib/errorMonitor";
+import { mergeMonitorDiagnosticDetails } from "../../lib/monitoringDiagnostics";
 import { getEffectiveFileStorageProviderHint } from "../../lib/fileStorage";
 import { DEFAULT_REVIEW_DURATION_DAYS } from "../../lib/reviewWindow";
 import { isOfflineFirestoreError, parseDashboardFocusTarget } from "./utils";
@@ -13,6 +14,7 @@ import useVersionsPeopleAndTablesModel from "./useVersionsPeopleAndTablesModel";
 import useVersionsPermissionModel from "./useVersionsPermissionModel";
 import type { VersionSummary } from "./types";
 import type { VersionsPageState } from "./versionsPageState";
+import { buildVersionsErrorDiagnostics } from "./versionsErrorDiagnostics";
 
 type VersionsErrorSource =
   | "firestore"
@@ -24,6 +26,7 @@ type VersionsErrorSource =
 type VersionsErrorOverrides = {
   versionId?: string | null;
   threadId?: string | null;
+  diagnosticDetails?: MonitorDiagnosticDetails;
 };
 
 type UseVersionsDerivedModelParams = {
@@ -181,6 +184,29 @@ const useVersionsDerivedModel = ({
       overrides?: VersionsErrorOverrides,
     ) => {
       if (!isOfflineFirestoreError(error2)) {
+        const diagnosticDetails = mergeMonitorDiagnosticDetails(
+          buildVersionsErrorDiagnostics({
+            action,
+            canParticipateReview,
+            docId,
+            latestVersion,
+            projectId,
+            selectedFileRef,
+            selectedThread,
+            selectedVersion,
+            selectedVersionInReview,
+            source,
+            threadId:
+              overrides?.threadId ?? selectedThread?.id ?? threadIdFromQuery,
+            userId,
+            versionId:
+              overrides?.versionId ??
+              selectedVersion?.id ??
+              latestVersion?.id ??
+              versionIdFromQuery,
+          }),
+          overrides?.diagnosticDetails,
+        );
         reportAbnormalError({
           error: error2,
           source,
@@ -196,19 +222,23 @@ const useVersionsDerivedModel = ({
             overrides?.threadId ?? selectedThread?.id ?? threadIdFromQuery,
           userId,
           userEmail: user?.email ?? "",
+          diagnosticDetails,
         });
       }
     },
     [
       projectId,
       docId,
-      selectedVersion?.id,
-      latestVersion?.id,
+      selectedVersion,
+      latestVersion,
       versionIdFromQuery,
-      selectedThread?.id,
+      selectedThread,
       threadIdFromQuery,
       userId,
       user?.email,
+      canParticipateReview,
+      selectedVersionInReview,
+      selectedFileRef,
     ],
   );
   const selectedThreadOpen = !!(
