@@ -32,6 +32,41 @@ import {
 
 type UserDirectory = Record<string, { email?: string | null; displayName?: string | null }>
 
+type BuildBaseDocumentSummaryParams = {
+  baseDocId: string
+  baseProjectId: string | null
+  baseProjectData: Record<string, unknown> | null
+  baseVersionId: string
+  baseVersionData: Record<string, unknown>
+  baseDocumentData: Record<string, unknown>
+}
+
+const buildBaseDocumentSummary = (params: BuildBaseDocumentSummaryParams): BaseDocumentSummary => {
+  const resolvedProjectId =
+    params.baseProjectId ??
+    ( params.baseDocumentData.projectId as string | undefined ) ??
+    ( params.baseVersionData.projectId as string | undefined ) ??
+    ''
+  return {
+    id: params.baseDocId,
+    projectId: resolvedProjectId,
+    projectShortId: Number.isFinite( params.baseProjectData?.shortId )
+      ? Number( params.baseProjectData?.shortId )
+      : null,
+    title: ( params.baseDocumentData.title as string | undefined ) ?? 'Untitled document',
+    shortId: Number.isFinite( params.baseDocumentData.shortId )
+      ? Number( params.baseDocumentData.shortId )
+      : null,
+    versionId: params.baseVersionId,
+    versionNumber: Number.isFinite( params.baseVersionData.number )
+      ? Number( params.baseVersionData.number )
+      : null,
+    versionStatus: ( params.baseVersionData.status as string | undefined ) ?? null,
+    hasFile: Boolean( params.baseVersionData.hasFile ),
+    fileRefId: ( params.baseVersionData.fileRefId as string | null | undefined ) ?? null,
+  }
+}
+
 type LoadDocumentAndVersionsParams = {
   docId: string | undefined
   projectIdFromQuery: string
@@ -373,18 +408,29 @@ const updateBaseDocumentSummary = async (
       return
     }
     const baseDocData = baseDocSnapshot.data() as Record<string, unknown>
-    setBaseDocumentData( {
-      id: baseDocSnapshot.id,
-      projectId: ( baseDocData?.projectId as string | undefined ) ?? ( baseVersionData.projectId as string | undefined ) ?? baseProjectId ?? '',
-      projectShortId: baseProjectShortId,
-      title: ( baseDocData?.title as string | undefined ) ?? 'Untitled document',
-      shortId: Number.isFinite( baseDocData?.shortId ) ? Number( baseDocData?.shortId ) : null,
-      versionId: baseVersionSnapshot.exists() ? baseVersionSnapshot.id : baseVersionId,
-      versionNumber: baseVersionSnapshot.exists() ? Number( baseVersionData.number ?? FIRST_VERSION_NUMBER ) : null,
-      versionStatus: baseVersionSnapshot.exists() ? ( baseVersionData.status as string | undefined ) ?? null : null,
-      hasFile: Boolean( baseVersionData.hasFile ),
-      fileRefId: ( baseVersionData.fileRefId as string | null | undefined ) ?? null,
-    } )
+    const resolvedBaseProjectId =
+      baseProjectId ??
+      ( baseDocData.projectId as string | undefined ) ??
+      ( baseVersionData.projectId as string | undefined ) ??
+      ''
+    const resolvedBaseProjectSnapshot = baseProjectSnapshot?.exists()
+      ? baseProjectSnapshot
+      : resolvedBaseProjectId
+        ? await getDocFromServer( doc( db, 'projects', resolvedBaseProjectId ) )
+        : null
+    const resolvedBaseProjectData = resolvedBaseProjectSnapshot?.exists()
+      ? resolvedBaseProjectSnapshot.data() as Record<string, unknown>
+      : null
+    setBaseDocumentData( buildBaseDocumentSummary( {
+      baseDocId: baseDocSnapshot.id,
+      baseProjectId: resolvedBaseProjectId,
+      baseProjectData: resolvedBaseProjectData ?? baseProjectData,
+      baseVersionId: baseVersionSnapshot.exists() ? baseVersionSnapshot.id : baseVersionId,
+      baseVersionData: baseVersionSnapshot.exists()
+        ? baseVersionData
+        : { number: FIRST_VERSION_NUMBER },
+      baseDocumentData: baseDocData,
+    } ) )
   } catch( err ) {
     console.warn( 'Base document summary fallback failed:', {
       baseProjectId,
@@ -524,6 +570,7 @@ const fillMissingProfiles = async (candidateList: string[], nextDirectoryById: U
 }
 
 export {
+  buildBaseDocumentSummary,
   loadAcceptedErrorReportsForBaseVersion,
   loadDocumentAndVersions,
 }

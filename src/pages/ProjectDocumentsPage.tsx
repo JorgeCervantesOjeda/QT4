@@ -174,7 +174,7 @@ const resolveVersionDocumentActivity = (
 
   if( status === 'Accepted' || status === 'Rejected' || status === 'Replaced' ) {
     return resolvePastActivityDate(
-      [ activityAt, updatedAt, reviewEndAt, fileUploadedAt, reviewStartAt, createdAt ],
+      [ activityAt, updatedAt, fileUploadedAt, reviewStartAt, createdAt ],
       nowMs,
     )
   }
@@ -407,24 +407,27 @@ function ProjectDocumentsPage() {
     if( !documentItem.baseDocId ) {
       return 'Unknown'
     }
+    const versionedBaseDoc = baseDocumentReferences[
+      baseDocumentReferenceKey( documentItem.baseDocId, documentItem.baseVersionId )
+    ]
+    if( versionedBaseDoc ) {
+      return formatShortDocumentReference( {
+        projectShortId: versionedBaseDoc.projectShortId,
+        documentShortId: versionedBaseDoc.shortId,
+        versionNumber: versionedBaseDoc.versionNumber,
+        title: versionedBaseDoc.title,
+      } )
+    }
+    if( documentItem.baseVersionId ) {
+      return 'Base document reference unavailable'
+    }
     if( baseDocumentById.has( documentItem.baseDocId ) ) {
       const baseDoc = baseDocumentById.get( documentItem.baseDocId )
       return formatShortDocumentReference( {
         projectShortId: project?.shortId,
         documentShortId: baseDoc?.shortId,
-        versionNumber: documentItem.latestVersionNumber,
+        versionNumber: baseDoc?.latestVersionNumber,
         title: baseDoc?.title ?? 'Unknown',
-      } )
-    }
-    const externalBaseDoc = baseDocumentReferences[
-      baseDocumentReferenceKey( documentItem.baseDocId, documentItem.baseVersionId )
-    ]
-    if( externalBaseDoc ) {
-      return formatShortDocumentReference( {
-        projectShortId: externalBaseDoc.projectShortId,
-        documentShortId: externalBaseDoc.shortId,
-        versionNumber: externalBaseDoc.versionNumber,
-        title: externalBaseDoc.title,
       } )
     }
     return 'Base document reference unavailable'
@@ -791,8 +794,7 @@ function ProjectDocumentsPage() {
         }
       } )
       step = 'base-references'
-      const currentDocumentIds = new Set( baseDocuments.map( ( documentItem ) => documentItem.id ) )
-      const externalBaseReferences = Array.from(
+      const baseReferences = Array.from(
         new Map(
           baseDocuments
             .flatMap( ( documentItem ) => [
@@ -802,7 +804,6 @@ function ProjectDocumentsPage() {
             .filter( ( reference ): reference is { docId: string; versionId: string | null } =>
               typeof reference.docId === 'string'
               && reference.docId.length > 0
-              && !currentDocumentIds.has( reference.docId ),
             )
             .map( ( reference ) => [
               baseDocumentReferenceKey( reference.docId, reference.versionId ),
@@ -812,7 +813,7 @@ function ProjectDocumentsPage() {
       )
       const nextBaseDocumentReferences: Record<string, BaseDocumentReference> = {}
       await Promise.all(
-        externalBaseReferences.map( async ( reference ) => {
+        baseReferences.map( async ( reference ) => {
           try {
             const baseDocId = reference.docId
             const baseDocSnapshot = await getDoc( doc( db, 'documents', baseDocId ) )
