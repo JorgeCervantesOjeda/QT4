@@ -14,6 +14,7 @@ const {
 } = require( "./propagatedErrorReports" )
 const { normalizeMonitorDetails } = require( "./monitorDetails" )
 const { buildMonitorEmailText } = require( "./monitorEmail" )
+const { isTolerableFirebaseAuthLifecyclePayload } = require( "./monitorLifecycle" )
 const { createSlowUiActionDigestJob } = require( "./slowUiDigest" )
 const { createVersionDecisionHandler } = require( "./versionDecisions" )
 
@@ -423,6 +424,19 @@ exports.reportClientMonitorEvent = onRequest( { cors: false, maxInstances: 10, i
     const payload = normalizeMonitorPayload( body, decoded, req )
     if( !payload.messageRaw || !payload.messageNormalized ) {
       res.status( 400 ).json( { error: "messageRaw or messageNormalized is required." } )
+      return
+    }
+    if( isTolerableFirebaseAuthLifecyclePayload( payload ) ) {
+      logger.info( "reportClientMonitorEvent skipped tolerable Firebase Auth lifecycle rejection", {
+        action: payload.action,
+        message: payload.messageRaw,
+        impact: "Monitor event and email suppressed; Firebase Auth lifecycle remains client-managed.",
+      } )
+      res.status( 200 ).json( {
+        ok: true,
+        skipped: true,
+        reason: "firebase-auth-lifecycle",
+      } )
       return
     }
 

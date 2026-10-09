@@ -65,6 +65,29 @@ describe( 'lib/errorMonitor', () => {
     )
   } )
 
+  it( 'prevents the browser default handling for Firebase Auth IndexedDB lifecycle rejections', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal( 'fetch', fetchMock )
+    const { installGlobalErrorMonitoring } = await import( './errorMonitor' )
+    const error = new Error( 'Database is closing/hidden' )
+    error.stack = [
+      '_openDb@https://qualiteam-plus.web.app/assets/vendor-firebase.js:1:86252',
+      'setCurrentUser@https://qualiteam-plus.web.app/assets/vendor-firebase.js:1:45853',
+      'reloadAndSetCurrentUserOrClear@https://qualiteam-plus.web.app/assets/vendor-firebase.js:1:55487',
+    ].join( '\\n' )
+    const rejectionEvent = new Event( 'unhandledrejection', { cancelable: true } )
+    Object.defineProperty( rejectionEvent, 'reason', { value: error } )
+    const preventDefaultMock = vi.spyOn( rejectionEvent, 'preventDefault' )
+
+    installGlobalErrorMonitoring()
+    window.dispatchEvent( rejectionEvent )
+
+    await Promise.resolve()
+
+    expect( preventDefaultMock ).toHaveBeenCalledTimes( 1 )
+    expect( fetchMock ).not.toHaveBeenCalled()
+  } )
+
   it( 'still reports unrelated global unhandled rejections', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response( '', {

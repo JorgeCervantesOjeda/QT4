@@ -658,8 +658,12 @@ export const installGlobalErrorMonitoring = (): void => {
   } )
 
   window.addEventListener( 'unhandledrejection', ( event ) => {
+    const reason = event.reason ?? 'Unhandled promise rejection'
+    if( isTolerableFirebaseLifecycleRejection( normalizeError( reason ), 'global.unhandledrejection' ) ) {
+      event.preventDefault()
+    }
     void reportAbnormalError( {
-      error: event.reason ?? 'Unhandled promise rejection',
+      error: reason,
       source: 'ui',
       action: 'global.unhandledrejection',
     } )
