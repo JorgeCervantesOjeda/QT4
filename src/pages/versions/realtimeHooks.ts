@@ -261,6 +261,7 @@ const useThreadsAndCommentsSubscription = (params: {
             threadId,
             body: ( data.body as string | undefined ) ?? '',
             createdBy: ( data.createdBy as string | undefined ) ?? '',
+            isInitialIssueComment: data.isInitialIssueComment === true,
             createdAt: data.createdAt?.toDate?.() as Date | undefined,
           }
           if( !nextComments[threadId] ) {

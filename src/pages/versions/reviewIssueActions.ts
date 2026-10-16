@@ -188,6 +188,7 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
             threadId: threadRef.id,
             body: initialCommentBody,
             createdBy: userId,
+            isInitialIssueComment: true,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
@@ -211,7 +212,9 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
       );
       params.setNewThreadTitle("");
       params.setSelectedThreadId(threadRef.id);
-      params.setSuccessMessage("Issue created successfully.");
+      params.setSuccessMessage(
+        "Issue created successfully. You earned +1 point for starting this review issue. Review participation: 1/2 points for this issue. Check Contributions for finalized badge progress.",
+      );
       logAudit({
         actorId: userId,
         actorEmail: params.userEmail ?? null,
@@ -394,6 +397,18 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
         }),
       );
       params.setNewCommentBody("");
+      const previousParticipationCount = countConsecutiveParticipationBlocks(
+        params.selectedThreadComments,
+        userId,
+      );
+      const previousComment = params.selectedThreadComments.at(-1);
+      const startsNewParticipationBlock = previousComment?.createdBy !== userId;
+      const earnedParticipationPoint =
+        startsNewParticipationBlock && previousParticipationCount < 2;
+      const nextParticipationCount = Math.min(
+        2,
+        previousParticipationCount + ( startsNewParticipationBlock ? 1 : 0 ),
+      );
       logAudit({
         actorId: userId,
         actorEmail: params.userEmail ?? null,
@@ -408,7 +423,11 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
       }).catch((err) => {
         console.warn("Audit log failed (add comment):", err);
       });
-      params.setSuccessMessage("The comment was added successfully.");
+      params.setSuccessMessage(
+        earnedParticipationPoint
+          ? `The comment was added successfully. You earned +1 point for participating in this issue. Review participation: ${nextParticipationCount}/2 points for this issue. Check Contributions for finalized badge progress.`
+          : `The comment was added successfully. This issue's participation cap is already reached, so no additional point was awarded. Review participation: ${nextParticipationCount}/2 points for this issue. Check Contributions for finalized badge progress.`,
+      );
       await params.reloadAndRestoreSelection(
         lockedVersionId,
         selectedThread.id,
@@ -652,6 +671,21 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
 
 const buildCommentReactionId = (commentId: string, userId: string) =>
   `${commentId}_${userId}`;
+
+const countConsecutiveParticipationBlocks = (
+  comments: CommentSummary[],
+  userId: string,
+) => {
+  let blockCount = 0;
+  let previousCommentAuthor: string | null = null;
+  comments.forEach( (comment) => {
+    if( comment.createdBy === userId && previousCommentAuthor !== userId ) {
+      blockCount += 1;
+    }
+    previousCommentAuthor = comment.createdBy;
+  } );
+  return blockCount;
+};
 
 const emptyCommentReactionState: CommentReactionState = {
   counts: {

@@ -174,9 +174,9 @@ function VersionsPage() {
   } = runtime;
   const handleCloseSuccessMessage = () => {
     const shouldRestoreCommentFocus =
-        successMessage === "The comment was added successfully.",
+        successMessage?.startsWith("The comment was added successfully.") ?? false,
       shouldRestoreNewIssueCommentFocus =
-        successMessage === "Issue created successfully.";
+        successMessage?.startsWith("Issue created successfully.") ?? false;
     setSuccessEmailRecipients(null);
     setSuccessMessage(null);
     if (shouldRestoreCommentFocus) {

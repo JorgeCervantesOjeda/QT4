@@ -83,13 +83,16 @@ const normalizeSummary = (id: string, data: DocumentData): ReputationSummary | n
   return summary
 }
 
-const normalizeEvent = (id: string, data: DocumentData): ReputationEventRecord | null => {
+export const normalizeReputationEvent = (id: string, data: DocumentData): ReputationEventRecord | null => {
   const projectId = asNonEmptyString( data.projectId )
   const userId = asNonEmptyString( data.userId )
   const category = data.category as ReputationCategory
   const points = asFiniteNumber( data.points )
   if( !projectId || !userId || ![ 'collaboration', 'review', 'quality' ].includes( category ) || points === null ) {
     console.warn( 'Reputation event skipped because its data is incomplete.', { id } )
+    return null
+  }
+  if( points === 0 ) {
     return null
   }
   return {
@@ -149,7 +152,7 @@ export const loadUserReputation = async (userId: string): Promise<UserReputation
     .filter( (summary): summary is ReputationSummary => Boolean( summary ) )
     .sort( byDescendingPoints )
   const events = eventSnapshot.docs
-    .map( (item) => normalizeEvent( item.id, item.data() ) )
+    .map( (item) => normalizeReputationEvent( item.id, item.data() ) )
     .filter( (event): event is ReputationEventRecord => Boolean( event ) )
     .sort( (left, right) => {
       const leftDate = toReputationDate( left.createdAt )?.getTime() ?? 0

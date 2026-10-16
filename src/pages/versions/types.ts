@@ -86,6 +86,7 @@ type CommentSummary = {
   threadId: string
   body: string
   createdBy: string
+  isInitialIssueComment?: boolean
   createdAt?: Date
 }
 

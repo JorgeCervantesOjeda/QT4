@@ -111,6 +111,7 @@ const writeInitialIssue = async (overrides: { versionPatch?: Record<string, unkn
     threadId,
     body: 'Please add evidence.',
     createdBy: userId,
+    isInitialIssueComment: true,
     createdAt: now,
     updatedAt: now,
     ...overrides.commentPatch,
@@ -179,6 +180,47 @@ describeWithFirestoreEmulator( 'firestore.rules review issue creation', () => {
         createdBy: 'other-user',
       },
     } ) )
+  } )
+
+  it( 'rejects the initial-comment marker on a later comment in an existing issue', async () => {
+    await writeInitialIssue()
+
+    const firestore = testEnv.authenticatedContext( userId ).firestore()
+    const batch = writeBatch( firestore )
+    const now = Timestamp.fromMillis( 1600 )
+    batch.set( doc( firestore, 'comments', 'comment-2' ), {
+      projectId,
+      docId,
+      versionId,
+      threadId,
+      body: 'A later comment.',
+      createdBy: userId,
+      isInitialIssueComment: true,
+      createdAt: now,
+      updatedAt: now,
+    } )
+    batch.update( doc( firestore, 'threads', threadId ), {
+      commentCount: 2,
+      lastCommentAt: now,
+      lastCommentBy: userId,
+      updatedAt: now,
+      updatedBy: userId,
+    } )
+    batch.update( doc( firestore, 'versions', versionId ), {
+      stats: {
+        numThreads: 1,
+        numOpenThreads: 1,
+        numComments: 2,
+        numThreadsWithTwoPlusComments: 1,
+      },
+      numComments: 2,
+      numThreadsWithTwoPlusComments: 1,
+      activityAt: now,
+      updatedAt: now,
+      updatedBy: userId,
+    } )
+
+    await assertFails( batch.commit() )
   } )
 
   it( 'allows the issue creator to update the generated issue title without changing its status', async () => {

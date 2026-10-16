@@ -283,6 +283,7 @@ describe( 'createReviewIssueActions', () => {
     const setNewThreadTitle = vi.fn()
     const setSelectedThreadId = vi.fn()
     const setThreadCreationStatus = vi.fn()
+    const setSuccessMessage = vi.fn()
     const reloadAndRestoreSelection = vi.fn()
     const actions = createReviewIssueActions( {
       canAddComment: true,
@@ -316,7 +317,7 @@ describe( 'createReviewIssueActions', () => {
       setSelectedThreadId,
       setThreadCreationStatus,
       setSuccessEmailRecipients: vi.fn(),
-      setSuccessMessage: vi.fn(),
+      setSuccessMessage,
       setWarningMessage: vi.fn(),
       threads: [selectedThread],
       userEmail: 'author@example.com',
@@ -350,9 +351,16 @@ describe( 'createReviewIssueActions', () => {
     expect( createdWrites[1]?.data ).toMatchObject( {
       body: 'Please add the evidence source used for this value.',
       createdBy: 'author-1',
+      isInitialIssueComment: true,
     } )
     expect( setNewCommentBody ).not.toHaveBeenCalled()
     expect( setNewThreadTitle ).toHaveBeenCalledWith( '' )
+    expect( setSuccessMessage ).toHaveBeenCalledWith(
+      expect.stringContaining( 'You earned +1 point for starting this review issue.' ),
+    )
+    expect( setSuccessMessage ).toHaveBeenCalledWith(
+      expect.stringContaining( 'Review participation: 1/2 points for this issue.' ),
+    )
     expect( setSelectedThreadId ).toHaveBeenCalled()
     expect( reloadAndRestoreSelection ).toHaveBeenCalledWith( 'version-1', expect.any( String ) )
     expect( setThreadCreationStatus.mock.calls ).toEqual( [ [ 'creating' ], [ 'idle' ] ] )
@@ -543,6 +551,7 @@ describe( 'createReviewIssueActions', () => {
     const setCommentCreationStatus = vi.fn( (value: 'idle' | 'adding') => {
       callOrder.push( `comment-progress:${value}` )
     } )
+    const setSuccessMessage = vi.fn()
     slowUiActionMocks.measureSlowUiAction.mockImplementationOnce(
       async (metadata: unknown, callback: () => Promise<void>) => {
         const slowActionMetadata = metadata as { hasModal?: boolean }
@@ -607,7 +616,7 @@ describe( 'createReviewIssueActions', () => {
       setSelectedThreadId: vi.fn(),
       setThreadCreationStatus: vi.fn(),
       setSuccessEmailRecipients: vi.fn(),
-      setSuccessMessage: vi.fn(),
+      setSuccessMessage,
       setWarningMessage: vi.fn(),
       threads: [selectedThread],
       userEmail: 'author@example.com',
@@ -623,6 +632,12 @@ describe( 'createReviewIssueActions', () => {
     expect( slowUiActionMocks.measureSlowUiAction ).toHaveBeenCalledWith(
       expect.objectContaining( { action: 'versions.addComment', hasModal: true } ),
       expect.any( Function ),
+    )
+    expect( setSuccessMessage ).toHaveBeenCalledWith(
+      expect.stringContaining( 'no additional point was awarded' ),
+    )
+    expect( setSuccessMessage ).toHaveBeenCalledWith(
+      expect.stringContaining( 'Review participation: 1/2 points for this issue.' ),
     )
   } )
 } )

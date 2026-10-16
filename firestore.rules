@@ -334,10 +334,15 @@ service cloud.firestore {
 
     function isCommentCreateWithVersionStatIncrement(versionId, threadId) {
       return (
-          exists(/databases/$(database)/documents/threads/$(threadId))
+          !request.resource.data.keys().hasAny(['isInitialIssueComment'])
+          && exists(/databases/$(database)/documents/threads/$(threadId))
           && isExistingThreadCommentCreateWithVersionStatIncrement(versionId, threadId)
         )
-        || isInitialCommentCreateForNewThread(versionId, threadId);
+        || (
+          request.resource.data.keys().hasAny(['isInitialIssueComment'])
+          && request.resource.data.isInitialIssueComment == true
+          && isInitialCommentCreateForNewThread(versionId, threadId)
+        );
     }
 
     function hasValidCommentReactionShape(data) {

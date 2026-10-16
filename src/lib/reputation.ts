@@ -7,8 +7,10 @@ export type ReputationEventType =
   | 'commentCreated'
   | 'goodReactionReceived'
   | 'reviewCompleted'
+  | 'reviewAbsence'
   | 'acceptedVersion'
-  | 'acceptedErrorReport';
+  | 'acceptedErrorReport'
+  | 'acceptedErrorReportPenalty';
 
 export type CommentReaction = 'good' | 'regular' | 'bad';
 
@@ -68,7 +70,7 @@ export const BADGE_DEFINITIONS: ReputationBadgeDefinition[] = [
   {
     id: 'reliable-reviewer',
     label: 'Reliable reviewer',
-    description: 'Complete three reviews in this project.',
+    description: 'Participate in three completed reviews in this project.',
   },
   {
     id: 'quality-builder',
@@ -100,8 +102,13 @@ const POINT_RULES: Record<ReputationEventType, ReputationPointRule> = {
   },
   reviewCompleted: {
     category: 'review',
-    points: 4,
-    reason: 'Completed a review',
+    points: 0,
+    reason: 'Completed an active review',
+  },
+  reviewAbsence: {
+    category: 'review',
+    points: -1,
+    reason: 'Did not participate in an assigned review',
   },
   acceptedVersion: {
     category: 'quality',
@@ -110,8 +117,13 @@ const POINT_RULES: Record<ReputationEventType, ReputationPointRule> = {
   },
   acceptedErrorReport: {
     category: 'quality',
-    points: 6,
+    points: 2,
     reason: 'Created an accepted error report',
+  },
+  acceptedErrorReportPenalty: {
+    category: 'quality',
+    points: -2,
+    reason: 'An authored version received an accepted error report',
   },
 };
 

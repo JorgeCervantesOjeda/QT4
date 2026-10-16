@@ -15,9 +15,11 @@ describe('contribution point policy', () => {
     ['threadCreated', 'collaboration', 1],
     ['commentCreated', 'collaboration', 1],
     ['goodReactionReceived', 'collaboration', 2],
-    ['reviewCompleted', 'review', 4],
+    ['reviewCompleted', 'review', 0],
+    ['reviewAbsence', 'review', -1],
     ['acceptedVersion', 'quality', 5],
-    ['acceptedErrorReport', 'quality', 6],
+    ['acceptedErrorReport', 'quality', 2],
+    ['acceptedErrorReportPenalty', 'quality', -2],
   ] as const)('assigns %s to %s with %d points', (eventType, category, points) => {
     expect(getContributionPoints(eventType)).toMatchObject({ category, points });
   });
@@ -78,6 +80,12 @@ describe('project-scoped badges', () => {
       'quality-builder',
       'consistent-contributor',
     ]);
+  });
+
+  it('describes reliable reviewers by completed active reviews', () => {
+    expect(BADGE_DEFINITIONS.find((badge) => badge.id === 'reliable-reviewer')).toMatchObject({
+      description: 'Participate in three completed reviews in this project.',
+    });
   });
 
   it('does not award badges from unrelated counters', () => {

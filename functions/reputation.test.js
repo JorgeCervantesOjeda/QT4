@@ -4,6 +4,7 @@ const assert = require( "node:assert/strict" )
 const test = require( "node:test" )
 
 const {
+  createCommentReputationHandler,
   createThreadReputationHandler,
   createReactionReputationHandler,
   createVersionReputationHandler,
@@ -29,6 +30,19 @@ const createFakeDb = (initialStore = {}) => {
             get: async () => createSnapshot( documentId, store.get( path ) ),
           }
         },
+        where(fieldName, operator, expectedValue) {
+          assert.equal( operator, "==" )
+          return {
+            get: async () => ( {
+              docs: [ ...store.entries() ]
+                .filter( ([path, data]) => path.startsWith( `${collectionName}/` ) && data?.[fieldName] === expectedValue )
+                .map( ([path, data]) => ( {
+                  id: path.split( "/" )[1],
+                  data: () => data,
+                } ) ),
+            } ),
+          }
+        },
       }
     },
     async runTransaction(callback) {
@@ -46,6 +60,9 @@ const createFakeDb = (initialStore = {}) => {
     },
     read(path) {
       return store.get( path )
+    },
+    write(path, data) {
+      store.set( path, data )
     },
   }
   return db
@@ -68,6 +85,7 @@ test( "thread contribution is written once when the trigger is retried", async (
     params: { threadId: "thread-1" },
     data: createSnapshot( "thread-1", {
       projectId: "project-1",
+      versionId: "version-1",
       createdBy: "user-1",
     } ),
   }
@@ -80,9 +98,88 @@ test( "thread contribution is written once when the trigger is retried", async (
   assert.equal( db.read( "reputationSummaries/project-1_user-1" ).contributionCount, 1 )
 } )
 
-test( "review completion credits every assigned reviewer and acceptance credits the author", async () => {
+test( "the initial issue comment does not create a second contribution", async () => {
+  const db = createFakeDb()
+  const handler = createCommentReputationHandler( { admin: createAdmin( db ), logger } )
+
+  await handler( {
+    params: { commentId: "comment-initial" },
+    data: createSnapshot( "comment-initial", {
+      projectId: "project-1",
+      versionId: "version-1",
+      threadId: "thread-1",
+      createdBy: "user-1",
+      isInitialIssueComment: true,
+    } ),
+  } )
+
+  assert.equal( db.read( "reputationSummaries/project-1_user-1" ), undefined )
+} )
+
+test( "consecutive comments by one user count as one participation block", async () => {
+  const db = createFakeDb()
+  const threadHandler = createThreadReputationHandler( { admin: createAdmin( db ), logger } )
+  const commentHandler = createCommentReputationHandler( { admin: createAdmin( db ), logger } )
+
+  await threadHandler( {
+    params: { threadId: "thread-1" },
+    data: createSnapshot( "thread-1", {
+      projectId: "project-1",
+      versionId: "version-1",
+      createdBy: "user-1",
+    } ),
+  } )
+  db.write( "comments/initial-comment", {
+    projectId: "project-1",
+    versionId: "version-1",
+    threadId: "thread-1",
+    createdBy: "user-1",
+    createdAt: "2026-10-15T10:00:00.000Z",
+    isInitialIssueComment: true,
+  } )
+  const comments = [
+    [ "comment-1", "user-1", "2026-10-15T10:01:00.000Z" ],
+    [ "comment-2", "user-1", "2026-10-15T10:02:00.000Z" ],
+    [ "comment-3", "user-2", "2026-10-15T10:03:00.000Z" ],
+    [ "comment-4", "user-1", "2026-10-15T10:04:00.000Z" ],
+    [ "comment-5", "user-1", "2026-10-15T10:05:00.000Z" ],
+  ]
+  for( const [commentId, userId, createdAt] of comments ) {
+    db.write( `comments/${commentId}`, {
+      projectId: "project-1",
+      versionId: "version-1",
+      threadId: "thread-1",
+      createdBy: userId,
+      createdAt,
+    } )
+    await commentHandler( {
+      params: { commentId },
+      data: createSnapshot( commentId, {
+        projectId: "project-1",
+        versionId: "version-1",
+        threadId: "thread-1",
+        createdBy: userId,
+        createdAt,
+      } ),
+    } )
+  }
+
+  assert.equal( db.read( "reputationSummaries/project-1_user-1" ).totalPoints, 2 )
+  assert.equal( db.read( "reputationSummaries/project-1_user-1" ).commentCount, 1 )
+  assert.equal( db.read( "reputationSummaries/project-1_user-2" ).totalPoints, 1 )
+  assert.equal( db.read( "reputationEvents/commentCreated:comment-1" ), undefined )
+  assert.equal( db.read( "reputationEvents/commentCreated:comment-2" ), undefined )
+  assert.equal( db.read( "reputationEvents/commentCreated:comment-4" ).points, 1 )
+  assert.equal( db.read( "reputationEvents/commentCreated:comment-5" ), undefined )
+} )
+
+test( "review completion rewards active assigned reviewers and penalizes inactive ones", async () => {
   const db = createFakeDb( {
     "documents/document-1": { type: "document" },
+    "reviewParticipationSummaries/project-1_version-1_reviewer-1": {
+      participationCount: 1,
+      distinctThreadCount: 1,
+    },
   } )
   const handler = createVersionReputationHandler( { admin: createAdmin( db ), logger } )
 
@@ -106,8 +203,9 @@ test( "review completion credits every assigned reviewer and acceptance credits 
     },
   } )
 
-  assert.equal( db.read( "reputationSummaries/project-1_reviewer-1" ).totalPoints, 4 )
-  assert.equal( db.read( "reputationSummaries/project-1_reviewer-2" ).totalPoints, 4 )
+  assert.equal( db.read( "reputationSummaries/project-1_reviewer-1" ).totalPoints, 0 )
+  assert.equal( db.read( "reputationSummaries/project-1_reviewer-1" ).completedReviewCount, 1 )
+  assert.equal( db.read( "reputationSummaries/project-1_reviewer-2" ).totalPoints, -1 )
   assert.equal( db.read( "reputationSummaries/project-1_author-1" ).totalPoints, 5 )
 } )
 
@@ -158,7 +256,8 @@ test( "changing a good reaction to a regular reaction reverses the prior contrib
 
 test( "accepting an error report credits the author with the quality bonus", async () => {
   const db = createFakeDb( {
-    "documents/error-report-1": { type: "errorReport" },
+    "documents/error-report-1": { type: "errorReport", baseVersionId: "base-version-1" },
+    "versions/base-version-1": { createdBy: "base-author-1" },
   } )
   const handler = createVersionReputationHandler( { admin: createAdmin( db ), logger } )
 
@@ -182,6 +281,8 @@ test( "accepting an error report credits the author with the quality bonus", asy
     },
   } )
 
-  assert.equal( db.read( "reputationSummaries/project-1_author-1" ).qualityPoints, 6 )
-  assert.equal( db.read( "reputationSummaries/project-1_author-1" ).totalPoints, 6 )
+  assert.equal( db.read( "reputationSummaries/project-1_author-1" ).qualityPoints, 2 )
+  assert.equal( db.read( "reputationSummaries/project-1_author-1" ).totalPoints, 2 )
+  assert.equal( db.read( "reputationSummaries/project-1_base-author-1" ).qualityPoints, -2 )
+  assert.equal( db.read( "reputationSummaries/project-1_base-author-1" ).totalPoints, -2 )
 } )
