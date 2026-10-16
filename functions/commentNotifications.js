@@ -1,4 +1,6 @@
 // functions/commentNotifications.js: Sends backend comment notifications and stages hourly digest events.
+const { FieldValue } = require( "firebase-admin/firestore" )
+
 const { resolveNotificationPreferences } = require( "./notificationPreferences" )
 const {
   buildEmailDocument,
@@ -151,6 +153,14 @@ const buildEmailHtml = ({ actorLabel, comment, directUrl, documentData, thread, 
 
 const buildDigestHourKey = (date) => date.toISOString().slice( 0, 13 )
 
+const getServerTimestamp = (admin) => {
+  const timestampFactory = admin?.firestore?.FieldValue?.serverTimestamp || FieldValue?.serverTimestamp
+  if( typeof timestampFactory !== "function" ) {
+    throw new Error( "Firebase Admin server timestamps are required for comment notifications." )
+  }
+  return timestampFactory
+}
+
 const stageNotificationEvents = async ({
   admin,
   actorLabel,
@@ -166,6 +176,7 @@ const stageNotificationEvents = async ({
   version,
 }) => {
   const documentLabel = buildDocumentLabel( documentData )
+  const serverTimestamp = getServerTimestamp( admin )
   await Promise.all(
     recipients.map( (recipient) => db
       .collection( "notificationEvents" )
@@ -187,11 +198,11 @@ const stageNotificationEvents = async ({
         issueTitle: thread?.title || "Untitled issue",
         commentExcerpt: trimMultiline( comment.body, 500 ),
         directUrl,
-        eventAt: admin.firestore.FieldValue.serverTimestamp(),
+        eventAt: serverTimestamp(),
         digestStatus: "pending",
         digestHourKey: buildDigestHourKey( now ),
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       }, { merge: true } ) ),
   )
 }

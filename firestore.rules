@@ -1285,6 +1285,19 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    match /reputationSummaries/{summaryId} {
+      allow read: if isAdmin()
+        || (isSignedIn() && resource.data.userId == request.auth.uid)
+        || (isSignedIn() && isProjectMember(resource.data.projectId));
+      allow write: if false;
+    }
+
+    match /reputationEvents/{eventId} {
+      allow read: if isAdmin()
+        || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

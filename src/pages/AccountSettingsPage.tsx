@@ -1,6 +1,7 @@
 // src/pages/AccountSettingsPage.tsx: Lets signed-in users manage account notification preferences.
 import { useEffect, useState } from 'react'
 import { doc, getDoc, updateDoc } from 'firebase/firestore'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import AppBrand from '../components/AppBrand'
 import BackStack from '../components/BackStack'
@@ -140,6 +141,15 @@ function AccountSettingsPage() {
           {isSaving ? <p className="muted">Saving notification preferences...</p> : null}
           {status === 'saved' ? <p className="notice-success">Notification preferences saved.</p> : null}
           {errorMessage ? <p className="error">{errorMessage}</p> : null}
+        </section>
+        <section className="panel stack">
+          <div className="panel-header">
+            <div>
+              <h2>Contributions</h2>
+              <p className="muted">Review your project-scoped points, badges, and contribution history.</p>
+            </div>
+          </div>
+          <Link className="link" to="/account/contributions">Open my contributions</Link>
         </section>
       </main>
     </div>

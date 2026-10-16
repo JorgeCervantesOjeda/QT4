@@ -14,6 +14,8 @@ const RegisterPage = lazy( () => import( './pages/RegisterPage' ) )
 const VersionsPage = lazy( () => import( './pages/VersionsPage' ) )
 const AdminAuditPage = lazy( () => import( './pages/AdminAuditPage' ) )
 const AccountSettingsPage = lazy( () => import( './pages/AccountSettingsPage' ) )
+const ContributionPage = lazy( () => import( './pages/ContributionPage' ) )
+const ProjectContributionPage = lazy( () => import( './pages/ProjectContributionPage' ) )
 
 const CHUNK_RECOVERY_KEY_PREFIX = 'qt4_chunk_recovery_'
 const CHUNK_LOAD_ERROR_PATTERNS = [
@@ -191,6 +193,22 @@ function App() {
                   element={
                     <RequireAuth>
                       <AccountSettingsPage />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/account/contributions"
+                  element={
+                    <RequireAuth>
+                      <ContributionPage />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/projects/:projectId/contribution"
+                  element={
+                    <RequireAuth>
+                      <ProjectContributionPage />
                     </RequireAuth>
                   }
                 />

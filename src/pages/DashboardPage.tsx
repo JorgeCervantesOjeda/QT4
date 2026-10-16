@@ -14,6 +14,7 @@ import BackStack from '../components/BackStack'
 import DataTable from '../components/DataTable'
 import ErrorChecklistModal from '../components/ErrorChecklistModal'
 import ProgressModal from '../components/ProgressModal'
+import MyContributionCard from '../components/reputation/MyContributionCard'
 import { useErrorChecklistModal } from '../hooks/useErrorChecklistModal'
 import { reportAbnormalError } from '../lib/errorMonitor'
 import { requestAiAssist } from '../lib/aiAssist'
@@ -672,6 +673,7 @@ function DashboardPage() {
             </div>
           ) : null}
         </section>
+        <MyContributionCard />
         {error ? (
           <ErrorChecklistModal
             error={error}

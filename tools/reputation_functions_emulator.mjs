@@ -1,0 +1,106 @@
+// tools/reputation_functions_emulator.mjs: Exercises deployed reputation triggers against the local emulators.
+
+import assert from 'node:assert/strict'
+import { getApps, initializeApp } from 'firebase-admin/app'
+import { getFirestore } from 'firebase-admin/firestore'
+
+const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || 'demo-qt4-e2e'
+const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST
+if( !firestoreHost ) {
+  throw new Error( 'Firestore emulator is required for reputation integration tests.' )
+}
+
+const app = getApps().length > 0
+  ? getApps()[0]
+  : initializeApp( { projectId } )
+const db = getFirestore( app )
+
+const sleep = (milliseconds) => new Promise( (resolve) => setTimeout( resolve, milliseconds ) )
+
+const waitForDocument = async (path, predicate, label, timeout = 30000) => {
+  const deadline = Date.now() + timeout
+  while( Date.now() < deadline ) {
+    const snapshot = await db.doc( path ).get()
+    if( snapshot.exists && predicate( snapshot.data() ) ) {
+      return snapshot.data()
+    }
+    await sleep( 250 )
+  }
+  const snapshot = await db.doc( path ).get()
+  throw new Error( `Timed out waiting for ${label}: ${JSON.stringify(snapshot.data() ?? null)}` )
+}
+
+const readDocument = async (path) => (await db.doc( path ).get()).data() ?? null
+
+const projectIdForTest = 'project-e2e-reputation'
+const memberId = 'user-member-1'
+const reviewerId = 'user-reviewer-1'
+const memberSummaryPath = `reputationSummaries/${projectIdForTest}_${memberId}`
+const reviewerSummaryPath = `reputationSummaries/${projectIdForTest}_${reviewerId}`
+
+await db.doc( 'threads/reputation-thread-1' ).set( {
+  projectId: projectIdForTest,
+  createdBy: memberId,
+  title: 'Integration thread',
+  docId: 'reputation-document-1',
+  versionId: 'reputation-version-1',
+} )
+await waitForDocument( memberSummaryPath, (data) => data.totalPoints === 1 && data.threadCount === 1, 'thread reputation' )
+
+await db.doc( 'documents/reputation-document-1' ).set( {
+  projectId: projectIdForTest,
+  type: 'document',
+  title: 'Integration document',
+} )
+await db.doc( 'versions/reputation-version-1' ).set( {
+  projectId: projectIdForTest,
+  docId: 'reputation-document-1',
+  createdBy: memberId,
+  reviewerIds: [ reviewerId ],
+  status: 'In Review',
+  number: 1,
+} )
+
+await db.doc( 'comments/reputation-comment-1' ).set( {
+  projectId: projectIdForTest,
+  createdBy: memberId,
+  threadId: 'reputation-thread-1',
+  docId: 'reputation-document-1',
+  versionId: 'reputation-version-1',
+  body: 'Integration comment',
+} )
+await waitForDocument( memberSummaryPath, (data) => data.totalPoints === 2 && data.commentCount === 1, 'comment reputation' )
+
+await db.doc( 'comments/reputation-comment-1' ).set( {
+  projectId: projectIdForTest,
+  createdBy: memberId,
+  threadId: 'reputation-thread-1',
+  docId: 'reputation-document-1',
+  versionId: 'reputation-version-1',
+  body: 'Integration comment',
+} )
+await sleep( 750 )
+assert.equal( ( await readDocument( memberSummaryPath ) ).totalPoints, 2 )
+
+await db.doc( 'commentReactions/reputation-reaction-1' ).set( {
+  projectId: projectIdForTest,
+  commentId: 'reputation-comment-1',
+  userId: reviewerId,
+  reaction: 'good',
+} )
+await waitForDocument( memberSummaryPath, (data) => data.totalPoints === 4 && data.goodReactionCount === 1, 'good reaction reputation' )
+
+await db.doc( 'commentReactions/reputation-reaction-1' ).update( { reaction: 'regular' } )
+await waitForDocument( memberSummaryPath, (data) => data.totalPoints === 2 && data.goodReactionCount === 0, 'reaction reversal' )
+assert.equal( ( await readDocument( 'reputationEvents/reactionGood:reputation-reaction-1' ) ).active, false )
+
+await db.doc( 'versions/reputation-version-1' ).update( {
+  status: 'Accepted',
+} )
+
+await waitForDocument( reviewerSummaryPath, (data) => data.totalPoints === 4 && data.completedReviewCount === 1, 'reviewer reputation' )
+await waitForDocument( memberSummaryPath, (data) => data.totalPoints === 7 && data.acceptedVersionCount === 1, 'accepted version reputation' )
+
+assert.equal( ( await readDocument( 'reputationEvents/reviewCompleted:reputation-version-1:user-reviewer-1' ) ).points, 4 )
+assert.equal( ( await readDocument( 'reputationEvents/acceptedVersion:reputation-version-1' ) ).points, 5 )
+console.log( 'Reputation Functions emulator integration passed.' )

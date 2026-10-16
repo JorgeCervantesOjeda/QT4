@@ -1,0 +1,83 @@
+// src/pages/ContributionPage.test.tsx: Verifies personal contribution loading, empty, and ready states.
+
+import { render, screen } from '@testing-library/react'
+import type { ReactNode } from 'react'
+import { MemoryRouter } from 'react-router-dom'
+import { describe, expect, it, vi } from 'vitest'
+import { AuthContext } from '../auth/AuthContextStore'
+import type { UserReputationData } from '../lib/reputationData'
+import ContributionPage from './ContributionPage'
+
+const reputationMocks = vi.hoisted( () => ( {
+  loadUserReputation: vi.fn(),
+} ) )
+
+vi.mock( '../lib/reputationData', async () => {
+  const actual = await vi.importActual<typeof import('../lib/reputationData')>( '../lib/reputationData' )
+  return { ...actual, loadUserReputation: reputationMocks.loadUserReputation }
+} )
+
+vi.mock( '../components/AppBrand', () => ( {
+  default: ( { pageTitle }: { pageTitle: string } ) => <h1>{pageTitle}</h1>,
+} ) )
+vi.mock( '../components/BackStack', () => ( { default: () => null } ) )
+
+const renderWithAuth = (children: ReactNode) => render(
+  <AuthContext.Provider
+    value={{
+      user: { uid: 'user-1', email: 'member@example.com', displayName: 'Member User' } as never,
+      loading: false,
+      signOutUser: vi.fn(),
+    }}
+  >
+    <MemoryRouter>{children}</MemoryRouter>
+  </AuthContext.Provider>,
+)
+
+const data: UserReputationData = {
+  summaries: [ {
+    projectId: 'project-1',
+    userId: 'user-1',
+    totalPoints: 5,
+    collaborationPoints: 1,
+    reviewPoints: 0,
+    qualityPoints: 4,
+    contributionCount: 2,
+    threadCount: 1,
+    commentCount: 1,
+    goodReactionCount: 0,
+    completedReviewCount: 0,
+    acceptedVersionCount: 0,
+    badgeIds: [ 'first-contribution' ],
+    updatedAt: null,
+  } ],
+  events: [ {
+    id: 'event-1',
+    projectId: 'project-1',
+    userId: 'user-1',
+    sourceType: 'comment',
+    sourceId: 'comment-1',
+    category: 'collaboration',
+    points: 1,
+    reason: 'Added a comment',
+    createdAt: null,
+  } ],
+}
+
+describe( 'ContributionPage', () => {
+  it( 'shows project-scoped totals, badges, and history', async () => {
+    reputationMocks.loadUserReputation.mockResolvedValue( data )
+    renderWithAuth( <ContributionPage /> )
+
+    expect( await screen.findByText( 'Across your projects' ) ).toBeTruthy()
+    expect( screen.getAllByText( 'Project project-1' ).length ).toBeGreaterThan( 0 )
+    expect( screen.getByText( 'Added a comment' ) ).toBeTruthy()
+  } )
+
+  it( 'shows a visible empty state when no project summary exists', async () => {
+    reputationMocks.loadUserReputation.mockResolvedValue( { summaries: [], events: [] } )
+    renderWithAuth( <ContributionPage /> )
+
+    expect( await screen.findByText( 'No project contributions have been recorded yet.' ) ).toBeTruthy()
+  } )
+} )

@@ -11,12 +11,13 @@
     "dev:emulator": "vite --mode emulator",
     "dev:e2e": "vite --mode e2e",
     "test": "vitest run --no-file-parallelism --maxWorkers=1 && npm run test:tools",
-    "test:rules": "npx firebase-tools emulators:exec --only firestore \"vitest run src/lib/firestoreChangeRequestRules.test.ts src/lib/firestoreVersionDecisionRules.test.ts src/lib/firestoreSlowUiActionRules.test.ts src/lib/firestoreReviewIssueRules.test.ts src/lib/firestoreNotificationPreferenceRules.test.ts\"",
+    "test:rules": "npx firebase-tools emulators:exec --only firestore \"vitest run --config vitest.rules.config.ts --no-file-parallelism --maxWorkers=1\"",
     "test:tools": "node --test tools/*.test.mjs",
     "test:with-emulator": "npx firebase-tools emulators:exec --only firestore \"npm run test\"",
     "test:watch": "vitest",
     "test:e2e": "node tools/run_emulator_e2e.mjs",
     "test:e2e:fake": "playwright test -c playwright.fake.config.ts",
+    "test:reputation:emulator": "node tools/run_reputation_emulator_integration.mjs",
     "test:e2e:firebase-storage": "node tools/run_firebase_storage_e2e.mjs",
     "test:traffic": "node tools/run_emulator_traffic.mjs",
     "test:traffic:smoke": "node tools/run_emulator_traffic.mjs --profile smoke",
@@ -75,6 +76,7 @@
     "js-yaml": "4.3.2",
     "qs": "6.16.0",
     "@firebase/app": "0.15.1",
+    "@firebase/app-compat": "0.5.15",
     "firebase-admin": {
       "@firebase/database-compat": "2.1.4"
     }

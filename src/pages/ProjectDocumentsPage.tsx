@@ -1570,6 +1570,22 @@ function ProjectDocumentsPage() {
         </section>
 
         <section className="panel stack">
+          <div className="panel-header">
+            <div>
+              <h2>Project contribution</h2>
+              <p className="muted">See the project-only points and badge ranking.</p>
+            </div>
+          </div>
+          <button
+            className="link"
+            type="button"
+            onClick={() => navigate( projectId ? `/projects/${projectId}/contribution` : '/projects' )}
+          >
+            View contribution ranking
+          </button>
+        </section>
+
+        <section className="panel stack">
           {!isBusy ? <h2>Create document</h2> : null}
           <form className="form" onSubmit={handleCreateDocument}>
             <label className="field">

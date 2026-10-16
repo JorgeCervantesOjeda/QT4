@@ -1,5 +1,5 @@
 const { onRequest } = require( "firebase-functions/v2/https" )
-const { onDocumentCreated, onDocumentUpdated } = require( "firebase-functions/v2/firestore" )
+const { onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require( "firebase-functions/v2/firestore" )
 const { onSchedule } = require( "firebase-functions/v2/scheduler" )
 const { logger } = require( "firebase-functions" )
 const admin = require( "firebase-admin" )
@@ -17,6 +17,12 @@ const { buildMonitorEmailText } = require( "./monitorEmail" )
 const { isTolerableFirebaseAuthLifecyclePayload } = require( "./monitorLifecycle" )
 const { createSlowUiActionDigestJob } = require( "./slowUiDigest" )
 const { createVersionDecisionHandler } = require( "./versionDecisions" )
+const {
+  createCommentReputationHandler,
+  createReactionReputationHandler,
+  createThreadReputationHandler,
+  createVersionReputationHandler,
+} = require( "./reputation" )
 
 if( admin.apps.length === 0 ) {
   admin.initializeApp()
@@ -597,6 +603,26 @@ exports.sendCommentNotification = onDocumentCreated(
     logger,
     sendTextEmail,
   } ),
+)
+
+exports.awardThreadReputation = onDocumentCreated(
+  "threads/{threadId}",
+  createThreadReputationHandler( { admin, logger } ),
+)
+
+exports.awardCommentReputation = onDocumentCreated(
+  "comments/{commentId}",
+  createCommentReputationHandler( { admin, logger } ),
+)
+
+exports.awardCommentReactionReputation = onDocumentWritten(
+  "commentReactions/{reactionId}",
+  createReactionReputationHandler( { admin, logger } ),
+)
+
+exports.awardVersionReputation = onDocumentUpdated(
+  "versions/{versionId}",
+  createVersionReputationHandler( { admin, logger } ),
 )
 
 exports.sendHourlyNotificationDigest = onSchedule(
