@@ -1346,12 +1346,14 @@
   align-items: center;
   justify-content: center;
   padding: 20px;
+  overflow-y: auto;
   z-index: 50;
 }
 
 .modal-card {
   max-width: 520px;
   width: 100%;
+  max-height: calc(100vh - 40px);
   background: var(--qt-paper);
   border-radius: 14px;
   border: 2px solid var(--qt-border);
@@ -1359,6 +1361,8 @@
   padding: 20px;
   display: grid;
   gap: 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .modal-card--checklist {
