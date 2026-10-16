@@ -59,4 +59,60 @@ describe("buildReviewIssueDiagnostics", () => {
       "version_not_in_review",
     ]);
   });
+
+  it("reports mismatches between nested and legacy version counters", () => {
+    const diagnostics = buildReviewIssueDiagnostics({
+      actorId: "reviewer-1",
+      clientGate: {
+        canCreateThread: true,
+        canParticipateReview: true,
+        selectedVersionInActiveReview: true,
+        hasInitialComment: true,
+      },
+      clientVersion: {
+        id: "version-1",
+        status: "In Review",
+        createdBy: "author-1",
+        reviewerCount: 1,
+      },
+      docId: "document-1",
+      memberData: { role: "member" },
+      nowMs: 5_000,
+      profileData: { isAdmin: false },
+      projectId: "project-1",
+      versionData: {
+        createdBy: "author-1",
+        docId: "document-1",
+        numComments: 1,
+        numOpenThreads: 0,
+        numThreads: 1,
+        numThreadsWithTwoPlusComments: 0,
+        projectId: "project-1",
+        reviewerIds: ["reviewer-1"],
+        reviewEndAt: new Date( 10_000 ),
+        status: "In Review",
+        stats: {
+          numComments: 2,
+          numOpenThreads: 1,
+          numThreads: 2,
+          numThreadsWithTwoPlusComments: 1,
+        },
+      },
+      versionId: "version-1",
+    });
+
+    expect(diagnostics.counters.topLevel).toEqual({
+      numComments: 1,
+      numOpenThreads: 0,
+      numThreads: 1,
+      numThreadsWithTwoPlusComments: 0,
+    });
+    expect(diagnostics.counters.mismatchedKeys).toEqual([
+      "numComments",
+      "numOpenThreads",
+      "numThreads",
+      "numThreadsWithTwoPlusComments",
+    ]);
+    expect(diagnostics.likelyCauses).toContain("inconsistent_version_stats");
+  });
 });

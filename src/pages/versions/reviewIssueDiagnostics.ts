@@ -36,6 +36,15 @@ type VersionCounters = {
   numThreadsWithTwoPlusComments: number;
 };
 
+type TopLevelVersionCounters = Record<keyof VersionCounters, number | null>;
+
+const versionCounterKeys: Array<keyof VersionCounters> = [
+  "numComments",
+  "numOpenThreads",
+  "numThreads",
+  "numThreadsWithTwoPlusComments",
+];
+
 const readCounter = (
   versionData: Record<string, unknown>,
   counter: keyof VersionCounters,
@@ -60,6 +69,19 @@ const readVersionCounters = (
   ),
 });
 
+const readTopLevelVersionCounters = (
+  versionData: Record<string, unknown>,
+): TopLevelVersionCounters => ({
+  numComments: typeof versionData.numComments === "number" ? versionData.numComments : null,
+  numOpenThreads:
+    typeof versionData.numOpenThreads === "number" ? versionData.numOpenThreads : null,
+  numThreads: typeof versionData.numThreads === "number" ? versionData.numThreads : null,
+  numThreadsWithTwoPlusComments:
+    typeof versionData.numThreadsWithTwoPlusComments === "number"
+      ? versionData.numThreadsWithTwoPlusComments
+      : null,
+});
+
 const toIsoString = (value: Date | null): string | null =>
   value ? value.toISOString() : null;
 
@@ -80,6 +102,12 @@ const buildReviewIssueDiagnostics = ({
     : [];
   const reviewEndAt = toTimestampDate(versionData.reviewEndAt);
   const storedCounters = readVersionCounters(versionData);
+  const topLevelCounters = readTopLevelVersionCounters(versionData);
+  const mismatchedCounterKeys = versionCounterKeys.filter(
+    (counterKey) =>
+      topLevelCounters[counterKey] !== null &&
+      topLevelCounters[counterKey] !== storedCounters[counterKey],
+  );
   const attemptedCounters: VersionCounters = {
     ...storedCounters,
     numComments: storedCounters.numComments + 1,
@@ -105,6 +133,9 @@ const buildReviewIssueDiagnostics = ({
   }
   if (invalidCounterKeys.length > 0) {
     likelyCauses.push("invalid_version_stats");
+  }
+  if (mismatchedCounterKeys.length > 0) {
+    likelyCauses.push("inconsistent_version_stats");
   }
   if (likelyCauses.length === 0) {
     likelyCauses.push("firestore_rule_or_data_mismatch");
@@ -147,8 +178,10 @@ const buildReviewIssueDiagnostics = ({
     },
     counters: {
       stored: storedCounters,
+      topLevel: topLevelCounters,
       afterCreateAttempt: attemptedCounters,
       invalidKeys: invalidCounterKeys,
+      mismatchedKeys: mismatchedCounterKeys,
     },
   };
 };
