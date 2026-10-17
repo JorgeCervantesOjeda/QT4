@@ -101,6 +101,31 @@ describe( 'versions/VersionsHeader', () => {
     expect( downloadBaseDocument ).toHaveBeenCalledOnce()
   } )
 
+  it( 'does not expose the internal document ID when a title is unavailable', () => {
+    render(
+      <VersionsHeader
+        projectId="project-1"
+        projectName="Target Project"
+        projectShortId={42}
+        documentData={{
+          id: 'internal-document-id',
+          projectId: 'project-1',
+          title: '',
+          createdBy: 'user-1',
+          type: 'document',
+          shortId: null,
+        }}
+        baseDocumentData={null}
+        canEditDocumentTitle={false}
+        isBusy={false}
+        onEditDocumentTitle={() => undefined}
+      />,
+    )
+
+    expect( screen.getByText( 'Unassigned - Unknown document' ) ).toBeTruthy()
+    expect( screen.queryByText( 'internal-document-id' ) ).toBeNull()
+  } )
+
   it( 'labels derived variants and links to their origin version', () => {
     render(
       <VersionsHeader

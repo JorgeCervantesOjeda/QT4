@@ -9,6 +9,7 @@ import BadgeGrid from '../components/reputation/BadgeGrid'
 import ContributionHistoryTable from '../components/reputation/ContributionHistoryTable'
 import ContributionStatus from '../components/reputation/ContributionStatus'
 import ContributionSummary from '../components/reputation/ContributionSummary'
+import { formatProjectDisplayLabel, loadProjectDisplayInfo, type ProjectDisplayInfo } from '../lib/projectDisplay'
 import { formatReputationPoints, loadUserReputation, type UserReputationData } from '../lib/reputationData'
 
 const emptyData: UserReputationData = { summaries: [], events: [] }
@@ -17,6 +18,7 @@ function ContributionPage() {
   const { user } = useAuth()
   const userId = user?.uid ?? ''
   const [data, setData] = useState<UserReputationData>( emptyData )
+  const [projectDisplayInfo, setProjectDisplayInfo] = useState<Record<string, ProjectDisplayInfo>>( {} )
   const [status, setStatus] = useState<'loading' | 'ready' | 'empty' | 'error'>( userId ? 'loading' : 'error' )
   const [errorMessage, setErrorMessage] = useState( userId ? '' : 'Sign in to view your contributions.' )
 
@@ -27,9 +29,10 @@ function ContributionPage() {
         active = false
       }
     }
-    void loadUserReputation( userId ).then( (nextData) => {
+    void loadUserReputation( userId ).then( async (nextData) => {
       if( !active ) return
       setData( nextData )
+      setProjectDisplayInfo( await loadProjectDisplayInfo( nextData.summaries.map( (summary) => summary.projectId ) ) )
       setStatus( nextData.summaries.length > 0 ? 'ready' : 'empty' )
     } ).catch( (err) => {
       if( !active ) return
@@ -116,7 +119,7 @@ function ContributionPage() {
                 {data.summaries.map( (summary) => (
                   <article className="project-card contribution-project-card" key={`${summary.projectId}-${summary.userId}`}>
                     <div className="contribution-project-card__header">
-                      <h3>Project {summary.projectId}</h3>
+                      <h3>{formatProjectDisplayLabel( summary.projectId, projectDisplayInfo[summary.projectId] )}</h3>
                       <strong>{formatReputationPoints( summary.totalPoints )} pts</strong>
                     </div>
                     <p className="muted">{summary.contributionCount} contributions · {summary.badgeIds.length} badges earned</p>
@@ -134,7 +137,7 @@ function ContributionPage() {
               </div>
               {data.summaries.map( (summary) => (
                 <div className="stack" key={`badges-${summary.projectId}`}>
-                  <h3>Project {summary.projectId}</h3>
+                  <h3>{formatProjectDisplayLabel( summary.projectId, projectDisplayInfo[summary.projectId] )}</h3>
                   <BadgeGrid unlockedBadgeIds={summary.badgeIds} />
                 </div>
               ) )}

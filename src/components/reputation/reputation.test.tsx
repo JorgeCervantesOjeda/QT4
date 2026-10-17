@@ -45,4 +45,16 @@ describe( 'reputation components', () => {
     expect( screen.getByText( '8 pts' ) ).toBeTruthy()
     expect( screen.getByText( '0.33 pts' ) ).toBeTruthy()
   } )
+
+  it( 'does not expose a raw user ID when no label formatter is provided', () => {
+    render(
+      <ProjectLeaderboard
+        summaries={[ summary( 'firebase-user-internal-id', 1 ) ]}
+        currentUserId="different-user"
+      />,
+    )
+
+    expect( screen.getByText( 'Member' ) ).toBeTruthy()
+    expect( screen.queryByText( 'firebase-user-internal-id' ) ).toBeNull()
+  } )
 } )

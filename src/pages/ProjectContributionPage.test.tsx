@@ -10,18 +10,21 @@ import ProjectContributionPage from './ProjectContributionPage'
 
 const reputationMocks = vi.hoisted( () => ( {
   loadProjectReputation: vi.fn(),
-} ) )
-const firestoreMocks = vi.hoisted( () => ( {
-  doc: vi.fn(),
-  getDoc: vi.fn(),
+  loadProjectDisplayInfo: vi.fn(),
 } ) )
 
 vi.mock( '../lib/reputationData', async () => {
   const actual = await vi.importActual<typeof import('../lib/reputationData')>( '../lib/reputationData' )
-  return { ...actual, loadProjectReputation: reputationMocks.loadProjectReputation }
+  return {
+    ...actual,
+    loadProjectReputation: reputationMocks.loadProjectReputation,
+    loadProjectDisplayInfo: reputationMocks.loadProjectDisplayInfo,
+  }
 } )
-vi.mock( 'firebase/firestore', () => firestoreMocks )
-vi.mock( '../lib/firebase', () => ( { db: {} } ) )
+vi.mock( '../lib/projectDisplay', () => ( {
+  formatProjectDisplayLabel: ( _projectId: string, info?: { name?: string } ) => info?.name || 'Project',
+  loadProjectDisplayInfo: reputationMocks.loadProjectDisplayInfo,
+} ) )
 vi.mock( '../components/AppBrand', () => ( {
   default: ( { pageTitle }: { pageTitle: string } ) => <h1>{pageTitle}</h1>,
 } ) )
@@ -61,8 +64,9 @@ const summary = (userId: string, totalPoints: number): ReputationSummary => ( {
 describe( 'ProjectContributionPage', () => {
   it( 'shows the project-only ranking and current-user marker', async () => {
     reputationMocks.loadProjectReputation.mockResolvedValue( [ summary( 'user-2', 8 ), summary( 'user-1', 4 ) ] )
-    firestoreMocks.doc.mockReturnValue( { collection: 'projects', id: 'project-1' } )
-    firestoreMocks.getDoc.mockResolvedValue( { data: () => ( { name: 'Project Alpha' } ) } )
+    reputationMocks.loadProjectDisplayInfo.mockResolvedValue( {
+      'project-1': { name: 'Project Alpha', shortId: 12 },
+    } )
     renderWithAuth( <ProjectContributionPage /> )
 
     expect( await screen.findByText( 'Contribution ranking' ) ).toBeTruthy()
@@ -72,8 +76,9 @@ describe( 'ProjectContributionPage', () => {
 
   it( 'shows an explicit empty state', async () => {
     reputationMocks.loadProjectReputation.mockResolvedValue( [] )
-    firestoreMocks.doc.mockReturnValue( { collection: 'projects', id: 'project-1' } )
-    firestoreMocks.getDoc.mockResolvedValue( { data: () => ( {} ) } )
+    reputationMocks.loadProjectDisplayInfo.mockResolvedValue( {
+      'project-1': { name: '', shortId: 12 },
+    } )
     renderWithAuth( <ProjectContributionPage /> )
 
     expect( await screen.findByText( 'No contributions recorded for this project yet.' ) ).toBeTruthy()

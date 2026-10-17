@@ -171,7 +171,7 @@ const useVersionsDerivedModel = ({
   const projectReportLabel = projectName
     ? `${projectShortId ?? "Unassigned"} - ${projectName}`
     : "";
-  const documentReportLabel = `${documentData?.shortId ?? "Unassigned"} - ${documentData?.title ?? docId ?? "Unknown"}`;
+  const documentReportLabel = `${documentData?.shortId ?? "Unassigned"} - ${documentData?.title?.trim() || "Unknown document"}`;
   const versionReportLabel = selectedVersion
     ? `${versionNumberToString(selectedVersion.number)} - ${selectedVersion.status}`
     : "";

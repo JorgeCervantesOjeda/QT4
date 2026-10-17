@@ -9,6 +9,7 @@ import {
   type UserReputationData,
 } from '../../lib/reputationData'
 import type { ReputationSummary } from '../../lib/reputation'
+import { formatProjectDisplayLabel, loadProjectDisplayInfo, type ProjectDisplayInfo } from '../../lib/projectDisplay'
 import BadgeGrid from './BadgeGrid'
 import ContributionStatus from './ContributionStatus'
 import ContributionSummary from './ContributionSummary'
@@ -57,6 +58,7 @@ function AccountContributionOverview() {
   const { user } = useAuth()
   const userId = user?.uid ?? ''
   const [data, setData] = useState<UserReputationData>( emptyData )
+  const [projectDisplayInfo, setProjectDisplayInfo] = useState<Record<string, ProjectDisplayInfo>>( {} )
   const [status, setStatus] = useState<'loading' | 'ready' | 'empty' | 'error'>( userId ? 'loading' : 'error' )
   const [loadedUserId, setLoadedUserId] = useState<string | null>( userId ? null : '' )
   const [errorMessage, setErrorMessage] = useState( userId ? '' : 'Sign in to view your points and badges.' )
@@ -68,9 +70,13 @@ function AccountContributionOverview() {
         active = false
       }
     }
-    void loadUserReputation( userId ).then( (nextData) => {
+    void loadUserReputation( userId ).then( async (nextData) => {
+      const nextProjectDisplayInfo = await loadProjectDisplayInfo(
+        nextData.summaries.map( (summary) => summary.projectId ),
+      )
       if( !active ) return
       setData( nextData )
+      setProjectDisplayInfo( nextProjectDisplayInfo )
       setLoadedUserId( userId )
       setStatus( nextData.summaries.length > 0 ? 'ready' : 'empty' )
     } ).catch( (err) => {
@@ -132,7 +138,7 @@ function AccountContributionOverview() {
             {data.summaries.map( (summary) => (
               <article className="account-contribution-overview__project" key={`${summary.projectId}-${summary.userId}`}>
                 <div className="contribution-project-card__header">
-                  <h3>Project {summary.projectId}</h3>
+                  <h3>{formatProjectDisplayLabel( summary.projectId, projectDisplayInfo[summary.projectId] )}</h3>
                   <strong>{formatReputationPoints( summary.totalPoints )} pts</strong>
                 </div>
                 <p className="muted">{summary.badgeIds.length} badges earned in this project.</p>

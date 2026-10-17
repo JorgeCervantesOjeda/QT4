@@ -26,6 +26,16 @@ These rules apply to work inside `QT4/` and complement repository-level guidance
 - Do not apply code, configuration, or content changes until the user confirms with `ok`.
 - Keep final responses brief by default, unless the user asks for more detail.
 
+## Shared Modal and Visible Feedback Rules
+
+- Reuse the shared modal components for user-visible states whenever an applicable component already exists.
+- Use `ErrorChecklistModal` with `useErrorChecklistModal` for blocked actions, validation failures, and user-visible errors that need an explanation or checklist.
+- Use `ProgressModal` for operations that may take time, and render it before the operation starts so the user sees immediate feedback.
+- Use `ModalDialog` for success, confirmation, decision, and other modal states that do not have a more specific shared component.
+- Do not create page-specific alerts, overlays, or equivalent dialogs when a shared modal component covers the same purpose.
+- Keep modal messages controlled by application state or explicit user dismissal; do not hide them with timers.
+- When a new modal state or user flow is added, update `QT4.uitd` and the relevant automated tests.
+
 ## Production Release Rule
 
 - Treat a full production deploy as a release, not as a technical deploy.

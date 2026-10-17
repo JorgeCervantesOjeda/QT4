@@ -6,6 +6,7 @@ const EXPECTED_AUTH_CODES = [
   'auth/invalid-credential',
   'auth/invalid-email',
   'auth/missing-password',
+  'auth/network-request-failed',
   'auth/user-not-found',
   'auth/wrong-password',
   'auth/weak-password',
@@ -30,7 +31,9 @@ const REAL_FAILURE_PATTERNS = [
 ]
 
 const NORMAL_VALIDATION_PATTERNS = [
+  /^could not connect to firebase\b/i,
   /^enter\b/i,
+  /^no internet connection\b/i,
   /^select\b/i,
   /^sign in\b/i,
   /^please wait\b/i,

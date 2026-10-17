@@ -107,7 +107,7 @@ function AccountSettingsPage() {
         <div>
           <AppBrand pageTitle="Account Settings" />
         </div>
-        <BackStack links={[ { label: 'Dashboard', to: '/app' } ]} />
+        <BackStack mode="return-only" links={[]} />
       </header>
 
       <main className="app-main">

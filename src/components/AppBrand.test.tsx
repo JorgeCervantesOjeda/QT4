@@ -1,5 +1,6 @@
 // src/components/AppBrand.test.tsx: Verifies help and About affordances in the brand banner.
 import { fireEvent, render, screen, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { APP_METADATA } from '../lib/appMetadata'
 import AppBrand from './AppBrand'
@@ -66,16 +67,16 @@ describe( 'AppBrand', () => {
       events: [],
     } )
 
-    render( <AppBrand pageTitle="Dashboard" /> )
+    render( <MemoryRouter><AppBrand pageTitle="Dashboard" /></MemoryRouter> )
 
     const summary = await screen.findByLabelText( 'Account reputation summary' )
     expect( summary.textContent ).toContain( '1.33' )
     expect( summary.textContent ).toContain( '1 badge' )
-    expect( screen.getByRole( 'link', { name: 'Account' } ) ).toBeTruthy()
+    expect( screen.getByRole( 'link', { name: 'Account' } ).getAttribute( 'href' ) ).toBe( '/account' )
   } )
 
   it( 'shows the NotebookLM help link for usage questions', () => {
-    render( <AppBrand pageTitle="Dashboard" /> )
+    render( <MemoryRouter><AppBrand pageTitle="Dashboard" /></MemoryRouter> )
 
     expect( screen.getByText( 'Ask questions about how to use QualiTeam.' ) ).toBeTruthy()
     const helpLink = screen.getByRole( 'link', { name: 'Open the QualiTeam help assistant' } )
@@ -85,7 +86,7 @@ describe( 'AppBrand', () => {
   } )
 
   it( 'opens the About dialog with the synchronized project version', () => {
-    render( <AppBrand pageTitle="Dashboard" /> )
+    render( <MemoryRouter><AppBrand pageTitle="Dashboard" /></MemoryRouter> )
 
     fireEvent.click( screen.getByRole( 'button', { name: 'About' } ) )
 

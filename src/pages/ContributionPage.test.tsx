@@ -10,12 +10,22 @@ import ContributionPage from './ContributionPage'
 
 const reputationMocks = vi.hoisted( () => ( {
   loadUserReputation: vi.fn(),
+  loadProjectDisplayInfo: vi.fn(),
 } ) )
 
 vi.mock( '../lib/reputationData', async () => {
   const actual = await vi.importActual<typeof import('../lib/reputationData')>( '../lib/reputationData' )
-  return { ...actual, loadUserReputation: reputationMocks.loadUserReputation }
+  return {
+    ...actual,
+    loadUserReputation: reputationMocks.loadUserReputation,
+    loadProjectDisplayInfo: reputationMocks.loadProjectDisplayInfo,
+  }
 } )
+
+vi.mock( '../lib/projectDisplay', () => ( {
+  formatProjectDisplayLabel: ( _projectId: string, info?: { name?: string } ) => info?.name || 'Project',
+  loadProjectDisplayInfo: reputationMocks.loadProjectDisplayInfo,
+} ) )
 
 vi.mock( '../components/AppBrand', () => ( {
   default: ( { pageTitle }: { pageTitle: string } ) => <h1>{pageTitle}</h1>,
@@ -67,6 +77,9 @@ const data: UserReputationData = {
 describe( 'ContributionPage', () => {
   it( 'shows project-scoped totals, badges, and history', async () => {
     reputationMocks.loadUserReputation.mockResolvedValue( data )
+    reputationMocks.loadProjectDisplayInfo.mockResolvedValue( {
+      'project-1': { name: 'Quality review', shortId: 7 },
+    } )
     renderWithAuth( <ContributionPage /> )
 
     expect( await screen.findByText( 'Your contribution summary' ) ).toBeTruthy()
@@ -77,7 +90,8 @@ describe( 'ContributionPage', () => {
     expect( screen.getByText( 'Recent activity' ) ).toBeTruthy()
     expect( screen.getByRole( 'columnheader', { name: 'What happened' } ) ).toBeTruthy()
     expect( screen.getByRole( 'columnheader', { name: 'Area' } ) ).toBeTruthy()
-    expect( screen.getAllByText( 'Project project-1' ).length ).toBeGreaterThan( 0 )
+    expect( screen.getAllByText( 'Quality review' ).length ).toBeGreaterThan( 0 )
+    expect( screen.queryByText( 'Project project-1' ) ).toBeNull()
     expect( screen.getByText( 'Added a comment' ) ).toBeTruthy()
     expect( screen.getByText( '+0.33' ) ).toBeTruthy()
   } )

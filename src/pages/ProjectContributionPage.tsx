@@ -1,14 +1,13 @@
 // src/pages/ProjectContributionPage.tsx: Shows the contribution ranking for one project only.
 
 import { useEffect, useState } from 'react'
-import { doc, getDoc } from 'firebase/firestore'
 import { useParams } from 'react-router-dom'
 import AppBrand from '../components/AppBrand'
 import BackStack from '../components/BackStack'
 import ContributionStatus from '../components/reputation/ContributionStatus'
 import ProjectLeaderboard from '../components/reputation/ProjectLeaderboard'
 import { useAuth } from '../auth/useAuth'
-import { db } from '../lib/firebase'
+import { formatProjectDisplayLabel, loadProjectDisplayInfo, type ProjectDisplayInfo } from '../lib/projectDisplay'
 import { loadProjectReputation } from '../lib/reputationData'
 import type { ReputationSummary } from '../lib/reputation'
 
@@ -16,7 +15,7 @@ function ProjectContributionPage() {
   const { user } = useAuth()
   const { projectId } = useParams<{ projectId: string }>()
   const [summaries, setSummaries] = useState<ReputationSummary[]>( [] )
-  const [projectName, setProjectName] = useState( '' )
+  const [projectDisplayInfo, setProjectDisplayInfo] = useState<Record<string, ProjectDisplayInfo>>( {} )
   const [status, setStatus] = useState<'loading' | 'ready' | 'empty' | 'error'>( projectId ? 'loading' : 'error' )
   const [errorMessage, setErrorMessage] = useState( projectId ? '' : 'A project is required to view its contribution ranking.' )
 
@@ -29,11 +28,11 @@ function ProjectContributionPage() {
     }
     void Promise.all( [
       loadProjectReputation( projectId ),
-      getDoc( doc( db, 'projects', projectId ) ),
-    ] ).then( ( [ nextSummaries, projectSnapshot ] ) => {
+      loadProjectDisplayInfo( [ projectId ] ),
+    ] ).then( ( [ nextSummaries, nextProjectDisplayInfo ] ) => {
       if( !active ) return
       setSummaries( nextSummaries )
-      setProjectName( String( projectSnapshot.data()?.name ?? '' ) )
+      setProjectDisplayInfo( nextProjectDisplayInfo )
       setStatus( nextSummaries.length > 0 ? 'ready' : 'empty' )
     } ).catch( (err) => {
       if( !active ) return
@@ -57,7 +56,7 @@ function ProjectContributionPage() {
         <AppBrand pageTitle="Project Contributions" />
         <div className="context-nav-label">
           <span className="document-title-prefix">Project</span>
-          <span className="document-title-text">{projectName || projectId || 'Unknown project'}</span>
+          <span className="document-title-text">{formatProjectDisplayLabel( projectId ?? '', projectDisplayInfo[projectId ?? ''] )}</span>
         </div>
         <BackStack links={[ { label: 'Project Documents', to: projectId ? `/projects/${projectId}/documents` : '/projects' }, { label: 'Projects', to: '/projects' } ]} />
       </header>

@@ -12,6 +12,7 @@ describe( 'isReportableUserVisibleError', () => {
     'To add a comment, the issue must be open, and either review is still active or the issue has a last comment less than one hour old after review expiry.',
     'Reviewers must be project members (including the leader). Select a member from the list.',
     'Firebase: Error (auth/invalid-credential).',
+    'Firebase: Error (auth/network-request-failed).',
   ] )( 'hides admin reporting for normal validation: %s', (message) => {
     expect( isReportableUserVisibleError( message ) ).toBe( false )
   } )

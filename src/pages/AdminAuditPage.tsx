@@ -705,14 +705,12 @@ function AdminAuditPage() {
         firebaseEmail?: string | null
         defaultExpireAfterDays?: number | null
       }
-      const projectLabel = payload.projectId ?? 'Unknown project'
-      const uidLabel = payload.firebaseUid ?? 'Unknown uid'
       const emailSuffix = payload.firebaseEmail ? `, email: ${payload.firebaseEmail}` : ''
       const defaultExpire =
         payload.defaultExpireAfterDays === null || payload.defaultExpireAfterDays === undefined
           ? 'default'
           : `${payload.defaultExpireAfterDays} days`
-      const message = `Connected: project ${projectLabel}, uid ${uidLabel}${emailSuffix} (default expire: ${defaultExpire}).`
+      const message = `Connected to the Files API${emailSuffix} (default expire: ${defaultExpire}).`
       const nowIso = new Date().toISOString()
       setFilesApiStatus( 'ok' )
       setFilesApiMessage( message )
@@ -953,7 +951,7 @@ function AdminAuditPage() {
             const start = Math.max( Number( counterSnap.data()?.nextNumber ?? 1 ), minimumNext )
             let next = start
             chunk.forEach( ( entry ) => {
-              projectRepairLog.push( `${collectionName === 'projects' ? 'Project' : 'Document'} ${entry.id}: shortId -> ${next}.` )
+              projectRepairLog.push( `${collectionName === 'projects' ? 'Project' : 'Document'} short ID assigned: ${next}.` )
               transaction.update( doc( db, collectionName, entry.id ), {
                 shortId: next,
                 updatedAt: serverTimestamp(),
@@ -1008,7 +1006,7 @@ function AdminAuditPage() {
               const counterSnap = await transaction.get( counterRef )
               let next = Math.max( Number( counterSnap.data()?.nextNumber ?? 1 ), minimumNext )
               chunk.forEach( ( entry ) => {
-                documentRepairLog.push( `Document ${entry.id}: shortId -> ${next} (project ${projectKey}).` )
+                documentRepairLog.push( `Document short ID assigned: ${next}.` )
                 transaction.update( doc( db, 'documents', entry.id ), {
                   shortId: next,
                   updatedAt: serverTimestamp(),
@@ -1069,7 +1067,7 @@ function AdminAuditPage() {
           return []
         }
         threadRepairLog.push(
-          `Thread ${thread.id}: commentCount ${thread.commentCount} -> ${agg.count}; lastCommentAt ${thread.lastCommentAt ? thread.lastCommentAt.toISOString() : '(missing)'} -> ${nextLastAt ? nextLastAt.toISOString() : '(missing)'}; lastCommentBy ${thread.lastCommentBy ?? '(missing)'} -> ${nextLastBy ?? '(missing)'}.`,
+          `Issue statistics updated: commentCount ${thread.commentCount} -> ${agg.count}; lastCommentAt ${thread.lastCommentAt ? thread.lastCommentAt.toISOString() : '(missing)'} -> ${nextLastAt ? nextLastAt.toISOString() : '(missing)'}; lastCommentBy ${formatUserLabel( thread.lastCommentBy ?? '' )} -> ${formatUserLabel( nextLastBy ?? '' )}.`,
         )
         return [
           {
@@ -1181,7 +1179,7 @@ function AdminAuditPage() {
           return []
         }
         versionRepairLog.push(
-          `Version ${version.id}: stats.numThreads ${currentNumThreads} -> ${agg.numThreads}; stats.numOpenThreads ${currentNumOpenThreads} -> ${agg.numOpenThreads}; stats.numComments ${currentNumComments} -> ${agg.numComments}; stats.numThreadsWithTwoPlusComments ${currentNumThreadsWithTwoPlusComments} -> ${agg.numThreadsWithTwoPlusComments}.`,
+          `Version statistics updated: threads ${currentNumThreads} -> ${agg.numThreads}; open issues ${currentNumOpenThreads} -> ${agg.numOpenThreads}; comments ${currentNumComments} -> ${agg.numComments}; issues with at least two comments ${currentNumThreadsWithTwoPlusComments} -> ${agg.numThreadsWithTwoPlusComments}.`,
         )
         return [
           {
@@ -1271,12 +1269,12 @@ function AdminAuditPage() {
           return []
         }
         const changeParts = [
-          file.projectId !== nextProjectId ? `projectId: ${file.projectId || '(missing)'} -> ${nextProjectId || '(missing)'}` : null,
-          file.docId !== nextDocId ? `docId: ${file.docId || '(missing)'} -> ${nextDocId || '(missing)'}` : null,
-          file.versionId !== nextVersionId ? `versionId: ${file.versionId || '(missing)'} -> ${nextVersionId || '(missing)'}` : null,
+          file.projectId !== nextProjectId ? `project reference ${nextProjectId ? 'completed' : 'still missing'}` : null,
+          file.docId !== nextDocId ? `document reference ${nextDocId ? 'completed' : 'still missing'}` : null,
+          file.versionId !== nextVersionId ? `version reference ${nextVersionId ? 'completed' : 'still missing'}` : null,
         ].filter( Boolean ) as string[]
         if( changeParts.length > 0 ) {
-          fileRepairLog.push( `File ${file.id}: ${changeParts.join( '; ' )}.` )
+          fileRepairLog.push( `File metadata updated: ${changeParts.join( '; ' )}.` )
         }
         return [
           {

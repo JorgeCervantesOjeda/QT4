@@ -20,7 +20,7 @@ function LoginPage() {
   const [isPasswordVisible, setIsPasswordVisible] = useState( false )
   const [isBusy, setIsBusy] = useState( false )
   const [resetNotice, setResetNotice] = useState<string | null>( null )
-  const { error, errorChecklist, openError, clearError } = useErrorChecklistModal()
+  const { error, errorChecklist, errorTitle, openError, clearError } = useErrorChecklistModal()
 
   const { user, loading } = useAuth()
   const navigate = useNavigate()
@@ -70,16 +70,27 @@ function LoginPage() {
       navigate( nextPath, { replace: true } )
     } catch( err ) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
+      const errorCode = typeof err === 'object' && err !== null && 'code' in err
+        ? String( ( err as { code?: unknown } ).code ?? '' )
+        : ''
+      const isNetworkFailure = errorCode === 'auth/network-request-failed'
       void reportAbnormalError( {
         error: err,
         source: 'auth',
         action: 'login.signIn',
       } )
-      openError( message, [
-        { label: '(email is provided)', ok: email.trim().length > 0 },
-        { label: '(password is provided)', ok: password.trim().length > 0 },
-        { label: '(credentials match an existing account)', ok: false },
-      ] )
+      if( isNetworkFailure ) {
+        const connectionMessage = typeof navigator !== 'undefined' && navigator.onLine === false
+          ? 'No internet connection. Check your connection and try again.'
+          : 'Could not connect to Firebase. Check your connection and try again.'
+        openError( connectionMessage, [], 'Connection problem' )
+      } else {
+        openError( message, [
+          { label: '(email is provided)', ok: email.trim().length > 0 },
+          { label: '(password is provided)', ok: password.trim().length > 0 },
+          { label: '(credentials match an existing account)', ok: false },
+        ] )
+      }
     } finally {
       setIsBusy( false )
     }
@@ -173,6 +184,7 @@ function LoginPage() {
 
           {error ? (
             <ErrorChecklistModal
+              title={errorTitle ?? undefined}
               error={error}
               checklist={errorChecklist}
               onClose={clearError}

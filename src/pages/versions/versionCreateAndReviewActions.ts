@@ -318,8 +318,8 @@ const createVersionCreateAndReviewActions = (
 
       if (toRecipients.length > 0) {
         const docLabel =
-          `${documentData?.shortId ?? documentData?.id ?? "Document"} - ${
-            documentData?.title ?? ""
+          `${documentData?.shortId ?? "Unassigned"} - ${
+            documentData?.title?.trim() || "Unknown document"
           }`.trim();
         const versionLabel = versionNumberToString(latestVersion.number);
         const versionUrlQuery = new URLSearchParams();

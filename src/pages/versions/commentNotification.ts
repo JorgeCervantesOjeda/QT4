@@ -78,7 +78,7 @@ const notifyCommentParticipants = async (
     params.docId,
   )}/versions?${commentUrlQuery.toString()}`;
   const docLabel =
-    `${documentData?.shortId ?? documentData?.id ?? "Document"} - ${documentData?.title ?? ""}`.trim();
+    `${documentData?.shortId ?? "Unassigned"} - ${documentData?.title?.trim() || "Unknown document"}`.trim();
   const commentBodyForEmail =
     commentBody.length > 1600
       ? `${commentBody.slice(0, 1600)}...`

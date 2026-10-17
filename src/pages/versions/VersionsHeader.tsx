@@ -10,7 +10,6 @@ type VersionsHeaderProps = {
   projectShortId: number | null
   documentData: DocumentSummary | null
   baseDocumentData: BaseDocumentSummary | null
-  docId?: string
   canEditDocumentTitle: boolean
   isBusy: boolean
   onEditDocumentTitle: () => void
@@ -36,7 +35,6 @@ function VersionsHeader( {
   projectShortId,
   documentData,
   baseDocumentData,
-  docId,
   canEditDocumentTitle,
   isBusy,
   onEditDocumentTitle,
@@ -67,7 +65,7 @@ function VersionsHeader( {
               {documentTypeLabel( documentData?.type )}
             </span>
             <span className="document-title-text">
-              {`${documentData?.shortId ?? 'Unassigned'} - ${documentData?.title ?? docId ?? 'Unknown'}`}
+              {`${documentData?.shortId ?? 'Unassigned'} - ${documentData?.title?.trim() || 'Unknown document'}`}
             </span>
           </div>
           {canEditDocumentTitle ? (

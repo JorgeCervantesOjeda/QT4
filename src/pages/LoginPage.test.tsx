@@ -56,6 +56,7 @@ const renderLoginPage = (entry: string = '/login') => {
 describe( 'pages/LoginPage password reset', () => {
   afterEach( () => {
     vi.clearAllMocks()
+    vi.restoreAllMocks()
   } )
 
   it( 'shows a validation error when the email field is empty', async () => {
@@ -137,11 +138,35 @@ describe( 'pages/LoginPage password reset', () => {
       )
     } )
   } )
+
+  it( 'shows a connection message instead of a credential checklist when login loses network access', async () => {
+    const networkError = Object.assign(
+      new Error( 'Firebase: Error (auth/network-request-failed).' ),
+      { code: 'auth/network-request-failed' },
+    )
+    signInWithEmailAndPasswordMock.mockRejectedValueOnce( networkError )
+    vi.spyOn( window.navigator, 'onLine', 'get' ).mockReturnValue( false )
+    renderLoginPage()
+
+    fireEvent.change( screen.getByLabelText( 'Email' ), {
+      target: { value: 'member@example.com' },
+    } )
+    fireEvent.change( screen.getByLabelText( 'Password' ), {
+      target: { value: 'password123' },
+    } )
+    fireEvent.click( screen.getByRole( 'button', { name: 'Log in' } ) )
+
+    expect( await screen.findByRole( 'heading', { name: 'Connection problem' } ) ).toBeTruthy()
+    expect( await screen.findByText( 'No internet connection. Check your connection and try again.' ) ).toBeTruthy()
+    expect( screen.queryByText( '(credentials match an existing account) [NO]' ) ).toBeNull()
+    expect( screen.queryByRole( 'button', { name: 'Report to admin' } ) ).toBeNull()
+  } )
 } )
 
 describe( 'pages/LoginPage password visibility', () => {
   afterEach( () => {
     vi.clearAllMocks()
+    vi.restoreAllMocks()
   } )
 
   it( 'toggles the password field visibility from the eye button', () => {

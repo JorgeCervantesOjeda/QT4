@@ -470,8 +470,13 @@ describe( 'pages/AdminAuditPage', () => {
 
     expect( await screen.findByRole( 'heading', { name: 'Admin Audit' }, { timeout: 10000 } ) ).toBeTruthy()
     expect(
-      await screen.findByText( /Connected: project demo-project, uid user-admin-1, email: admin@example.com/ ),
+      await screen.findByText(
+        /Connected to the Files API, email: admin@example.com \(default expire: 30 days\)\./,
+      ),
     ).toBeTruthy()
+    expect(
+      screen.queryByText( /Connected: project demo-project, uid user-admin-1, email: admin@example.com/ ),
+    ).toBeNull()
   }, 15000 )
 
   it( 'saves runtime providers with the selected values for an admin user', async () => {

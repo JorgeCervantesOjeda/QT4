@@ -17,6 +17,7 @@ const firestoreMocks = vi.hoisted( () => ( {
 
 const reputationMocks = vi.hoisted( () => ( {
   loadUserReputation: vi.fn(),
+  loadProjectDisplayInfo: vi.fn(),
 } ) )
 
 vi.mock( 'firebase/firestore', () => ( {
@@ -35,8 +36,14 @@ vi.mock( '../lib/reputationData', async () => {
   return {
     ...actual,
     loadUserReputation: reputationMocks.loadUserReputation,
+    loadProjectDisplayInfo: reputationMocks.loadProjectDisplayInfo,
   }
 } )
+
+vi.mock( '../lib/projectDisplay', () => ( {
+  formatProjectDisplayLabel: ( _projectId: string, info?: { name?: string } ) => info?.name || 'Project',
+  loadProjectDisplayInfo: reputationMocks.loadProjectDisplayInfo,
+} ) )
 
 vi.mock( '../components/AppBrand', () => ( {
   default: ( { pageTitle }: { pageTitle: string } ) => <h1>{pageTitle}</h1>,
@@ -102,13 +109,17 @@ describe( 'AccountSettingsPage', () => {
       } ],
       events: [],
     } )
+    reputationMocks.loadProjectDisplayInfo.mockResolvedValue( {
+      'project-1': { name: 'Quality review', shortId: 7 },
+    } )
 
     renderWithAuth( <AccountSettingsPage /> )
 
     expect( await screen.findByRole( 'heading', { name: 'Points and badges' } ) ).toBeTruthy()
     expect( screen.getAllByText( '1.33' ).length ).toBeGreaterThan( 0 )
     expect( screen.getByText( 'First contribution' ) ).toBeTruthy()
-    expect( screen.getByText( 'Project project-1' ) ).toBeTruthy()
+    expect( screen.getByText( 'Quality review' ) ).toBeTruthy()
+    expect( screen.queryByText( 'Project project-1' ) ).toBeNull()
   } )
 
   it( 'loads legacy notification defaults when profile preferences are missing', async () => {

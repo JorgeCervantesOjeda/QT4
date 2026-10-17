@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { useAuth } from '../auth/useAuth'
 
@@ -9,11 +9,13 @@ type BackLink = {
 
 type BackStackProps = {
   links: BackLink[]
+  mode?: 'standard' | 'return-only'
 }
 
-function BackStack( { links }: BackStackProps ) {
+function BackStack( { links, mode = 'standard' }: BackStackProps ) {
   const { signOutUser } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
   const [isLoggingOut, setIsLoggingOut] = useState( false )
   const normalizedPath = location.pathname.replace( /\/+$/, '' ) || '/'
   const isDashboardRoute = normalizedPath === '/app' || normalizedPath === '/'
@@ -28,6 +30,16 @@ function BackStack( { links }: BackStackProps ) {
     } finally {
       setIsLoggingOut( false )
     }
+  }
+
+  if( mode === 'return-only' ) {
+    return (
+      <nav className="back-stack" aria-label="Back navigation">
+        <button type="button" className="back-link back-link--button" onClick={() => navigate( -1 )}>
+          Return
+        </button>
+      </nav>
+    )
   }
 
   return (

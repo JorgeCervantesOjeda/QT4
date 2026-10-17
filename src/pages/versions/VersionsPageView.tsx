@@ -249,7 +249,6 @@ const VersionsPageShell = (
       projectShortId={props.projectShortId}
       documentData={props.documentData}
       baseDocumentData={props.baseDocumentData}
-      docId={props.docId}
       canEditDocumentTitle={props.canEditDocumentTitle}
       isBusy={props.isBusy}
       onEditDocumentTitle={props.requestDocumentTitleEdit}

@@ -10,7 +10,7 @@ type ProjectLeaderboardProps = {
   resolveUserLabel?: (userId: string) => string
 }
 
-function ProjectLeaderboard({ summaries, currentUserId, resolveUserLabel = (userId) => userId }: ProjectLeaderboardProps) {
+function ProjectLeaderboard({ summaries, currentUserId, resolveUserLabel = () => 'Member' }: ProjectLeaderboardProps) {
   if( summaries.length === 0 ) {
     return <p className="muted">No contribution summaries are available for this project yet.</p>
   }

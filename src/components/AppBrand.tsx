@@ -1,6 +1,7 @@
 // src/components/AppBrand.tsx: Renders the app banner, help entrypoint, session label, and About dialog trigger.
 import { useEffect, useState } from 'react'
 import { doc, getDoc } from 'firebase/firestore'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import { db } from '../lib/firebase'
 import { APP_METADATA } from '../lib/appMetadata'
@@ -89,9 +90,9 @@ function AppBrand( { pageTitle }: AppBrandProps ) {
               </p>
               <div className="brand-account-actions">
                 <AccountReputationSummary />
-                <a className="brand-session-button" href="/account">
+                <Link className="brand-session-button" to="/account">
                   Account
-                </a>
+                </Link>
               </div>
             </div>
           ) : null}
