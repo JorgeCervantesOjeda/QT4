@@ -9,6 +9,7 @@ import BadgeGrid from '../components/reputation/BadgeGrid'
 import ContributionHistoryTable from '../components/reputation/ContributionHistoryTable'
 import ContributionStatus from '../components/reputation/ContributionStatus'
 import ContributionSummary from '../components/reputation/ContributionSummary'
+import ProgressModal from '../components/ProgressModal'
 import {
   formatProjectDisplayLabel,
   getProjectContributionPath,
@@ -89,7 +90,12 @@ function ContributionPage() {
         <BackStack mode="return-only" links={[]} />
       </header>
       <main className="app-main">
-        {status === 'loading' ? <ContributionStatus status="loading" /> : null}
+        {status === 'loading' ? (
+          <ProgressModal
+            title="Loading contributions"
+            message="Loading your points, badges, and history..."
+          />
+        ) : null}
         {status === 'error' ? <ContributionStatus status="error" message={errorMessage} /> : null}
         {status === 'empty' ? (
           <section className="panel stack">

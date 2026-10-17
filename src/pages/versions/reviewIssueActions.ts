@@ -546,6 +546,26 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
             updatedAt: serverTimestamp(),
           }),
       );
+      const shouldShowReactionReward =
+        reaction === "good" &&
+        comment.createdBy === userId &&
+        currentReactionState.currentUserReaction !== "good";
+      const reputationEvent = shouldShowReactionReward
+        ? await waitForReputationEvent({
+            projectId,
+            sourceId: reactionRef.id,
+            sourceType: "commentReaction",
+            userId,
+          })
+        : null;
+      params.setSuccessMessage(
+        shouldShowReactionReward
+          ? buildReputationAwardMessage(
+            "Reaction updated successfully.",
+            reputationEvent,
+          )
+          : "Reaction updated successfully.",
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unexpected error";
       params.setCommentReactionsByCommentId((current) =>

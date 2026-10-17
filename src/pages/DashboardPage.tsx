@@ -52,6 +52,7 @@ function DashboardPage() {
   const [legacyTasks, setLegacyTasks] = useState<DashboardTask[]>([] )
   const [storedTasks, setStoredTasks] = useState<DashboardTask[]>([] )
   const [dashboardStorageVersion, setDashboardStorageVersion] = useState( 1 )
+  const [dashboardConfigLoaded, setDashboardConfigLoaded] = useState( false )
   const [taskCollectionLoaded, setTaskCollectionLoaded] = useState( false )
   const [activeRefreshScope, setActiveRefreshScope] = useState<DashboardRefreshScope | null>( null )
   const [dashboardUpdatedAt, setDashboardUpdatedAt] = useState<Date | null>( null )
@@ -115,6 +116,10 @@ function DashboardPage() {
   } )
   const isLoadingTasks = activeRefreshScope !== null
   const isAnalyzingUrgency = urgencyStatus === 'loading'
+  const isLoadingInitialDashboardData = Boolean( userId ) && (
+    !dashboardConfigLoaded ||
+    ( dashboardStorageVersion >= 2 && !taskCollectionLoaded )
+  )
   const tasks = useMemo(
     () => ( dashboardStorageVersion >= 2 && taskCollectionLoaded ? storedTasks : legacyTasks ),
     [ dashboardStorageVersion, legacyTasks, storedTasks, taskCollectionLoaded ],
@@ -294,6 +299,7 @@ function DashboardPage() {
     if( !userId ) {
       return
     }
+    setDashboardConfigLoaded( false )
     const dashboardRef = doc( db, 'dashboard', userId )
     const unsubscribe = onSnapshot(
       dashboardRef,
@@ -302,6 +308,7 @@ function DashboardPage() {
           setLegacyTasks( [] )
           setDashboardStorageVersion( 1 )
           setDashboardUpdatedAt( null )
+          setDashboardConfigLoaded( true )
           return
         }
         const data = snapshot.data()
@@ -311,6 +318,7 @@ function DashboardPage() {
         )
         setLegacyTasks( nextTasks )
         setDashboardStorageVersion( Number( data.storageVersion ?? 1 ) )
+        setDashboardConfigLoaded( true )
         const updatedAt = toTimestampDate( data.updatedAt )
         setDashboardUpdatedAt( updatedAt )
         if( updatedAt ) {
@@ -325,6 +333,7 @@ function DashboardPage() {
       },
       ( err ) => {
         const message = err instanceof Error ? err.message : 'Unexpected error'
+        setDashboardConfigLoaded( true )
         openError( `Dashboard failed to load: ${message}`, [
           { label: '(user is signed in)', ok: Boolean( userId ) },
           { label: '(network connection is available)', ok: typeof navigator !== 'undefined' ? navigator.onLine : true },
@@ -364,6 +373,7 @@ function DashboardPage() {
       },
       ( err ) => {
         const message = err instanceof Error ? err.message : 'Unexpected error'
+        setTaskCollectionLoaded( true )
         openError( `Dashboard tasks failed to load: ${message}`, [
           { label: '(user is signed in)', ok: Boolean( userId ) },
           { label: '(network connection is available)', ok: typeof navigator !== 'undefined' ? navigator.onLine : true },
@@ -380,7 +390,6 @@ function DashboardPage() {
     setLegacyTasks( [] )
     setStoredTasks( [] )
     setDashboardStorageVersion( 1 )
-    setTaskCollectionLoaded( false )
     setActiveRefreshScope( null )
     setLastRefreshByScope( {
       all: null,
@@ -684,8 +693,10 @@ function DashboardPage() {
             }}
           />
         ) : null}
-        {isLoadingTasks || isAnalyzingUrgency ? (
-          <ProgressModal title={isLoadingTasks ? 'Refreshing dashboard' : 'Analyzing urgency'}>
+        {isLoadingInitialDashboardData || isLoadingTasks || isAnalyzingUrgency ? (
+          <ProgressModal
+            title={isLoadingInitialDashboardData ? 'Loading dashboard' : isLoadingTasks ? 'Refreshing dashboard' : 'Analyzing urgency'}
+          >
             {isLoadingTasks && refreshProgress ? (
               <div className="dashboard-progress">
                 <div className="dashboard-progress__track" aria-hidden="true">
@@ -698,6 +709,8 @@ function DashboardPage() {
                   {`Step ${refreshProgress.currentStep} of ${refreshProgress.totalSteps}: ${refreshProgress.label}`}
                 </p>
               </div>
+            ) : isLoadingInitialDashboardData ? (
+              <p className="muted">Loading dashboard data...</p>
             ) : isLoadingTasks ? (
               <p className="muted">Preparing refresh...</p>
             ) : (

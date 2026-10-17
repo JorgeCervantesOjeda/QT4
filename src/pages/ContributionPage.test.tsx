@@ -34,6 +34,11 @@ vi.mock( '../components/AppBrand', () => ( {
 vi.mock( '../components/BackStack', () => ( {
   default: ( { mode }: { mode?: string } ) => <nav data-testid="back-stack">{mode ?? 'standard'}</nav>,
 } ) )
+vi.mock( '../components/ProgressModal', () => ( {
+  default: ( { title, message }: { title: string; message?: string } ) => (
+    <div role="dialog"><h3>{title}</h3>{message ? <p>{message}</p> : null}</div>
+  ),
+} ) )
 
 const renderWithAuth = (children: ReactNode) => render(
   <AuthContext.Provider
@@ -78,6 +83,14 @@ const data: UserReputationData = {
 }
 
 describe( 'ContributionPage', () => {
+  it( 'shows a progress modal while contribution data is loading', () => {
+    reputationMocks.loadUserReputation.mockReturnValue( new Promise( () => undefined ) )
+    renderWithAuth( <ContributionPage /> )
+
+    expect( screen.getByRole( 'dialog' ) ).toBeTruthy()
+    expect( screen.getByRole( 'heading', { name: 'Loading contributions' } ) ).toBeTruthy()
+  } )
+
   it( 'shows project-scoped totals, badges, and history', async () => {
     reputationMocks.loadUserReputation.mockResolvedValue( data )
     reputationMocks.loadProjectDisplayInfo.mockResolvedValue( {

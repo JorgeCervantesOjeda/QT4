@@ -264,17 +264,22 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
         return;
       }
       setPropagationFailurePrompt( null );
-      const reputationEvent = latestVersion.createdBy === userId
-        ? await waitForReputationEvent({
-            projectId,
-            sourceId: latestVersion.id,
-            sourceType: "version",
-            userId,
-          })
-        : null;
-      setSuccessMessage(
-        buildReputationAwardMessage("Latest version accepted successfully.", reputationEvent),
-      );
+      if (latestVersion.createdBy === userId) {
+        const reputationEvent = await waitForReputationEvent({
+          projectId,
+          sourceId: latestVersion.id,
+          sourceType: "version",
+          userId,
+        });
+        setSuccessMessage(
+          buildReputationAwardMessage(
+            "Latest version accepted successfully.",
+            reputationEvent,
+          ),
+        );
+      } else {
+        setSuccessMessage("Latest version accepted successfully.");
+      }
       const baseVersionId = documentData?.baseVersionId ?? null;
       if (documentData?.type === "errorReport" && baseVersionId) {
         logAcceptedErrorReportTasks({

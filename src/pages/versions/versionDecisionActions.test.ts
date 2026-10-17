@@ -250,6 +250,26 @@ describe( 'createVersionDecisionActions', () => {
     )
   } )
 
+  it( 'confirms acceptance without attributing the author reward to another decision maker', async () => {
+    firestoreMocks.getDoc.mockResolvedValueOnce( {
+      exists: () => false,
+      data: () => ( {} ),
+    } )
+    const setSuccessMessage = vi.fn()
+    const actions = buildActions( {
+      latestVersion: { ...reviewReadyVersion, createdBy: 'version-author-2' },
+      setSuccessMessage,
+      userId: 'leader-1',
+    } )
+
+    await actions.handleAcceptLatestVersion()
+
+    expect( reputationDataMocks.waitForReputationEvent ).not.toHaveBeenCalled()
+    expect( setSuccessMessage ).toHaveBeenCalledWith(
+      'Latest version accepted successfully.',
+    )
+  } )
+
   it( 'asks the user to report or retry when accepting an error report fails propagation', async () => {
     const setPropagationFailurePrompt = vi.fn()
     versionDecisionMocks.requestVersionDecision.mockResolvedValueOnce( {

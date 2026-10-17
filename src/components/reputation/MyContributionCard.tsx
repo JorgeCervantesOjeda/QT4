@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/useAuth'
 import { formatReputationPoints, loadUserReputation } from '../../lib/reputationData'
+import ProgressModal from '../ProgressModal'
 import ContributionStatus from './ContributionStatus'
 import './reputation.css'
 
@@ -49,7 +50,7 @@ function MyContributionCard() {
     if( status === 'error' ) {
       return <ContributionStatus status="error" message={errorMessage} />
     }
-    return <ContributionStatus status="loading" />
+    return null
   }, [ errorMessage, projectCount, status, totalPoints ] )
 
   return (
@@ -62,6 +63,12 @@ function MyContributionCard() {
         <Link className="link" to="/account/contributions">View details</Link>
       </div>
       {content}
+      {status === 'loading' ? (
+        <ProgressModal
+          title="Loading contribution data"
+          message="Loading your points and badges..."
+        />
+      ) : null}
     </section>
   )
 }

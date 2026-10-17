@@ -111,14 +111,14 @@ export const normalizeReputationEvent = (id: string, data: DocumentData): Reputa
     console.warn( 'Reputation event skipped because its data is incomplete.', { id } )
     return null
   }
-  if( points === 0 ) {
-    return null
-  }
   const sequenceKey = asNonEmptyString( data.sequenceKey )
   const sequenceNumber = asFiniteNumber( data.sequenceNumber )
   const sequenceIntervalStart = asFiniteNumber( data.sequenceIntervalStart )
   const sequenceIntervalEnd = asFiniteNumber( data.sequenceIntervalEnd )
   const earnedBadgeIds = asBadgeIds( data.earnedBadgeIds )
+  if( points === 0 && earnedBadgeIds.length === 0 ) {
+    return null
+  }
   return {
     id,
     projectId,
@@ -245,6 +245,9 @@ export const buildReputationAwardMessage = (
   const badgeMessage = badgeLabels.length
     ? ` New badge${badgeLabels.length === 1 ? '' : 's'}: ${badgeLabels.join( ', ' )}.`
     : ''
+  if( event.points === 0 && badgeLabels.length > 0 ) {
+    return `${prefix} You earned ${badgeLabels.length === 1 ? 'a new badge' : 'new badges'}: ${badgeLabels.join( ', ' )}.`
+  }
   return event.points > 0
     ? `${prefix} You earned ${signedPoints} ${pointLabel}.${badgeMessage}`
     : `${prefix} Your reputation changed by ${signedPoints} ${pointLabel}.${badgeMessage}`

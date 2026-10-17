@@ -12,6 +12,10 @@ vi.mock( './components/ErrorMonitorBridge', () => ( {
   default: () => null,
 } ) )
 
+vi.mock( './components/reputation/ReputationRewardListener', () => ( {
+  default: () => null,
+} ) )
+
 vi.mock( './giphy/GiphyProvider', () => ( {
   GiphyProvider: ( { children }: { children: ReactNode } ) => children,
 } ) )

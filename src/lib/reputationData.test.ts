@@ -59,6 +59,22 @@ describe( 'reputation history normalization', () => {
     } )
   } )
 
+  it( 'keeps a badge-only review event available for reward feedback', () => {
+    expect( normalizeReputationEvent( 'reviewCompleted:version-1:user-1', {
+      projectId: 'project-1',
+      userId: 'user-1',
+      category: 'review',
+      points: 0,
+      reason: 'Completed an active review',
+      sourceType: 'versionReview',
+      sourceId: 'version-1',
+      earnedBadgeIds: [ 'reliable-reviewer' ],
+    } ) ).toMatchObject( {
+      points: 0,
+      earnedBadgeIds: [ 'reliable-reviewer' ],
+    } )
+  } )
+
   it( 'formats whole, fractional, zero, and negative points consistently', () => {
     expect( formatReputationPoints( 1 ) ).toBe( '1' )
     expect( formatReputationPoints( 1 / 3 ) ).toBe( '0.33' )
@@ -110,6 +126,23 @@ describe( 'reputation history normalization', () => {
       earnedBadgeIds: [ 'first-contribution' ],
     } ) ).toBe(
       'Issue created successfully. You earned +0.33 points. New badge: First contribution.',
+    )
+  } )
+
+  it( 'formats badge-only rewards without claiming that points were awarded', () => {
+    expect( buildReputationAwardMessage( 'Review completed successfully.', {
+      id: 'reviewCompleted:version-1:user-1',
+      projectId: 'project-1',
+      userId: 'user-1',
+      sourceType: 'versionReview',
+      sourceId: 'version-1',
+      category: 'review',
+      points: 0,
+      reason: 'Completed an active review',
+      createdAt: null,
+      earnedBadgeIds: [ 'reliable-reviewer' ],
+    } ) ).toBe(
+      'Review completed successfully. You earned a new badge: Reliable reviewer.',
     )
   } )
 } )

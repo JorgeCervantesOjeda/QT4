@@ -48,6 +48,11 @@ vi.mock( '../lib/projectDisplay', () => ( {
 vi.mock( '../components/AppBrand', () => ( {
   default: ( { pageTitle }: { pageTitle: string } ) => <h1>{pageTitle}</h1>,
 } ) )
+vi.mock( '../components/ProgressModal', () => ( {
+  default: ( { title, message }: { title: string; message?: string } ) => (
+    <div role="dialog"><h3>{title}</h3>{message ? <p>{message}</p> : null}</div>
+  ),
+} ) )
 
 const renderWithAuth = (children: ReactNode) => render(
   <AuthContext.Provider
@@ -83,6 +88,15 @@ const createDeferred = <T,>() => {
 }
 
 describe( 'AccountSettingsPage', () => {
+  it( 'shows a progress modal while points and badges are loading', () => {
+    firestoreMocks.getDoc.mockResolvedValue( profileSnapshot( undefined ) )
+    reputationMocks.loadUserReputation.mockReturnValue( new Promise( () => undefined ) )
+    renderWithAuth( <AccountSettingsPage /> )
+
+    expect( screen.getByRole( 'dialog' ) ).toBeTruthy()
+    expect( screen.getByRole( 'heading', { name: 'Loading points and badges' } ) ).toBeTruthy()
+  } )
+
   it( 'shows points and badges directly without opening Contributions', async () => {
     firestoreMocks.getDoc.mockResolvedValue( profileSnapshot( {
       notificationPreferences: {

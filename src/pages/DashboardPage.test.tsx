@@ -21,7 +21,17 @@ vi.mock( '../auth/useAuth', () => ( {
 vi.mock( 'firebase/firestore', () => ( {
   collection: vi.fn( ( ...segments: unknown[] ) => ( { segments } ) ),
   doc: vi.fn( ( ...segments: unknown[] ) => ( { segments } ) ),
-  onSnapshot: vi.fn( () => () => undefined ),
+  onSnapshot: vi.fn( ( reference: { segments?: unknown[] }, onNext: (snapshot: unknown) => void ) => {
+    if( reference.segments?.length === 3 ) {
+      onNext( {
+        exists: () => true,
+        data: () => ( { storageVersion: 1, tasks: [] } ),
+      } )
+    } else {
+      onNext( { docs: [] } )
+    }
+    return () => undefined
+  } ),
 } ) )
 
 vi.mock( '../lib/firebase', () => ( {
@@ -38,6 +48,10 @@ vi.mock( '../lib/errorMonitor', () => ( {
 
 vi.mock( '../giphy/GiphyProvider', () => ( {
   GiphyInline: () => <div aria-label="Working animation" />,
+} ) )
+
+vi.mock( '../components/reputation/MyContributionCard', () => ( {
+  default: () => <section aria-label="My contribution" />,
 } ) )
 
 describe( 'DashboardPage', () => {

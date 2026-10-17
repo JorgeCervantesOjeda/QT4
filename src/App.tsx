@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthContext'
 import { RequireAuth } from './auth/RequireAuth'
 import ErrorMonitorBridge from './components/ErrorMonitorBridge'
+import ReputationRewardListener from './components/reputation/ReputationRewardListener'
 import { GiphyProvider } from './giphy/GiphyProvider'
 import './App.css'
 
@@ -148,6 +149,7 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <ErrorMonitorBridge />
+        <ReputationRewardListener />
         <GiphyProvider>
           <ChunkPreloadRecovery />
           <ChunkLoadRecoveryBoundary>

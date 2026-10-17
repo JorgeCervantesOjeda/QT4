@@ -13,6 +13,7 @@ import { formatProjectDisplayLabel, loadProjectDisplayInfo, type ProjectDisplayI
 import BadgeGrid from './BadgeGrid'
 import ContributionStatus from './ContributionStatus'
 import ContributionSummary from './ContributionSummary'
+import ProgressModal from '../ProgressModal'
 import './reputation.css'
 
 const emptyData: UserReputationData = { summaries: [], events: [] }
@@ -114,7 +115,12 @@ function AccountContributionOverview() {
         </div>
         <Link className="link" to="/account/contributions">View full history</Link>
       </div>
-      {displayedStatus === 'loading' ? <ContributionStatus status="loading" /> : null}
+      {displayedStatus === 'loading' ? (
+        <ProgressModal
+          title="Loading points and badges"
+          message="Loading your contribution summary..."
+        />
+      ) : null}
       {displayedStatus === 'error' ? <ContributionStatus status="error" message={errorMessage} /> : null}
       {displayedStatus === 'empty' ? <ContributionStatus status="empty" message="Your points and badges will appear after your first contribution." /> : null}
       {displayedStatus === 'ready' ? (

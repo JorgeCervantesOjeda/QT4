@@ -148,6 +148,7 @@ describe( 'createReviewIssueActions', () => {
     firestoreMocks.setDoc.mockResolvedValueOnce( undefined )
     const setCommentReactionsByCommentId = vi.fn()
     const setPendingCommentReactionIds = vi.fn()
+    const setSuccessMessage = vi.fn()
     const actions = createReviewIssueActions( {
       canAddComment: true,
       canCreateThread: true,
@@ -180,7 +181,7 @@ describe( 'createReviewIssueActions', () => {
       setSelectedThreadId: vi.fn(),
       setThreadCreationStatus: vi.fn(),
       setSuccessEmailRecipients: vi.fn(),
-      setSuccessMessage: vi.fn(),
+      setSuccessMessage,
       setWarningMessage: vi.fn(),
       threads: [selectedThread],
       userEmail: 'author@example.com',
@@ -211,6 +212,63 @@ describe( 'createReviewIssueActions', () => {
     expect( firestoreMocks.deleteDoc ).not.toHaveBeenCalled()
     expect( setPendingCommentReactionIds ).toHaveBeenCalled()
     expect( setCommentReactionsByCommentId ).toHaveBeenCalled()
+    expect( setSuccessMessage ).toHaveBeenCalledWith( 'Reaction updated successfully.' )
+  } )
+
+  it( 'shows the reaction reward when the author reacts positively to their own comment', async () => {
+    firestoreMocks.setDoc.mockResolvedValueOnce( undefined )
+    const setSuccessMessage = vi.fn()
+    const setPendingCommentReactionIds = vi.fn()
+    const actions = createReviewIssueActions( {
+      canAddComment: true,
+      canCreateThread: true,
+      canParticipateReview: true,
+      commentReactionsByCommentId: {},
+      commentsByThread: { [selectedThread.id]: comments },
+      docId: 'doc-1',
+      documentData,
+      formatUserLabel: ( memberUserId ) => memberUserId,
+      newCommentBody: '',
+      newThreadTitle: '',
+      projectId: 'project-1',
+      reloadAndRestoreSelection: vi.fn(),
+      reportVersionsError: vi.fn(),
+      resolveUserEmail: () => null,
+      selectedThread,
+      selectedThreadComments: comments,
+      selectedVersion,
+      selectedVersionInActiveReview: true,
+      setCommentReactionsByCommentId: vi.fn(),
+      setEmailNotifyMessage: vi.fn(),
+      setEmailNotifyStatus: vi.fn(),
+      setError: vi.fn(),
+      setIsBusy: vi.fn(),
+      setCommentCreationStatus: vi.fn(),
+      setNewCommentBody: vi.fn(),
+      setNewThreadTitle: vi.fn(),
+      setPendingCommentReactionIds,
+      setPendingThreadStatusChange: vi.fn(),
+      setSelectedThreadId: vi.fn(),
+      setThreadCreationStatus: vi.fn(),
+      setSuccessEmailRecipients: vi.fn(),
+      setSuccessMessage,
+      setWarningMessage: vi.fn(),
+      threads: [selectedThread],
+      userEmail: 'author@example.com',
+      userId: 'author-1',
+    } )
+
+    await actions.handleSetCommentReaction( comments[1], 'good' )
+
+    expect( reputationDataMocks.waitForReputationEvent ).toHaveBeenCalledWith( {
+      projectId: 'project-1',
+      sourceId: 'comment-2_author-1',
+      sourceType: 'commentReaction',
+      userId: 'author-1',
+    } )
+    expect( setSuccessMessage ).toHaveBeenCalledWith(
+      'Reaction updated successfully. You earned +1 point. New badge: First contribution.',
+    )
   } )
 
   it( 'updates the current user reaction without overwriting the creation timestamp', async () => {
