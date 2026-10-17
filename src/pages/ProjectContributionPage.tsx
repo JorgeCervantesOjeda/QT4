@@ -7,32 +7,35 @@ import BackStack from '../components/BackStack'
 import ContributionStatus from '../components/reputation/ContributionStatus'
 import ProjectLeaderboard from '../components/reputation/ProjectLeaderboard'
 import { useAuth } from '../auth/useAuth'
-import { formatProjectDisplayLabel, loadProjectDisplayInfo, type ProjectDisplayInfo } from '../lib/projectDisplay'
+import { formatProjectDisplayLabel, resolveProjectReference, type ProjectDisplayInfo } from '../lib/projectDisplay'
 import { loadProjectReputation } from '../lib/reputationData'
 import type { ReputationSummary } from '../lib/reputation'
 
 function ProjectContributionPage() {
   const { user } = useAuth()
-  const { projectId } = useParams<{ projectId: string }>()
+  const { projectId: projectReference } = useParams<{ projectId: string }>()
+  const [resolvedProjectId, setResolvedProjectId] = useState( '' )
   const [summaries, setSummaries] = useState<ReputationSummary[]>( [] )
   const [projectDisplayInfo, setProjectDisplayInfo] = useState<Record<string, ProjectDisplayInfo>>( {} )
-  const [status, setStatus] = useState<'loading' | 'ready' | 'empty' | 'error'>( projectId ? 'loading' : 'error' )
-  const [errorMessage, setErrorMessage] = useState( projectId ? '' : 'A project is required to view its contribution ranking.' )
+  const [status, setStatus] = useState<'loading' | 'ready' | 'empty' | 'error'>( projectReference ? 'loading' : 'error' )
+  const [errorMessage, setErrorMessage] = useState( projectReference ? '' : 'A project is required to view its contribution ranking.' )
 
   useEffect( () => {
     let active = true
-    if( !projectId ) {
+    if( !projectReference ) {
       return () => {
         active = false
       }
     }
-    void Promise.all( [
-      loadProjectReputation( projectId ),
-      loadProjectDisplayInfo( [ projectId ] ),
-    ] ).then( ( [ nextSummaries, nextProjectDisplayInfo ] ) => {
+    void resolveProjectReference( projectReference ).then( async (resolvedProject) => {
+      if( !resolvedProject ) {
+        throw new Error( 'Project could not be found.' )
+      }
+      const nextSummaries = await loadProjectReputation( resolvedProject.projectId )
       if( !active ) return
       setSummaries( nextSummaries )
-      setProjectDisplayInfo( nextProjectDisplayInfo )
+      setResolvedProjectId( resolvedProject.projectId )
+      setProjectDisplayInfo( { [resolvedProject.projectId]: resolvedProject.displayInfo } )
       setStatus( nextSummaries.length > 0 ? 'ready' : 'empty' )
     } ).catch( (err) => {
       if( !active ) return
@@ -43,7 +46,7 @@ function ProjectContributionPage() {
     return () => {
       active = false
     }
-  }, [ projectId ] )
+  }, [ projectReference ] )
 
   const resolveUserLabel = (userId: string) => {
     if( userId === user?.uid ) return 'You'
@@ -56,9 +59,9 @@ function ProjectContributionPage() {
         <AppBrand pageTitle="Project Contributions" />
         <div className="context-nav-label">
           <span className="document-title-prefix">Project</span>
-          <span className="document-title-text">{formatProjectDisplayLabel( projectId ?? '', projectDisplayInfo[projectId ?? ''] )}</span>
+          <span className="document-title-text">{formatProjectDisplayLabel( resolvedProjectId || projectReference || '', projectDisplayInfo[resolvedProjectId] )}</span>
         </div>
-        <BackStack links={[ { label: 'Project Documents', to: projectId ? `/projects/${projectId}/documents` : '/projects' }, { label: 'Projects', to: '/projects' } ]} />
+        <BackStack mode="return-only" links={[]} />
       </header>
       <main className="app-main">
         <section className="panel stack">

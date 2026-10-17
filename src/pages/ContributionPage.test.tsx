@@ -24,13 +24,16 @@ vi.mock( '../lib/reputationData', async () => {
 
 vi.mock( '../lib/projectDisplay', () => ( {
   formatProjectDisplayLabel: ( _projectId: string, info?: { name?: string } ) => info?.name || 'Project',
+  getProjectContributionPath: ( info?: { shortId?: number | null } ) => info?.shortId ? `/projects/${info.shortId}/contribution` : null,
   loadProjectDisplayInfo: reputationMocks.loadProjectDisplayInfo,
 } ) )
 
 vi.mock( '../components/AppBrand', () => ( {
   default: ( { pageTitle }: { pageTitle: string } ) => <h1>{pageTitle}</h1>,
 } ) )
-vi.mock( '../components/BackStack', () => ( { default: () => null } ) )
+vi.mock( '../components/BackStack', () => ( {
+  default: ( { mode }: { mode?: string } ) => <nav data-testid="back-stack">{mode ?? 'standard'}</nav>,
+} ) )
 
 const renderWithAuth = (children: ReactNode) => render(
   <AuthContext.Provider
@@ -92,6 +95,11 @@ describe( 'ContributionPage', () => {
     expect( screen.getByRole( 'columnheader', { name: 'Area' } ) ).toBeTruthy()
     expect( screen.getAllByText( 'Quality review' ).length ).toBeGreaterThan( 0 )
     expect( screen.queryByText( 'Project project-1' ) ).toBeNull()
+    expect( screen.getByTestId( 'back-stack' ).textContent ).toBe( 'return-only' )
+    expect( screen.getByRole( 'link', { name: 'Open project ranking' } ).getAttribute( 'href' ) )
+      .toBe( '/projects/7/contribution' )
+    expect( screen.getByRole( 'link', { name: 'Open project ranking' } ).getAttribute( 'href' ) )
+      .not.toContain( 'project-1' )
     expect( screen.getByText( 'Added a comment' ) ).toBeTruthy()
     expect( screen.getByText( '+0.33' ) ).toBeTruthy()
   } )

@@ -9,7 +9,12 @@ import BadgeGrid from '../components/reputation/BadgeGrid'
 import ContributionHistoryTable from '../components/reputation/ContributionHistoryTable'
 import ContributionStatus from '../components/reputation/ContributionStatus'
 import ContributionSummary from '../components/reputation/ContributionSummary'
-import { formatProjectDisplayLabel, loadProjectDisplayInfo, type ProjectDisplayInfo } from '../lib/projectDisplay'
+import {
+  formatProjectDisplayLabel,
+  getProjectContributionPath,
+  loadProjectDisplayInfo,
+  type ProjectDisplayInfo,
+} from '../lib/projectDisplay'
 import { formatReputationPoints, loadUserReputation, type UserReputationData } from '../lib/reputationData'
 
 const emptyData: UserReputationData = { summaries: [], events: [] }
@@ -81,7 +86,7 @@ function ContributionPage() {
     <div className="app-shell">
       <header className="app-header">
         <AppBrand pageTitle="My Contributions" />
-        <BackStack links={[ { label: 'Account Settings', to: '/account' }, { label: 'Dashboard', to: '/app' } ]} />
+        <BackStack mode="return-only" links={[]} />
       </header>
       <main className="app-main">
         {status === 'loading' ? <ContributionStatus status="loading" /> : null}
@@ -123,7 +128,16 @@ function ContributionPage() {
                       <strong>{formatReputationPoints( summary.totalPoints )} pts</strong>
                     </div>
                     <p className="muted">{summary.contributionCount} contributions · {summary.badgeIds.length} badges earned</p>
-                    <Link className="link" to={`/projects/${summary.projectId}/contribution`}>Open project ranking</Link>
+                    {getProjectContributionPath( projectDisplayInfo[summary.projectId] ) ? (
+                      <Link
+                        className="link"
+                        to={getProjectContributionPath( projectDisplayInfo[summary.projectId] ) ?? '/account/contributions'}
+                      >
+                        Open project ranking
+                      </Link>
+                    ) : (
+                      <span className="muted">Project ranking unavailable</span>
+                    )}
                   </article>
                 ) )}
               </div>

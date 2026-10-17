@@ -40,6 +40,7 @@ import {
 } from '../lib/documentDerivation'
 import { reportAbnormalError } from '../lib/errorMonitor'
 import { db } from '../lib/firebase'
+import { getProjectContributionPath } from '../lib/projectDisplay'
 import { formatTimeAgoWithTimestamp } from '../lib/time'
 import {
   createChangeRequestDocument,
@@ -1579,7 +1580,8 @@ function ProjectDocumentsPage() {
           <button
             className="link"
             type="button"
-            onClick={() => navigate( projectId ? `/projects/${projectId}/contribution` : '/projects' )}
+            disabled={!getProjectContributionPath( project )}
+            onClick={() => navigate( getProjectContributionPath( project ) ?? '/projects' )}
           >
             View contribution ranking
           </button>

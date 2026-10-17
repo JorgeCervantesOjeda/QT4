@@ -1,5 +1,5 @@
 // src/lib/projectDisplay.ts: Loads human-readable project labels without exposing internal document IDs.
-import { doc, getDoc } from 'firebase/firestore'
+import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore'
 import { db } from './firebase'
 
 export type ProjectDisplayInfo = {
@@ -32,6 +32,58 @@ const formatProjectDisplayLabel = (
     return `Project ${info.shortId}`
   }
   return 'Project'
+}
+
+const getProjectContributionPath = (info?: ProjectDisplayInfo | null): string | null => {
+  if( !Number.isFinite( info?.shortId ) ) {
+    return null
+  }
+  return `/projects/${info?.shortId}/contribution`
+}
+
+export type ResolvedProjectReference = {
+  projectId: string
+  displayInfo: ProjectDisplayInfo
+}
+
+const resolveProjectReference = async (
+  projectReference: string,
+): Promise<ResolvedProjectReference | null> => {
+  if( !projectReference ) {
+    return null
+  }
+  try {
+    if( /^\d+$/u.test( projectReference ) ) {
+      const snapshot = await getDocs( query(
+        collection( db, 'projects' ),
+        where( 'shortId', '==', Number( projectReference ) ),
+      ) )
+      const projectSnapshot = snapshot.docs[0]
+      return projectSnapshot
+        ? {
+          projectId: projectSnapshot.id,
+          displayInfo: normalizeProjectDisplayInfo( projectSnapshot.data() as Record<string, unknown> ),
+        }
+        : null
+    }
+
+    const snapshot = await getDoc( doc( db, 'projects', projectReference ) )
+    return snapshot.exists()
+      ? {
+        projectId: projectReference,
+        displayInfo: normalizeProjectDisplayInfo( snapshot.data() as Record<string, unknown> ),
+      }
+      : null
+  } catch( error ) {
+    console.warn( 'Project reference could not be resolved.', {
+      action: 'projectDisplay.resolveReference',
+      cause: error instanceof Error ? error.message : String( error ),
+      fallback: 'show_project_reference_error',
+      impact: 'The contribution ranking remains unavailable until the project can be identified.',
+      projectReference,
+    } )
+    return null
+  }
 }
 
 const loadProjectDisplayInfo = async (
@@ -69,4 +121,4 @@ const loadProjectDisplayInfo = async (
   }, {} )
 }
 
-export { formatProjectDisplayLabel, loadProjectDisplayInfo }
+export { formatProjectDisplayLabel, getProjectContributionPath, loadProjectDisplayInfo, resolveProjectReference }

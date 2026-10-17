@@ -10,7 +10,11 @@ import ProjectContributionPage from './ProjectContributionPage'
 
 const reputationMocks = vi.hoisted( () => ( {
   loadProjectReputation: vi.fn(),
+} ) )
+
+const projectDisplayMocks = vi.hoisted( () => ( {
   loadProjectDisplayInfo: vi.fn(),
+  resolveProjectReference: vi.fn(),
 } ) )
 
 vi.mock( '../lib/reputationData', async () => {
@@ -18,17 +22,19 @@ vi.mock( '../lib/reputationData', async () => {
   return {
     ...actual,
     loadProjectReputation: reputationMocks.loadProjectReputation,
-    loadProjectDisplayInfo: reputationMocks.loadProjectDisplayInfo,
   }
 } )
 vi.mock( '../lib/projectDisplay', () => ( {
   formatProjectDisplayLabel: ( _projectId: string, info?: { name?: string } ) => info?.name || 'Project',
-  loadProjectDisplayInfo: reputationMocks.loadProjectDisplayInfo,
+  loadProjectDisplayInfo: projectDisplayMocks.loadProjectDisplayInfo,
+  resolveProjectReference: projectDisplayMocks.resolveProjectReference,
 } ) )
 vi.mock( '../components/AppBrand', () => ( {
   default: ( { pageTitle }: { pageTitle: string } ) => <h1>{pageTitle}</h1>,
 } ) )
-vi.mock( '../components/BackStack', () => ( { default: () => null } ) )
+vi.mock( '../components/BackStack', () => ( {
+  default: ( { mode }: { mode?: string } ) => <nav data-testid="back-stack">{mode ?? 'standard'}</nav>,
+} ) )
 
 const renderWithAuth = (children: ReactNode) => render(
   <AuthContext.Provider
@@ -38,7 +44,7 @@ const renderWithAuth = (children: ReactNode) => render(
       signOutUser: vi.fn(),
     }}
   >
-    <MemoryRouter initialEntries={[ '/projects/project-1/contribution' ]}>
+    <MemoryRouter initialEntries={[ '/projects/12/contribution' ]}>
       <Routes><Route path="/projects/:projectId/contribution" element={children} /></Routes>
     </MemoryRouter>
   </AuthContext.Provider>,
@@ -64,20 +70,24 @@ const summary = (userId: string, totalPoints: number): ReputationSummary => ( {
 describe( 'ProjectContributionPage', () => {
   it( 'shows the project-only ranking and current-user marker', async () => {
     reputationMocks.loadProjectReputation.mockResolvedValue( [ summary( 'user-2', 8 ), summary( 'user-1', 4 ) ] )
-    reputationMocks.loadProjectDisplayInfo.mockResolvedValue( {
-      'project-1': { name: 'Project Alpha', shortId: 12 },
+    projectDisplayMocks.resolveProjectReference.mockResolvedValue( {
+      projectId: 'project-1',
+      displayInfo: { name: 'Project Alpha', shortId: 12 },
     } )
     renderWithAuth( <ProjectContributionPage /> )
 
     expect( await screen.findByText( 'Contribution ranking' ) ).toBeTruthy()
     expect( screen.getByText( 'You' ) ).toBeTruthy()
     expect( screen.getByText( 'Project Alpha' ) ).toBeTruthy()
+    expect( screen.getByTestId( 'back-stack' ).textContent ).toBe( 'return-only' )
+    expect( reputationMocks.loadProjectReputation ).toHaveBeenCalledWith( 'project-1' )
   } )
 
   it( 'shows an explicit empty state', async () => {
     reputationMocks.loadProjectReputation.mockResolvedValue( [] )
-    reputationMocks.loadProjectDisplayInfo.mockResolvedValue( {
-      'project-1': { name: '', shortId: 12 },
+    projectDisplayMocks.resolveProjectReference.mockResolvedValue( {
+      projectId: 'project-1',
+      displayInfo: { name: '', shortId: 12 },
     } )
     renderWithAuth( <ProjectContributionPage /> )
 

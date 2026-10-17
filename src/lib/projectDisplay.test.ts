@@ -2,20 +2,33 @@
 import { describe, expect, it, vi } from 'vitest'
 
 const firestoreMocks = vi.hoisted( () => ( {
+  collection: vi.fn(),
   doc: vi.fn(),
   getDoc: vi.fn(),
+  getDocs: vi.fn(),
+  query: vi.fn(),
+  where: vi.fn(),
 } ) )
 
 vi.mock( 'firebase/firestore', () => ( {
+  collection: firestoreMocks.collection,
   doc: firestoreMocks.doc,
   getDoc: firestoreMocks.getDoc,
+  getDocs: firestoreMocks.getDocs,
+  query: firestoreMocks.query,
+  where: firestoreMocks.where,
 } ) )
 
 vi.mock( './firebase', () => ( {
   db: { name: 'test-db' },
 } ) )
 
-import { formatProjectDisplayLabel, loadProjectDisplayInfo } from './projectDisplay'
+import {
+  formatProjectDisplayLabel,
+  getProjectContributionPath,
+  loadProjectDisplayInfo,
+  resolveProjectReference,
+} from './projectDisplay'
 
 describe( 'project display labels', () => {
   it( 'prefers the project name and then its short ID without exposing the internal ID', () => {
@@ -40,5 +53,31 @@ describe( 'project display labels', () => {
     await expect( loadProjectDisplayInfo( [ 'project-internal-1' ] ) ).resolves.toEqual( {
       'project-internal-1': { name: 'Quality review', shortId: 7 },
     } )
+  } )
+
+  it( 'builds contribution routes from short IDs only', () => {
+    expect( getProjectContributionPath( { name: 'Quality review', shortId: 7 } ) )
+      .toBe( '/projects/7/contribution' )
+    expect( getProjectContributionPath( { name: 'Quality review', shortId: null } ) ).toBeNull()
+  } )
+
+  it( 'resolves a short project reference to the internal project for data loading', async () => {
+    const projectCollection = { collectionName: 'projects' }
+    const shortIdFilter = { field: 'shortId', operator: '==', value: 7 }
+    firestoreMocks.collection.mockReturnValue( projectCollection )
+    firestoreMocks.where.mockReturnValue( shortIdFilter )
+    firestoreMocks.query.mockReturnValue( { projectCollection, shortIdFilter } )
+    firestoreMocks.getDocs.mockResolvedValue( {
+      docs: [ {
+        id: 'project-internal-1',
+        data: () => ( { name: 'Quality review', shortId: 7 } ),
+      } ],
+    } )
+
+    await expect( resolveProjectReference( '7' ) ).resolves.toEqual( {
+      projectId: 'project-internal-1',
+      displayInfo: { name: 'Quality review', shortId: 7 },
+    } )
+    expect( firestoreMocks.where ).toHaveBeenCalledWith( 'shortId', '==', 7 )
   } )
 } )
