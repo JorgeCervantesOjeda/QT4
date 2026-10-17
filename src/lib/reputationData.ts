@@ -3,12 +3,18 @@
 import {
   collection,
   getDocs,
+  onSnapshot,
   query,
   where,
   type DocumentData,
 } from 'firebase/firestore'
 import { db } from './firebase'
-import type { ReputationBadgeId, ReputationCategory, ReputationSummary } from './reputation'
+import {
+  BADGE_DEFINITIONS,
+  type ReputationBadgeId,
+  type ReputationCategory,
+  type ReputationSummary,
+} from './reputation'
 
 export type ReputationEventRecord = {
   id: string
@@ -20,11 +26,24 @@ export type ReputationEventRecord = {
   points: number
   reason: string
   createdAt: unknown
+  sequenceKey?: string
+  sequenceNumber?: number
+  sequenceIntervalStart?: number
+  sequenceIntervalEnd?: number
+  earnedBadgeIds?: ReputationBadgeId[]
 }
 
 export type UserReputationData = {
   summaries: ReputationSummary[]
   events: ReputationEventRecord[]
+}
+
+export const formatReputationPoints = (points: number): string => {
+  if( !Number.isFinite( points ) ) {
+    return '0'
+  }
+  const rounded = Number( points.toFixed( 2 ) )
+  return Object.is( rounded, -0 ) ? '0' : String( rounded )
 }
 
 const asNonEmptyString = (value: unknown): string =>
@@ -95,6 +114,11 @@ export const normalizeReputationEvent = (id: string, data: DocumentData): Reputa
   if( points === 0 ) {
     return null
   }
+  const sequenceKey = asNonEmptyString( data.sequenceKey )
+  const sequenceNumber = asFiniteNumber( data.sequenceNumber )
+  const sequenceIntervalStart = asFiniteNumber( data.sequenceIntervalStart )
+  const sequenceIntervalEnd = asFiniteNumber( data.sequenceIntervalEnd )
+  const earnedBadgeIds = asBadgeIds( data.earnedBadgeIds )
   return {
     id,
     projectId,
@@ -105,7 +129,125 @@ export const normalizeReputationEvent = (id: string, data: DocumentData): Reputa
     points,
     reason: asNonEmptyString( data.reason ) || 'Contribution event',
     createdAt: data.createdAt ?? null,
+    ...( sequenceKey ? { sequenceKey } : {} ),
+    ...( sequenceNumber !== null ? { sequenceNumber } : {} ),
+    ...( sequenceIntervalStart !== null ? { sequenceIntervalStart } : {} ),
+    ...( sequenceIntervalEnd !== null ? { sequenceIntervalEnd } : {} ),
+    ...( earnedBadgeIds.length ? { earnedBadgeIds } : {} ),
   }
+}
+
+type WaitForReputationEventParams = {
+  projectId: string
+  sourceId: string
+  sourceType: string
+  userId: string
+  timeoutMs?: number
+}
+
+export const waitForReputationEvent = ({
+  projectId,
+  sourceId,
+  sourceType,
+  userId,
+  timeoutMs = 5000,
+}: WaitForReputationEventParams): Promise<ReputationEventRecord | null> => new Promise( (resolve) => {
+  let unsubscribe: (() => void) | null = null
+  let settled = false
+  let cleanupRequestedBeforeSubscription = false
+  const timeout = setTimeout( () => {
+    console.warn( 'Reputation event wait timed out; showing pending feedback.', {
+      action: 'reputation.waitForEvent',
+      cause: 'server_event_timeout',
+      fallback: 'show_pending_points_message',
+      impact: 'The saved action remains intact; the modal directs the user to Contributions.',
+      projectId,
+      sourceId,
+      sourceType,
+      timeoutMs,
+      userId,
+    } )
+    finish( null )
+  }, timeoutMs )
+
+  const finish = (event: ReputationEventRecord | null) => {
+    if( settled ) {
+      return
+    }
+    settled = true
+    clearTimeout( timeout )
+    if( unsubscribe ) {
+      unsubscribe()
+    } else {
+      cleanupRequestedBeforeSubscription = true
+    }
+    resolve( event )
+  }
+
+  try {
+    unsubscribe = onSnapshot(
+      query( collection( db, 'reputationEvents' ), where( 'userId', '==', userId ) ),
+      (snapshot) => {
+        const event = snapshot.docs
+          .map( (item) => normalizeReputationEvent( item.id, item.data() ) )
+          .find( (item): item is ReputationEventRecord => Boolean(
+            item && item.projectId === projectId && item.sourceType === sourceType && item.sourceId === sourceId,
+          ) )
+        if( event ) {
+          finish( event )
+        }
+      },
+      (error) => {
+        console.warn( 'Reputation event listener failed; showing pending feedback.', {
+          action: 'reputation.waitForEvent',
+          cause: error instanceof Error ? error.message : String( error ),
+          fallback: 'show_pending_points_message',
+          impact: 'The saved action remains intact; the modal directs the user to Contributions.',
+          projectId,
+          sourceId,
+          sourceType,
+          userId,
+        } )
+        finish( null )
+      },
+    )
+    if( cleanupRequestedBeforeSubscription ) {
+      unsubscribe()
+    }
+  } catch( error ) {
+    console.warn( 'Reputation event listener could not start; showing pending feedback.', {
+      action: 'reputation.waitForEvent',
+      cause: error instanceof Error ? error.message : String( error ),
+      fallback: 'show_pending_points_message',
+      impact: 'The saved action remains intact; the modal directs the user to Contributions.',
+      projectId,
+      sourceId,
+      sourceType,
+      userId,
+    } )
+    finish( null )
+  }
+} )
+
+export const buildReputationAwardMessage = (
+  prefix: string,
+  event: ReputationEventRecord | null,
+): string => {
+  if( !event ) {
+    return `${prefix} The action was saved, but the exact points are still being processed. Check Contributions for the final result.`
+  }
+  const formattedPoints = formatReputationPoints( event.points )
+  const signedPoints = event.points > 0 ? `+${formattedPoints}` : formattedPoints
+  const pointLabel = Math.abs( event.points ) === 1 ? 'point' : 'points'
+  const badgeLabels = ( event.earnedBadgeIds || [] )
+    .map( (badgeId) => BADGE_DEFINITIONS.find( (definition) => definition.id === badgeId )?.label )
+    .filter( (label): label is string => Boolean( label ) )
+  const badgeMessage = badgeLabels.length
+    ? ` New badge${badgeLabels.length === 1 ? '' : 's'}: ${badgeLabels.join( ', ' )}.`
+    : ''
+  return event.points > 0
+    ? `${prefix} You earned ${signedPoints} ${pointLabel}.${badgeMessage}`
+    : `${prefix} Your reputation changed by ${signedPoints} ${pointLabel}.${badgeMessage}`
 }
 
 const byDescendingPoints = (left: ReputationSummary, right: ReputationSummary): number => {

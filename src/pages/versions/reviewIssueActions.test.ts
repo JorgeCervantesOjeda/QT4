@@ -60,8 +60,31 @@ const slowUiActionMocks = vi.hoisted( () => ( {
   measureSlowUiAction: vi.fn( async ( _metadata: unknown, callback: () => Promise<void> ) => callback() ),
 } ) )
 
+const reputationDataMocks = vi.hoisted( () => ( {
+  waitForReputationEvent: vi.fn( async () => ( {
+    id: 'threadCreated:generated-3',
+    projectId: 'project-1',
+    userId: 'author-1',
+    sourceType: 'thread',
+    sourceId: 'generated-3',
+    category: 'collaboration',
+    points: 1,
+    reason: 'Created a discussion thread',
+    createdAt: null,
+    earnedBadgeIds: [ 'first-contribution' ],
+  } ) ),
+  buildReputationAwardMessage: vi.fn( ( prefix: string ) =>
+    `${prefix} You earned +1 point. New badge: First contribution.`,
+  ),
+} ) )
+
 vi.mock( '../../lib/slowUiAction', () => ( {
   measureSlowUiAction: slowUiActionMocks.measureSlowUiAction,
+} ) )
+
+vi.mock( '../../lib/reputationData', () => ( {
+  buildReputationAwardMessage: reputationDataMocks.buildReputationAwardMessage,
+  waitForReputationEvent: reputationDataMocks.waitForReputationEvent,
 } ) )
 
 vi.mock( './commentNotification', () => ( {
@@ -356,10 +379,15 @@ describe( 'createReviewIssueActions', () => {
     expect( setNewCommentBody ).not.toHaveBeenCalled()
     expect( setNewThreadTitle ).toHaveBeenCalledWith( '' )
     expect( setSuccessMessage ).toHaveBeenCalledWith(
-      expect.stringContaining( 'You earned +1 point for starting this review issue.' ),
+      'Issue created successfully. You earned +1 point. New badge: First contribution.',
     )
-    expect( setSuccessMessage ).toHaveBeenCalledWith(
-      expect.stringContaining( 'Review participation: 1/2 points for this issue.' ),
+    expect( reputationDataMocks.waitForReputationEvent ).toHaveBeenCalledWith(
+      expect.objectContaining( {
+        projectId: 'project-1',
+        sourceType: 'thread',
+        sourceId: expect.any( String ),
+        userId: 'author-1',
+      } ),
     )
     expect( setSelectedThreadId ).toHaveBeenCalled()
     expect( reloadAndRestoreSelection ).toHaveBeenCalledWith( 'version-1', expect.any( String ) )
@@ -600,7 +628,7 @@ describe( 'createReviewIssueActions', () => {
       reportVersionsError: vi.fn(),
       resolveUserEmail: () => null,
       selectedThread,
-      selectedThreadComments: comments,
+      selectedThreadComments: [comments[0]],
       selectedVersion,
       selectedVersionInActiveReview: true,
       setCommentCreationStatus,
@@ -634,10 +662,15 @@ describe( 'createReviewIssueActions', () => {
       expect.any( Function ),
     )
     expect( setSuccessMessage ).toHaveBeenCalledWith(
-      expect.stringContaining( 'no additional point was awarded' ),
+      'The comment was added successfully. You earned +1 point. New badge: First contribution.',
     )
-    expect( setSuccessMessage ).toHaveBeenCalledWith(
-      expect.stringContaining( 'Review participation: 1/2 points for this issue.' ),
+    expect( reputationDataMocks.waitForReputationEvent ).toHaveBeenCalledWith(
+      expect.objectContaining( {
+        projectId: 'project-1',
+        sourceType: 'comment',
+        sourceId: expect.any( String ),
+        userId: 'author-1',
+      } ),
     )
   } )
 } )

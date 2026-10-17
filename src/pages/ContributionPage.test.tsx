@@ -58,7 +58,7 @@ const data: UserReputationData = {
     sourceType: 'comment',
     sourceId: 'comment-1',
     category: 'collaboration',
-    points: 1,
+    points: 1 / 3,
     reason: 'Added a comment',
     createdAt: null,
   } ],
@@ -69,9 +69,17 @@ describe( 'ContributionPage', () => {
     reputationMocks.loadUserReputation.mockResolvedValue( data )
     renderWithAuth( <ContributionPage /> )
 
-    expect( await screen.findByText( 'Across your projects' ) ).toBeTruthy()
+    expect( await screen.findByText( 'Your contribution summary' ) ).toBeTruthy()
+    expect( screen.getByText( 'What you did, what it earned, and your progress by project.' ) ).toBeTruthy()
+    expect( screen.getByText( 'Points across all projects' ) ).toBeTruthy()
+    expect( screen.getByText( 'Your projects' ) ).toBeTruthy()
+    expect( screen.getByText( 'Your badges' ) ).toBeTruthy()
+    expect( screen.getByText( 'Recent activity' ) ).toBeTruthy()
+    expect( screen.getByRole( 'columnheader', { name: 'What happened' } ) ).toBeTruthy()
+    expect( screen.getByRole( 'columnheader', { name: 'Area' } ) ).toBeTruthy()
     expect( screen.getAllByText( 'Project project-1' ).length ).toBeGreaterThan( 0 )
     expect( screen.getByText( 'Added a comment' ) ).toBeTruthy()
+    expect( screen.getByText( '+0.33' ) ).toBeTruthy()
   } )
 
   it( 'shows a visible empty state when no project summary exists', async () => {

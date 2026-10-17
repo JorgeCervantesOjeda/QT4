@@ -29,6 +29,17 @@
   gap: 4px;
 }
 
+.contribution-summary__label {
+  color: var(--qt-ink-strong);
+  font-weight: 700;
+}
+
+.contribution-summary__dimensions small {
+  color: var(--qt-ink-muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
 .contribution-summary__dimensions {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -122,7 +133,73 @@
   text-overflow: ellipsis;
 }
 
+.contribution-project-card {
+  display: grid;
+  gap: 8px;
+}
+
+.contribution-project-card__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.contribution-project-card__header h3,
+.contribution-project-card p {
+  margin: 0;
+}
+
+.contribution-project-card__header strong {
+  color: var(--qt-accent-strong);
+  white-space: nowrap;
+}
+
 .contribution-status {
+  margin: 0;
+}
+
+.account-contribution-overview__metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.account-contribution-overview__metrics > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid var(--qt-border);
+  border-radius: 12px;
+  background: rgba(63, 155, 69, 0.08);
+}
+
+.account-contribution-overview__metrics strong {
+  color: var(--qt-accent-strong);
+  font-size: 1.45rem;
+}
+
+.account-contribution-overview__metrics span {
+  color: var(--qt-ink-muted);
+  font-size: 0.9rem;
+}
+
+.account-contribution-overview__projects {
+  display: grid;
+  gap: 18px;
+}
+
+.account-contribution-overview__project {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--qt-border);
+  border-radius: 14px;
+  background: rgba(255, 253, 249, 0.72);
+}
+
+.account-contribution-overview__project > p {
   margin: 0;
 }
 
@@ -142,5 +219,9 @@
   .project-leaderboard__row strong,
   .project-leaderboard__row .muted {
     grid-column: 2;
+  }
+
+  .account-contribution-overview__metrics {
+    grid-template-columns: 1fr;
   }
 }

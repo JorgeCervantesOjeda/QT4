@@ -38,6 +38,12 @@ const seedData = async () => {
         userId: memberId,
         points: 4,
       } ),
+      setDoc( doc( firestore, 'reputationSequenceCounters', `${projectId}_${memberId}_reviewParticipation` ), {
+        projectId,
+        userId: memberId,
+        sequenceKey: 'reviewParticipation',
+        sequenceNumber: 4,
+      } ),
     ] )
   } )
 }
@@ -82,6 +88,13 @@ describeWithFirestoreEmulator( 'firestore.rules reputation collections', () => {
       projectId,
       userId: memberId,
       points: 999,
+    } ) )
+    await assertFails( getDoc( doc( memberFirestore, 'reputationSequenceCounters', `${projectId}_${memberId}_reviewParticipation` ) ) )
+    await assertFails( setDoc( doc( memberFirestore, 'reputationSequenceCounters', `${projectId}_${memberId}_goodReaction` ), {
+      projectId,
+      userId: memberId,
+      sequenceKey: 'goodReaction',
+      sequenceNumber: 999,
     } ) )
     await assertFails( getDoc( doc( outsiderFirestore, 'reputationSummaries', `${projectId}_${memberId}` ) ) )
     await assertFails( getDoc( doc( outsiderFirestore, 'reputationEvents', 'event-1' ) ) )

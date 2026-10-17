@@ -9,7 +9,7 @@ import BadgeGrid from '../components/reputation/BadgeGrid'
 import ContributionHistoryTable from '../components/reputation/ContributionHistoryTable'
 import ContributionStatus from '../components/reputation/ContributionStatus'
 import ContributionSummary from '../components/reputation/ContributionSummary'
-import { loadUserReputation, type UserReputationData } from '../lib/reputationData'
+import { formatReputationPoints, loadUserReputation, type UserReputationData } from '../lib/reputationData'
 
 const emptyData: UserReputationData = { summaries: [], events: [] }
 
@@ -95,26 +95,43 @@ function ContributionPage() {
             <section className="panel stack">
               <div className="panel-header">
                 <div>
-                  <h2>Across your projects</h2>
-                  <p className="muted">This overview adds your project totals; rankings and badges remain project-specific.</p>
+                  <h2>Your contribution summary</h2>
+                  <p className="muted">What you did, what it earned, and your progress by project.</p>
                 </div>
               </div>
-              <ContributionSummary summary={aggregateSummary} title="Contribution totals across projects" />
+              <ContributionSummary
+                summary={aggregateSummary}
+                title="Contribution totals across projects"
+                totalLabel="Points across all projects"
+              />
             </section>
             <section className="panel stack">
-              <div className="panel-header"><h2>Project breakdown</h2></div>
+              <div className="panel-header">
+                <div>
+                  <h2>Your projects</h2>
+                  <p className="muted">Points and badges are calculated separately for each project.</p>
+                </div>
+              </div>
               <div className="project-grid">
                 {data.summaries.map( (summary) => (
-                  <article className="project-card" key={`${summary.projectId}-${summary.userId}`}>
-                    <h3>Project {summary.projectId}</h3>
-                    <p className="muted">{summary.totalPoints} points · {summary.badgeIds.length} badges</p>
-                    <Link className="link" to={`/projects/${summary.projectId}/contribution`}>View project ranking</Link>
+                  <article className="project-card contribution-project-card" key={`${summary.projectId}-${summary.userId}`}>
+                    <div className="contribution-project-card__header">
+                      <h3>Project {summary.projectId}</h3>
+                      <strong>{formatReputationPoints( summary.totalPoints )} pts</strong>
+                    </div>
+                    <p className="muted">{summary.contributionCount} contributions · {summary.badgeIds.length} badges earned</p>
+                    <Link className="link" to={`/projects/${summary.projectId}/contribution`}>Open project ranking</Link>
                   </article>
                 ) )}
               </div>
             </section>
             <section className="panel stack">
-              <div className="panel-header"><h2>Badges by project</h2></div>
+              <div className="panel-header">
+                <div>
+                  <h2>Your badges</h2>
+                  <p className="muted">Badges are earned separately in each project.</p>
+                </div>
+              </div>
               {data.summaries.map( (summary) => (
                 <div className="stack" key={`badges-${summary.projectId}`}>
                   <h3>Project {summary.projectId}</h3>
@@ -123,7 +140,12 @@ function ContributionPage() {
               ) )}
             </section>
             <section className="panel stack">
-              <div className="panel-header"><h2>Contribution history</h2></div>
+              <div className="panel-header">
+                <div>
+                  <h2>Recent activity</h2>
+                  <p className="muted">Each row explains what changed your score.</p>
+                </div>
+              </div>
               <ContributionHistoryTable events={data.events} />
             </section>
           </>

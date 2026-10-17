@@ -7,6 +7,8 @@ import {
   deriveBadgeIds,
   getCommentReactionPointsDelta,
   getContributionPoints,
+  getSequenceInterval,
+  getSequencePoints,
   type ReputationSummary,
 } from './reputation';
 
@@ -14,21 +16,44 @@ describe('contribution point policy', () => {
   it.each([
     ['threadCreated', 'collaboration', 1],
     ['commentCreated', 'collaboration', 1],
-    ['goodReactionReceived', 'collaboration', 2],
+    ['goodReactionReceived', 'collaboration', 1],
     ['reviewCompleted', 'review', 0],
     ['reviewAbsence', 'review', -1],
-    ['acceptedVersion', 'quality', 5],
-    ['acceptedErrorReport', 'quality', 2],
+    ['acceptedVersion', 'quality', 1],
+    ['acceptedErrorReport', 'quality', 1],
     ['acceptedErrorReportPenalty', 'quality', -2],
   ] as const)('assigns %s to %s with %d points', (eventType, category, points) => {
     expect(getContributionPoints(eventType)).toMatchObject({ category, points });
   });
 
+  it.each([
+    [1, { start: 1, end: 1 }, 1],
+    [2, { start: 2, end: 2 }, 1],
+    [3, { start: 3, end: 5 }, 1 / 3],
+    [5, { start: 3, end: 5 }, 1 / 3],
+    [6, { start: 6, end: 10 }, 1 / 5],
+    [10, { start: 6, end: 10 }, 1 / 5],
+    [11, { start: 11, end: 20 }, 1 / 10],
+    [20, { start: 11, end: 20 }, 1 / 10],
+    [21, { start: 21, end: 50 }, 1 / 30],
+    [50, { start: 21, end: 50 }, 1 / 30],
+    [51, { start: 51, end: 100 }, 1 / 50],
+    [100, { start: 51, end: 100 }, 1 / 50],
+    [101, { start: 101, end: 200 }, 1 / 100],
+    [200, { start: 101, end: 200 }, 1 / 100],
+    [201, { start: 201, end: 500 }, 1 / 300],
+    [500, { start: 201, end: 500 }, 1 / 300],
+    [501, { start: 501, end: 1000 }, 1 / 500],
+  ] as const)('assigns position %d to its interval and fraction', (position, interval, points) => {
+    expect(getSequenceInterval(position)).toEqual(interval);
+    expect(getSequencePoints(position)).toBe(points);
+  });
+
   it('reverses only the active good-reaction contribution', () => {
-    expect(getCommentReactionPointsDelta(null, 'good')).toBe(2);
-    expect(getCommentReactionPointsDelta('good', 'regular')).toBe(-2);
-    expect(getCommentReactionPointsDelta('regular', 'good')).toBe(2);
-    expect(getCommentReactionPointsDelta('good', 'bad')).toBe(-2);
+    expect(getCommentReactionPointsDelta(null, 'good')).toBe(1);
+    expect(getCommentReactionPointsDelta('good', 'regular')).toBe(-1);
+    expect(getCommentReactionPointsDelta('regular', 'good')).toBe(1);
+    expect(getCommentReactionPointsDelta('good', 'bad')).toBe(-1);
     expect(getCommentReactionPointsDelta('bad', 'regular')).toBe(0);
   });
 });

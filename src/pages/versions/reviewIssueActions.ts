@@ -14,6 +14,10 @@ import { logAudit } from "../../lib/audit";
 import type { MonitorDiagnosticDetails } from "../../lib/errorMonitor";
 import { AiAssistRequestError, requestAiAssist } from "../../lib/aiAssist";
 import { db } from "../../lib/firebase";
+import {
+  buildReputationAwardMessage,
+  waitForReputationEvent,
+} from "../../lib/reputationData";
 import { canAddCommentInWindow } from "../../lib/reviewWindow";
 import { buildReviewIssueDiagnostics } from "./reviewIssueDiagnostics";
 import { measureSlowUiAction } from "../../lib/slowUiAction";
@@ -212,8 +216,14 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
       );
       params.setNewThreadTitle("");
       params.setSelectedThreadId(threadRef.id);
+      const reputationEvent = await waitForReputationEvent({
+        projectId,
+        sourceId: threadRef.id,
+        sourceType: "thread",
+        userId,
+      });
       params.setSuccessMessage(
-        "Issue created successfully. You earned +1 point for starting this review issue. Review participation: 1/2 points for this issue. Check Contributions for finalized badge progress.",
+        buildReputationAwardMessage("Issue created successfully.", reputationEvent),
       );
       logAudit({
         actorId: userId,
@@ -397,18 +407,6 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
         }),
       );
       params.setNewCommentBody("");
-      const previousParticipationCount = countConsecutiveParticipationBlocks(
-        params.selectedThreadComments,
-        userId,
-      );
-      const previousComment = params.selectedThreadComments.at(-1);
-      const startsNewParticipationBlock = previousComment?.createdBy !== userId;
-      const earnedParticipationPoint =
-        startsNewParticipationBlock && previousParticipationCount < 2;
-      const nextParticipationCount = Math.min(
-        2,
-        previousParticipationCount + ( startsNewParticipationBlock ? 1 : 0 ),
-      );
       logAudit({
         actorId: userId,
         actorEmail: params.userEmail ?? null,
@@ -423,10 +421,20 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
       }).catch((err) => {
         console.warn("Audit log failed (add comment):", err);
       });
+      const previousComment = params.selectedThreadComments.at(-1);
+      const isConsecutiveComment = previousComment?.createdBy === userId;
+      const reputationEvent = isConsecutiveComment
+        ? null
+        : await waitForReputationEvent({
+            projectId,
+            sourceId: commentRef.id,
+            sourceType: "comment",
+            userId,
+          });
       params.setSuccessMessage(
-        earnedParticipationPoint
-          ? `The comment was added successfully. You earned +1 point for participating in this issue. Review participation: ${nextParticipationCount}/2 points for this issue. Check Contributions for finalized badge progress.`
-          : `The comment was added successfully. This issue's participation cap is already reached, so no additional point was awarded. Review participation: ${nextParticipationCount}/2 points for this issue. Check Contributions for finalized badge progress.`,
+        isConsecutiveComment
+          ? "The comment was added successfully. No additional points were awarded because consecutive comments count as one participation block."
+          : buildReputationAwardMessage("The comment was added successfully.", reputationEvent),
       );
       await params.reloadAndRestoreSelection(
         lockedVersionId,
@@ -671,21 +679,6 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
 
 const buildCommentReactionId = (commentId: string, userId: string) =>
   `${commentId}_${userId}`;
-
-const countConsecutiveParticipationBlocks = (
-  comments: CommentSummary[],
-  userId: string,
-) => {
-  let blockCount = 0;
-  let previousCommentAuthor: string | null = null;
-  comments.forEach( (comment) => {
-    if( comment.createdBy === userId && previousCommentAuthor !== userId ) {
-      blockCount += 1;
-    }
-    previousCommentAuthor = comment.createdBy;
-  } );
-  return blockCount;
-};
 
 const emptyCommentReactionState: CommentReactionState = {
   counts: {

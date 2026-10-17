@@ -5,6 +5,7 @@ import { useAuth } from '../auth/useAuth'
 import { db } from '../lib/firebase'
 import { APP_METADATA } from '../lib/appMetadata'
 import AboutDialog from './AboutDialog'
+import AccountReputationSummary from './reputation/AccountReputationSummary'
 
 type AppBrandProps = {
   pageTitle: string
@@ -86,9 +87,12 @@ function AppBrand( { pageTitle }: AppBrandProps ) {
               <p className="brand-session">
                 Signed in as {sessionLabel}
               </p>
-              <a className="brand-session-button" href="/account">
-                Account
-              </a>
+              <div className="brand-account-actions">
+                <AccountReputationSummary />
+                <a className="brand-session-button" href="/account">
+                  Account
+                </a>
+              </div>
             </div>
           ) : null}
         </div>

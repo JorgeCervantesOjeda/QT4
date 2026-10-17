@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/useAuth'
-import { loadUserReputation } from '../../lib/reputationData'
+import { formatReputationPoints, loadUserReputation } from '../../lib/reputationData'
 import ContributionStatus from './ContributionStatus'
 import './reputation.css'
 
@@ -41,7 +41,7 @@ function MyContributionCard() {
 
   const content = useMemo( () => {
     if( status === 'ready' ) {
-      return <p className="contribution-card__metric"><strong>{totalPoints}</strong> points across {projectCount} project{projectCount === 1 ? '' : 's'}</p>
+      return <p className="contribution-card__metric"><strong>{formatReputationPoints( totalPoints )}</strong> points across {projectCount} project{projectCount === 1 ? '' : 's'}</p>
     }
     if( status === 'empty' ) {
       return <ContributionStatus status="empty" message="Your first contribution will appear here." />

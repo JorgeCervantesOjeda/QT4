@@ -14,9 +14,9 @@ test( 'member sees reputation produced by real Functions triggers', async ( { pa
   await login( page )
   await page.goto( '/account/contributions' )
 
-  await expect( page.getByRole( 'heading', { name: 'Across your projects' } ) ).toBeVisible()
+  await expect( page.getByRole( 'heading', { name: 'Your contribution summary' } ) ).toBeVisible()
   await expect( page.getByRole( 'article' ).filter( { hasText: 'Project project-e2e-reputation' } ) ).toBeVisible()
-  await expect( page.getByText( '7 points · 2 badges' ) ).toBeVisible()
+  await expect( page.getByText( '3 pts' ) ).toBeVisible()
   await expect( page.getByText( 'Created a discussion thread' ) ).toBeVisible()
 } )
 
@@ -26,6 +26,6 @@ test( 'member sees the project-scoped ranking produced by real Firestore data', 
 
   await expect( page.getByRole( 'heading', { name: 'Contribution ranking' } ) ).toBeVisible()
   await expect( page.getByText( 'Only this project is included. There is no global ranking.' ) ).toBeVisible()
-  await expect( page.getByRole( 'listitem' ).filter( { hasText: 'You' } ).getByText( '7 pts' ) ).toBeVisible()
+  await expect( page.getByRole( 'listitem' ).filter( { hasText: 'You' } ).getByText( '3 pts' ) ).toBeVisible()
   await expect( page.getByText( 'You' ) ).toBeVisible()
 } )

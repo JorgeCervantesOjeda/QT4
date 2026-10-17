@@ -1,6 +1,7 @@
 // src/components/reputation/ProjectLeaderboard.tsx: Renders a project-only contribution ranking.
 
 import type { ReputationSummary } from '../../lib/reputation'
+import { formatReputationPoints } from '../../lib/reputationData'
 import './reputation.css'
 
 type ProjectLeaderboardProps = {
@@ -22,7 +23,7 @@ function ProjectLeaderboard({ summaries, currentUserId, resolveUserLabel = (user
         >
           <span className="project-leaderboard__rank">{index + 1}</span>
           <span className="project-leaderboard__user">{resolveUserLabel( summary.userId )}</span>
-          <strong>{summary.totalPoints} pts</strong>
+          <strong>{formatReputationPoints( summary.totalPoints )} pts</strong>
           <span className="muted">{summary.badgeIds.length} badges</span>
         </li>
       ) )}

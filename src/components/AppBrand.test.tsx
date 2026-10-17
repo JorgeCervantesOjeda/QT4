@@ -1,12 +1,20 @@
 // src/components/AppBrand.test.tsx: Verifies help and About affordances in the brand banner.
 import { fireEvent, render, screen, within } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { APP_METADATA } from '../lib/appMetadata'
 import AppBrand from './AppBrand'
 
+const authMocks = vi.hoisted( () => ( {
+  user: null as unknown,
+} ) )
+
+const reputationMocks = vi.hoisted( () => ( {
+  loadUserReputation: vi.fn(),
+} ) )
+
 vi.mock( '../auth/useAuth', () => ( {
   useAuth: () => ( {
-    user: null,
+    user: authMocks.user,
   } ),
 } ) )
 
@@ -19,7 +27,53 @@ vi.mock( '../lib/firebase', () => ( {
   db: {},
 } ) )
 
+vi.mock( '../lib/reputationData', async () => {
+  const actual = await vi.importActual<typeof import( '../lib/reputationData' )>( '../lib/reputationData' )
+  return {
+    ...actual,
+    loadUserReputation: reputationMocks.loadUserReputation,
+  }
+} )
+
 describe( 'AppBrand', () => {
+  beforeEach( () => {
+    authMocks.user = null
+    reputationMocks.loadUserReputation.mockReset()
+  } )
+
+  it( 'shows a compact points and badges summary beside Account', async () => {
+    authMocks.user = {
+      uid: 'user-1',
+      displayName: 'Member User',
+    }
+    reputationMocks.loadUserReputation.mockResolvedValue( {
+      summaries: [ {
+        projectId: 'project-1',
+        userId: 'user-1',
+        totalPoints: 1.33,
+        collaborationPoints: 1.33,
+        reviewPoints: 0,
+        qualityPoints: 0,
+        contributionCount: 2,
+        threadCount: 1,
+        commentCount: 1,
+        goodReactionCount: 0,
+        completedReviewCount: 0,
+        acceptedVersionCount: 0,
+        badgeIds: [ 'first-contribution' ],
+        updatedAt: null,
+      } ],
+      events: [],
+    } )
+
+    render( <AppBrand pageTitle="Dashboard" /> )
+
+    const summary = await screen.findByLabelText( 'Account reputation summary' )
+    expect( summary.textContent ).toContain( '1.33' )
+    expect( summary.textContent ).toContain( '1 badge' )
+    expect( screen.getByRole( 'link', { name: 'Account' } ) ).toBeTruthy()
+  } )
+
   it( 'shows the NotebookLM help link for usage questions', () => {
     render( <AppBrand pageTitle="Dashboard" /> )
 

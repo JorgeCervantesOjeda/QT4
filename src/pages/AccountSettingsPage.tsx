@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import AppBrand from '../components/AppBrand'
 import BackStack from '../components/BackStack'
+import AccountContributionOverview from '../components/reputation/AccountContributionOverview'
 import { db } from '../lib/firebase'
 import {
   buildNotificationPreferencesUpdate,
@@ -110,6 +111,7 @@ function AccountSettingsPage() {
       </header>
 
       <main className="app-main">
+        <AccountContributionOverview />
         <section className="panel account-settings-panel">
           <div className="panel-header">
             <h2>Notification preferences</h2>

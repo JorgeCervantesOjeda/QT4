@@ -46,6 +46,8 @@ await db.doc( 'threads/reputation-thread-1' ).set( {
   versionId: 'reputation-version-1',
 } )
 await waitForDocument( memberSummaryPath, (data) => data.totalPoints === 1 && data.threadCount === 1, 'thread reputation' )
+assert.equal( ( await readDocument( 'reputationEvents/threadCreated:reputation-thread-1' ) ).sequenceNumber, 1 )
+assert.equal( ( await readDocument( `reputationSequenceCounters/${projectIdForTest}_${memberId}_reviewParticipation` ) ).sequenceNumber, 1 )
 
 await db.doc( 'documents/reputation-document-1' ).set( {
   projectId: projectIdForTest,
@@ -70,6 +72,7 @@ await db.doc( 'comments/reputation-comment-1' ).set( {
   body: 'Integration comment',
 } )
 await waitForDocument( memberSummaryPath, (data) => data.totalPoints === 2 && data.commentCount === 1, 'comment reputation' )
+assert.equal( ( await readDocument( 'reputationEvents/commentCreated:reputation-comment-1' ) ).sequenceNumber, 2 )
 
 await db.doc( 'comments/reputation-comment-1' ).set( {
   projectId: projectIdForTest,
@@ -88,7 +91,8 @@ await db.doc( 'commentReactions/reputation-reaction-1' ).set( {
   userId: reviewerId,
   reaction: 'good',
 } )
-await waitForDocument( memberSummaryPath, (data) => data.totalPoints === 4 && data.goodReactionCount === 1, 'good reaction reputation' )
+await waitForDocument( memberSummaryPath, (data) => data.totalPoints === 3 && data.goodReactionCount === 1, 'good reaction reputation' )
+assert.equal( ( await readDocument( 'reputationEvents/reactionGood:reputation-reaction-1' ) ).points, 1 )
 
 await db.doc( 'commentReactions/reputation-reaction-1' ).update( { reaction: 'regular' } )
 await waitForDocument( memberSummaryPath, (data) => data.totalPoints === 2 && data.goodReactionCount === 0, 'reaction reversal' )
@@ -98,9 +102,10 @@ await db.doc( 'versions/reputation-version-1' ).update( {
   status: 'Accepted',
 } )
 
-await waitForDocument( reviewerSummaryPath, (data) => data.totalPoints === 4 && data.completedReviewCount === 1, 'reviewer reputation' )
-await waitForDocument( memberSummaryPath, (data) => data.totalPoints === 7 && data.acceptedVersionCount === 1, 'accepted version reputation' )
+await waitForDocument( reviewerSummaryPath, (data) => data.totalPoints === -1 && data.completedReviewCount === 0, 'reviewer reputation' )
+await waitForDocument( memberSummaryPath, (data) => data.totalPoints === 3 && data.acceptedVersionCount === 1, 'accepted version reputation' )
 
-assert.equal( ( await readDocument( 'reputationEvents/reviewCompleted:reputation-version-1:user-reviewer-1' ) ).points, 4 )
-assert.equal( ( await readDocument( 'reputationEvents/acceptedVersion:reputation-version-1' ) ).points, 5 )
+assert.equal( ( await readDocument( 'reputationEvents/reviewAbsence:reputation-version-1:user-reviewer-1' ) ).points, -1 )
+assert.equal( ( await readDocument( 'reputationEvents/acceptedVersion:reputation-version-1' ) ).points, 1 )
+assert.equal( ( await readDocument( 'reputationEvents/acceptedVersion:reputation-version-1' ) ).sequenceNumber, 1 )
 console.log( 'Reputation Functions emulator integration passed.' )

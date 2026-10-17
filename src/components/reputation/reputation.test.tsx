@@ -34,7 +34,7 @@ describe( 'reputation components', () => {
   it( 'shows the project-only ranking and highlights the current user', () => {
     render(
       <ProjectLeaderboard
-        summaries={[ summary( 'user-2', 8 ), summary( 'user-1', 4, [ 'first-contribution' ] ) ]}
+        summaries={[ summary( 'user-2', 8 ), summary( 'user-1', 1 / 3, [ 'first-contribution' ] ) ]}
         currentUserId="user-1"
         resolveUserLabel={(userId) => userId === 'user-1' ? 'You' : 'Reviewer' }
       />,
@@ -43,5 +43,6 @@ describe( 'reputation components', () => {
     expect( screen.getByText( 'Reviewer' ) ).toBeTruthy()
     expect( screen.getByText( 'You' ).closest( 'li' )?.className ).toContain( 'project-leaderboard__row--current' )
     expect( screen.getByText( '8 pts' ) ).toBeTruthy()
+    expect( screen.getByText( '0.33 pts' ) ).toBeTruthy()
   } )
 } )

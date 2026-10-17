@@ -15,6 +15,10 @@ const firestoreMocks = vi.hoisted( () => ( {
   updateDoc: vi.fn(),
 } ) )
 
+const reputationMocks = vi.hoisted( () => ( {
+  loadUserReputation: vi.fn(),
+} ) )
+
 vi.mock( 'firebase/firestore', () => ( {
   doc: firestoreMocks.doc,
   getDoc: firestoreMocks.getDoc,
@@ -25,6 +29,14 @@ vi.mock( 'firebase/firestore', () => ( {
 vi.mock( '../lib/firebase', () => ( {
   db: {},
 } ) )
+
+vi.mock( '../lib/reputationData', async () => {
+  const actual = await vi.importActual<typeof import( '../lib/reputationData' )>( '../lib/reputationData' )
+  return {
+    ...actual,
+    loadUserReputation: reputationMocks.loadUserReputation,
+  }
+} )
 
 vi.mock( '../components/AppBrand', () => ( {
   default: ( { pageTitle }: { pageTitle: string } ) => <h1>{pageTitle}</h1>,
@@ -64,6 +76,41 @@ const createDeferred = <T,>() => {
 }
 
 describe( 'AccountSettingsPage', () => {
+  it( 'shows points and badges directly without opening Contributions', async () => {
+    firestoreMocks.getDoc.mockResolvedValue( profileSnapshot( {
+      notificationPreferences: {
+        commentEmailEnabled: true,
+        hourlyActivityDigestEnabled: false,
+      },
+    } ) )
+    reputationMocks.loadUserReputation.mockResolvedValue( {
+      summaries: [ {
+        projectId: 'project-1',
+        userId: 'user-1',
+        totalPoints: 1.33,
+        collaborationPoints: 1.33,
+        reviewPoints: 0,
+        qualityPoints: 0,
+        contributionCount: 2,
+        threadCount: 1,
+        commentCount: 1,
+        goodReactionCount: 0,
+        completedReviewCount: 0,
+        acceptedVersionCount: 0,
+        badgeIds: [ 'first-contribution' ],
+        updatedAt: null,
+      } ],
+      events: [],
+    } )
+
+    renderWithAuth( <AccountSettingsPage /> )
+
+    expect( await screen.findByRole( 'heading', { name: 'Points and badges' } ) ).toBeTruthy()
+    expect( screen.getAllByText( '1.33' ).length ).toBeGreaterThan( 0 )
+    expect( screen.getByText( 'First contribution' ) ).toBeTruthy()
+    expect( screen.getByText( 'Project project-1' ) ).toBeTruthy()
+  } )
+
   it( 'loads legacy notification defaults when profile preferences are missing', async () => {
     firestoreMocks.getDoc.mockResolvedValue( profileSnapshot( {
       email: 'member@example.com',

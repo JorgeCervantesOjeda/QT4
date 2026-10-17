@@ -2,16 +2,42 @@
 
 const { FieldValue } = require( "firebase-admin/firestore" )
 
+const SEQUENCE_BOUNDARY_TEMPLATES = Object.freeze( [ 1, 2, 5 ] )
+
 const POINT_RULES = Object.freeze( {
-  threadCreated: { category: "collaboration", points: 1, reason: "Created a discussion thread" },
-  commentCreated: { category: "collaboration", points: 1, reason: "Added a comment" },
-  goodReactionReceived: { category: "collaboration", points: 2, reason: "Received a good reaction on a comment" },
+  threadCreated: { category: "collaboration", points: 1, reason: "Created a discussion thread", sequenceKey: "reviewParticipation" },
+  commentCreated: { category: "collaboration", points: 1, reason: "Added a comment", sequenceKey: "reviewParticipation" },
+  goodReactionReceived: { category: "collaboration", points: 1, reason: "Received a good reaction on a comment", sequenceKey: "goodReaction" },
   reviewCompleted: { category: "review", points: 0, reason: "Completed an active review" },
   reviewAbsence: { category: "review", points: -1, reason: "Did not participate in an assigned review" },
-  acceptedVersion: { category: "quality", points: 5, reason: "Created an accepted version" },
-  acceptedErrorReport: { category: "quality", points: 2, reason: "Created an accepted error report" },
+  acceptedVersion: { category: "quality", points: 1, reason: "Created an accepted version", sequenceKey: "acceptedDocument" },
+  acceptedErrorReport: { category: "quality", points: 1, reason: "Created an accepted error report", sequenceKey: "acceptedDocument" },
   acceptedErrorReportPenalty: { category: "quality", points: -2, reason: "An authored version received an accepted error report" },
 } )
+
+const getSequenceInterval = (sequenceNumber) => {
+  if( !Number.isSafeInteger( sequenceNumber ) || sequenceNumber < 1 ) {
+    throw new RangeError( "Sequence number must be a positive safe integer." )
+  }
+  let previousBoundary = 0
+  for( let powerOfTen = 1; ; powerOfTen *= 10 ) {
+    for( const boundaryTemplate of SEQUENCE_BOUNDARY_TEMPLATES ) {
+      const boundary = boundaryTemplate * powerOfTen
+      if( sequenceNumber <= boundary ) {
+        return { start: previousBoundary + 1, end: boundary }
+      }
+      previousBoundary = boundary
+    }
+    if( powerOfTen > Number.MAX_SAFE_INTEGER / 10 ) {
+      throw new RangeError( "Sequence number is too large to calculate safely." )
+    }
+  }
+}
+
+const getSequencePoints = (sequenceNumber) => {
+  const interval = getSequenceInterval( sequenceNumber )
+  return 1 / ( interval.end - interval.start + 1 )
+}
 
 const BADGE_IDS = Object.freeze( [
   "first-contribution",
@@ -135,6 +161,7 @@ const buildReputationEvent = ({
     category: rule.category,
     points: pointsOverride ?? rule.points,
     reason: rule.reason,
+    ...( rule.sequenceKey ? { sequenceKey: rule.sequenceKey } : {} ),
     counterField,
     ...( counterDelta !== undefined ? { counterDelta } : {} ),
     ...( countsAsContribution !== undefined ? { countsAsContribution } : {} ),
@@ -164,6 +191,13 @@ const deriveBadgeIds = (summary) => {
   return badgeIds
 }
 
+const getEarnedBadgeIds = (currentSummary, nextSummary) => {
+  const previousBadgeIds = new Set(
+    Array.isArray( currentSummary.badgeIds ) ? currentSummary.badgeIds : [],
+  )
+  return nextSummary.badgeIds.filter( (badgeId) => !previousBadgeIds.has( badgeId ) )
+}
+
 const numericValue = (value, fieldName, logger) => {
   if( value === undefined || value === null ) {
     return 0
@@ -189,8 +223,6 @@ const counterFields = new Set( [
   "completedReviewCount",
   "acceptedVersionCount",
 ] )
-
-const REVIEW_PARTICIPATION_CAP = 2
 
 const buildNextSummary = ({ currentSummary, event, pointDelta, activeDelta, counterDelta, logger }) => {
   const nextSummary = {
@@ -230,7 +262,71 @@ const getServerTimestamp = (admin) => {
   return timestampFactory()
 }
 
-const applyReputationEvent = async ({ admin, event, logger }) => {
+const sequenceSeedFields = Object.freeze( {
+  reviewParticipation: [ "threadCount", "commentCount" ],
+  goodReaction: [ "goodReactionCount" ],
+  acceptedDocument: [ "acceptedVersionCount" ],
+} )
+
+const getSequenceCounterRef = (db, event) => db
+  .collection( "reputationSequenceCounters" )
+  .doc( `${event.projectId}_${event.userId}_${event.sequenceKey}` )
+
+const getSequenceSeed = ({ currentSummary, sequenceKey, logger }) => {
+  const fields = sequenceSeedFields[sequenceKey] || []
+  return fields.reduce(
+    (total, fieldName) => total + Math.max( 0, Math.floor( numericValue( currentSummary[fieldName], fieldName, logger ) ) ),
+    0,
+  )
+}
+
+const resolveSequencedEvent = ({ currentSummary, event, previousEvent, previousCounter, logger }) => {
+  const requestedPoints = numericValue( event.points, "points", logger )
+  if( !event.sequenceKey ) {
+    return {
+      event: { ...event, points: requestedPoints },
+      points: requestedPoints,
+      sequenceNumber: null,
+      shouldWriteCounter: false,
+    }
+  }
+
+  const storedSequenceNumber = Number( previousEvent?.sequenceNumber )
+  const previousSequenceNumber = Number.isSafeInteger( storedSequenceNumber ) && storedSequenceNumber > 0
+    ? storedSequenceNumber
+    : null
+  const storedCounterNumber = Number( previousCounter?.sequenceNumber )
+  const hasStoredCounter = Number.isSafeInteger( storedCounterNumber ) && storedCounterNumber >= 0
+  const seed = hasStoredCounter
+    ? storedCounterNumber
+    : getSequenceSeed( { currentSummary, sequenceKey: event.sequenceKey, logger } )
+  const sequenceNumber = previousSequenceNumber || ( requestedPoints > 0 ? seed + 1 : null )
+  const points = requestedPoints > 0 && sequenceNumber
+    ? getSequencePoints( sequenceNumber )
+    : requestedPoints
+  const sequenceInterval = sequenceNumber ? getSequenceInterval( sequenceNumber ) : null
+  const counterNumber = sequenceNumber ? Math.max( seed, sequenceNumber ) : seed
+  const shouldWriteCounter = Boolean(
+    sequenceNumber && requestedPoints > 0 && ( !hasStoredCounter || storedCounterNumber < counterNumber ),
+  )
+  return {
+    event: {
+      ...event,
+      points,
+      ...( sequenceNumber ? {
+        sequenceNumber,
+        sequenceIntervalStart: sequenceInterval.start,
+        sequenceIntervalEnd: sequenceInterval.end,
+      } : {} ),
+    },
+    points,
+    sequenceNumber,
+    counterNumber,
+    shouldWriteCounter,
+  }
+}
+
+const applySequencedReputationEvent = async ({ admin, event, logger }) => {
   const projectId = normalizeRequired( event.projectId )
   const userId = normalizeRequired( event.userId )
   const eventId = normalizeRequired( event.eventId )
@@ -246,12 +342,34 @@ const applyReputationEvent = async ({ admin, event, logger }) => {
   const db = getDb( admin )
   const eventRef = db.collection( "reputationEvents" ).doc( eventId )
   const summaryRef = db.collection( "reputationSummaries" ).doc( `${projectId}_${userId}` )
+  const sequenceCounterRef = event.sequenceKey
+    ? getSequenceCounterRef( db, { projectId, userId, sequenceKey: event.sequenceKey } )
+    : null
   return db.runTransaction( async (transaction) => {
     const eventSnapshot = await transaction.get( eventRef )
     const summarySnapshot = await transaction.get( summaryRef )
+    const sequenceCounterSnapshot = sequenceCounterRef
+      ? await transaction.get( sequenceCounterRef )
+      : null
     const previousEvent = readSnapshotData( eventSnapshot )
     const previousPoints = numericValue( previousEvent?.points, "points", logger )
-    const nextPoints = numericValue( event.points, "points", logger )
+    const requestedPoints = numericValue( event.points, "points", logger )
+    if( previousEvent && previousPoints > 0 && requestedPoints > 0 && !previousEvent.sequenceNumber ) {
+      return false
+    }
+    const currentSummary = {
+      ...emptySummary( projectId, userId ),
+      ...( readSnapshotData( summarySnapshot ) || {} ),
+    }
+    const sequenceResult = resolveSequencedEvent( {
+      currentSummary,
+      event,
+      previousEvent,
+      previousCounter: readSnapshotData( sequenceCounterSnapshot ),
+      logger,
+    } )
+    const nextEvent = sequenceResult.event
+    const nextPoints = sequenceResult.points
     if( previousEvent && previousPoints === nextPoints ) {
       return false
     }
@@ -264,11 +382,6 @@ const applyReputationEvent = async ({ admin, event, logger }) => {
     if( !previousEvent && nextPoints === 0 && counterDelta === 0 ) {
       return false
     }
-
-    const currentSummary = {
-      ...emptySummary( projectId, userId ),
-      ...( readSnapshotData( summarySnapshot ) || {} ),
-    }
     const pointDelta = nextPoints - previousPoints
     const nextSummary = buildNextSummary( {
       currentSummary,
@@ -278,10 +391,14 @@ const applyReputationEvent = async ({ admin, event, logger }) => {
       counterDelta,
       logger,
     } )
+    const earnedBadgeIds = getEarnedBadgeIds( currentSummary, nextSummary )
+    const eventWithBadgeAwards = earnedBadgeIds.length
+      ? { ...nextEvent, earnedBadgeIds }
+      : nextEvent
 
     const timestamp = getServerTimestamp( admin )
     transaction.set( eventRef, {
-      ...event,
+      ...eventWithBadgeAwards,
       active: nextPoints !== 0,
       createdAt: previousEvent?.createdAt || timestamp,
       updatedAt: timestamp,
@@ -290,18 +407,29 @@ const applyReputationEvent = async ({ admin, event, logger }) => {
       ...nextSummary,
       updatedAt: timestamp,
     }, { merge: true } )
+    if( sequenceResult.shouldWriteCounter ) {
+      transaction.set( sequenceCounterRef, {
+        projectId,
+        userId,
+        sequenceKey: event.sequenceKey,
+        sequenceNumber: sequenceResult.counterNumber,
+        updatedAt: timestamp,
+      }, { merge: true } )
+    }
     return true
   } )
 }
 
-const applyCappedReviewParticipationEvent = async ({ admin, event, logger, threadId, versionId }) => {
+const applyReputationEvent = applySequencedReputationEvent
+
+const applyReviewParticipationEvent = async ({ admin, event, logger, threadId, versionId }) => {
   const projectId = normalizeRequired( event.projectId )
   const userId = normalizeRequired( event.userId )
   const eventId = normalizeRequired( event.eventId )
   const normalizedThreadId = normalizeRequired( threadId )
   const normalizedVersionId = normalizeRequired( versionId )
   if( !projectId || !userId || !eventId || !normalizedThreadId || !normalizedVersionId ) {
-    logger.warn( "Skipping capped review participation with incomplete identity.", {
+    logger.warn( "Skipping review participation with incomplete identity.", {
       event,
       threadId,
       versionId,
@@ -311,6 +439,7 @@ const applyCappedReviewParticipationEvent = async ({ admin, event, logger, threa
   const db = getDb( admin )
   const eventRef = db.collection( "reputationEvents" ).doc( eventId )
   const summaryRef = db.collection( "reputationSummaries" ).doc( `${projectId}_${userId}` )
+  const sequenceCounterRef = getSequenceCounterRef( db, event )
   const participationRef = db.collection( "reputationParticipation" ).doc(
     `${projectId}_${normalizedVersionId}_${normalizedThreadId}_${userId}`,
   )
@@ -318,15 +447,20 @@ const applyCappedReviewParticipationEvent = async ({ admin, event, logger, threa
     `${projectId}_${normalizedVersionId}_${userId}`,
   )
   return db.runTransaction( async (transaction) => {
-    const [eventSnapshot, summarySnapshot, participationSnapshot, reviewSummarySnapshot] = await Promise.all([
+    const [eventSnapshot, summarySnapshot, participationSnapshot, reviewSummarySnapshot, sequenceCounterSnapshot] = await Promise.all([
       transaction.get( eventRef ),
       transaction.get( summaryRef ),
       transaction.get( participationRef ),
       transaction.get( reviewSummaryRef ),
+      transaction.get( sequenceCounterRef ),
     ])
     const previousEvent = readSnapshotData( eventSnapshot )
     if( previousEvent ) {
       return false
+    }
+    const currentSummary = {
+      ...emptySummary( projectId, userId ),
+      ...( readSnapshotData( summarySnapshot ) || {} ),
     }
     const previousParticipation = readSnapshotData( participationSnapshot )
     const participationCount = numericValue(
@@ -334,31 +468,29 @@ const applyCappedReviewParticipationEvent = async ({ admin, event, logger, threa
       "participationCount",
       logger,
     )
-    if( participationCount >= REVIEW_PARTICIPATION_CAP ) {
-      logger.info( "Skipping review participation because the issue cap is reached.", {
-        projectId,
-        userId,
-        threadId: normalizedThreadId,
-        versionId: normalizedVersionId,
-      } )
-      return false
-    }
-    const currentSummary = {
-      ...emptySummary( projectId, userId ),
-      ...( readSnapshotData( summarySnapshot ) || {} ),
-    }
-    const nextSummary = buildNextSummary( {
+    const sequenceResult = resolveSequencedEvent( {
       currentSummary,
       event,
-      pointDelta: Number( event.points ),
+      previousEvent,
+      previousCounter: readSnapshotData( sequenceCounterSnapshot ),
+      logger,
+    } )
+    const nextSummary = buildNextSummary( {
+      currentSummary,
+      event: sequenceResult.event,
+      pointDelta: sequenceResult.points,
       activeDelta: 1,
       counterDelta: 1,
       logger,
     } )
+    const earnedBadgeIds = getEarnedBadgeIds( currentSummary, nextSummary )
+    const eventWithBadgeAwards = earnedBadgeIds.length
+      ? { ...sequenceResult.event, earnedBadgeIds }
+      : sequenceResult.event
     const previousReviewSummary = readSnapshotData( reviewSummarySnapshot )
     const timestamp = getServerTimestamp( admin )
     transaction.set( eventRef, {
-      ...event,
+      ...eventWithBadgeAwards,
       active: true,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -367,6 +499,15 @@ const applyCappedReviewParticipationEvent = async ({ admin, event, logger, threa
       ...nextSummary,
       updatedAt: timestamp,
     }, { merge: true } )
+    if( sequenceResult.shouldWriteCounter ) {
+      transaction.set( sequenceCounterRef, {
+        projectId,
+        userId,
+        sequenceKey: event.sequenceKey,
+        sequenceNumber: sequenceResult.counterNumber,
+        updatedAt: timestamp,
+      }, { merge: true } )
+    }
     transaction.set( participationRef, {
       projectId,
       versionId: normalizedVersionId,
@@ -402,7 +543,7 @@ const createThreadReputationHandler = ({ admin, logger }) => async (event) => {
     logger.warn( "Skipping thread reputation event with incomplete data.", { threadId, thread } )
     return
   }
-  await applyCappedReviewParticipationEvent( {
+  await applyReviewParticipationEvent( {
     admin,
     logger,
     event: buildReputationEvent( {
@@ -446,7 +587,7 @@ const createCommentReputationHandler = ({ admin, logger }) => async (event) => {
     } )
     return
   }
-  await applyCappedReviewParticipationEvent( {
+  await applyReviewParticipationEvent( {
     admin,
     logger,
     event: buildReputationEvent( {
@@ -588,10 +729,14 @@ module.exports = {
   BADGE_IDS,
   POINT_RULES,
   applyReputationEvent,
+  applyReviewParticipationEvent,
+  applySequencedReputationEvent,
   buildReputationEvent,
   createCommentReputationHandler,
   createReactionReputationHandler,
   createThreadReputationHandler,
   createVersionReputationHandler,
   deriveBadgeIds,
+  getSequenceInterval,
+  getSequencePoints,
 }

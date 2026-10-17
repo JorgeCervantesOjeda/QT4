@@ -2,6 +2,13 @@
 
 export type ReputationCategory = 'collaboration' | 'review' | 'quality';
 
+export type ReputationSequenceKey = 'reviewParticipation' | 'goodReaction' | 'acceptedDocument';
+
+export type ReputationSequenceInterval = {
+  start: number;
+  end: number;
+};
+
 export type ReputationEventType =
   | 'threadCreated'
   | 'commentCreated'
@@ -43,6 +50,7 @@ export type ReputationPointRule = {
   category: ReputationCategory;
   points: number;
   reason: string;
+  sequenceKey?: ReputationSequenceKey;
 };
 
 export type ReputationBadgeDefinition = {
@@ -89,16 +97,19 @@ const POINT_RULES: Record<ReputationEventType, ReputationPointRule> = {
     category: 'collaboration',
     points: 1,
     reason: 'Created a discussion thread',
+    sequenceKey: 'reviewParticipation',
   },
   commentCreated: {
     category: 'collaboration',
     points: 1,
     reason: 'Added a comment',
+    sequenceKey: 'reviewParticipation',
   },
   goodReactionReceived: {
     category: 'collaboration',
-    points: 2,
+    points: 1,
     reason: 'Received a good reaction on a comment',
+    sequenceKey: 'goodReaction',
   },
   reviewCompleted: {
     category: 'review',
@@ -112,19 +123,48 @@ const POINT_RULES: Record<ReputationEventType, ReputationPointRule> = {
   },
   acceptedVersion: {
     category: 'quality',
-    points: 5,
+    points: 1,
     reason: 'Created an accepted version',
+    sequenceKey: 'acceptedDocument',
   },
   acceptedErrorReport: {
     category: 'quality',
-    points: 2,
+    points: 1,
     reason: 'Created an accepted error report',
+    sequenceKey: 'acceptedDocument',
   },
   acceptedErrorReportPenalty: {
     category: 'quality',
     points: -2,
     reason: 'An authored version received an accepted error report',
   },
+};
+
+const SEQUENCE_BOUNDARY_TEMPLATES = [1, 2, 5] as const;
+
+export const getSequenceInterval = (sequenceNumber: number): ReputationSequenceInterval => {
+  if( !Number.isSafeInteger( sequenceNumber ) || sequenceNumber < 1 ) {
+    throw new RangeError( 'Sequence number must be a positive safe integer.' );
+  }
+
+  let previousBoundary = 0;
+  for( let powerOfTen = 1; ; powerOfTen *= 10 ) {
+    for( const boundaryTemplate of SEQUENCE_BOUNDARY_TEMPLATES ) {
+      const boundary = boundaryTemplate * powerOfTen;
+      if( sequenceNumber <= boundary ) {
+        return { start: previousBoundary + 1, end: boundary };
+      }
+      previousBoundary = boundary;
+    }
+    if( powerOfTen > Number.MAX_SAFE_INTEGER / 10 ) {
+      throw new RangeError( 'Sequence number is too large to calculate safely.' );
+    }
+  }
+};
+
+export const getSequencePoints = (sequenceNumber: number): number => {
+  const interval = getSequenceInterval( sequenceNumber );
+  return 1 / ( interval.end - interval.start + 1 );
 };
 
 export const getContributionPoints = (
@@ -135,8 +175,8 @@ export const getCommentReactionPointsDelta = (
   previousReaction: CommentReaction | null,
   nextReaction: CommentReaction,
 ): number => {
-  const previousPoints = previousReaction === 'good' ? 2 : 0;
-  const nextPoints = nextReaction === 'good' ? 2 : 0;
+  const previousPoints = previousReaction === 'good' ? 1 : 0;
+  const nextPoints = nextReaction === 'good' ? 1 : 0;
   return nextPoints - previousPoints;
 };
 

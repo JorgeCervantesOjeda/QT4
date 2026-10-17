@@ -15,6 +15,10 @@ import {
   buildDerivationLineKey,
 } from "../../lib/documentDerivation";
 import { db } from "../../lib/firebase";
+import {
+  buildReputationAwardMessage,
+  waitForReputationEvent,
+} from "../../lib/reputationData";
 import { measureSlowUiAction } from "../../lib/slowUiAction";
 import {
   requestRetryPropagatedErrorReports,
@@ -260,7 +264,17 @@ const createVersionDecisionActions = (params: VersionDecisionActionParams) => {
         return;
       }
       setPropagationFailurePrompt( null );
-      setSuccessMessage("Latest version accepted successfully.");
+      const reputationEvent = latestVersion.createdBy === userId
+        ? await waitForReputationEvent({
+            projectId,
+            sourceId: latestVersion.id,
+            sourceType: "version",
+            userId,
+          })
+        : null;
+      setSuccessMessage(
+        buildReputationAwardMessage("Latest version accepted successfully.", reputationEvent),
+      );
       const baseVersionId = documentData?.baseVersionId ?? null;
       if (documentData?.type === "errorReport" && baseVersionId) {
         logAcceptedErrorReportTasks({

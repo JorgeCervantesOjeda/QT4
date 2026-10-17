@@ -159,6 +159,31 @@
   margin: 0;
 }
 
+.brand-account-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.brand-account-summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 999px;
+  color: #ffffff;
+  background: rgba(36, 19, 15, 0.24);
+  font-size: 0.88rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.brand-account-summary--error {
+  background: rgba(148, 38, 38, 0.48);
+}
+
 .brand-session-button {
   display: inline-flex;
   align-items: center;

@@ -31,6 +31,24 @@ const slowUiActionMocks = vi.hoisted( () => ( {
   measureSlowUiAction: vi.fn( async ( _metadata: unknown, callback: () => Promise<unknown> ) => callback() ),
 } ) )
 
+const reputationDataMocks = vi.hoisted( () => ( {
+  waitForReputationEvent: vi.fn( async () => ( {
+    id: 'acceptedVersion:change-request-version-1',
+    projectId: 'target-project',
+    userId: 'author-1',
+    sourceType: 'version',
+    sourceId: 'change-request-version-1',
+    category: 'quality',
+    points: 1,
+    reason: 'Created an accepted version',
+    createdAt: null,
+    earnedBadgeIds: [ 'quality-builder' ],
+  } ) ),
+  buildReputationAwardMessage: vi.fn( ( prefix: string ) =>
+    `${prefix} You earned +1 point. New badge: Quality builder.`,
+  ),
+} ) )
+
 vi.mock( 'firebase/firestore', () => ( {
   collection: vi.fn( ( ...segments: unknown[] ) => ( { segments } ) ),
   doc: firestoreMocks.doc,
@@ -56,6 +74,11 @@ vi.mock( '../../lib/firebase', () => ( {
 
 vi.mock( '../../lib/slowUiAction', () => ( {
   measureSlowUiAction: slowUiActionMocks.measureSlowUiAction,
+} ) )
+
+vi.mock( '../../lib/reputationData', () => ( {
+  buildReputationAwardMessage: reputationDataMocks.buildReputationAwardMessage,
+  waitForReputationEvent: reputationDataMocks.waitForReputationEvent,
 } ) )
 
 vi.mock( '../../lib/versionDecisions', () => ( {
@@ -203,6 +226,27 @@ describe( 'createVersionDecisionActions', () => {
     expect( slowUiActionMocks.measureSlowUiAction ).toHaveBeenCalledWith(
       expect.objectContaining( { action: 'versions.acceptLatestVersion', hasModal: true } ),
       expect.any( Function ),
+    )
+  } )
+
+  it( 'shows the exact acceptance reward only to the accepted version author', async () => {
+    firestoreMocks.getDoc.mockResolvedValueOnce( {
+      exists: () => false,
+      data: () => ( {} ),
+    } )
+    const setSuccessMessage = vi.fn()
+    const actions = buildActions( { setSuccessMessage } )
+
+    await actions.handleAcceptLatestVersion()
+
+    expect( reputationDataMocks.waitForReputationEvent ).toHaveBeenCalledWith( {
+      projectId: 'target-project',
+      sourceId: 'change-request-version-1',
+      sourceType: 'version',
+      userId: 'author-1',
+    } )
+    expect( setSuccessMessage ).toHaveBeenCalledWith(
+      'Latest version accepted successfully. You earned +1 point. New badge: Quality builder.',
     )
   } )
 
