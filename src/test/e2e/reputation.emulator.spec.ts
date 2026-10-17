@@ -15,8 +15,8 @@ test( 'member sees reputation produced by real Functions triggers', async ( { pa
   await page.goto( '/account/contributions' )
 
   await expect( page.getByRole( 'heading', { name: 'Your contribution summary' } ) ).toBeVisible()
-  await expect( page.getByRole( 'article' ).filter( { hasText: 'Project project-e2e-reputation' } ) ).toBeVisible()
-  await expect( page.getByText( '3 pts' ) ).toBeVisible()
+  await expect( page.getByRole( 'article' ).filter( { hasText: 'Reputation Integration Project' } ) ).toBeVisible()
+  await expect( page.getByRole( 'article' ).filter( { hasText: 'Reputation Integration Project' } ).getByText( '3 pts', { exact: true } ) ).toBeVisible()
   await expect( page.getByText( 'Created a discussion thread' ) ).toBeVisible()
 } )
 

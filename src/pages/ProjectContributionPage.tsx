@@ -9,6 +9,7 @@ import ProjectLeaderboard from '../components/reputation/ProjectLeaderboard'
 import { useAuth } from '../auth/useAuth'
 import { formatProjectDisplayLabel, resolveProjectReference, type ProjectDisplayInfo } from '../lib/projectDisplay'
 import { loadProjectReputation } from '../lib/reputationData'
+import { loadUserDisplayDirectory, resolveUserDisplayLabel, type UserDisplayInfo } from '../lib/userDisplay'
 import type { ReputationSummary } from '../lib/reputation'
 
 function ProjectContributionPage() {
@@ -17,6 +18,7 @@ function ProjectContributionPage() {
   const [resolvedProjectId, setResolvedProjectId] = useState( '' )
   const [summaries, setSummaries] = useState<ReputationSummary[]>( [] )
   const [projectDisplayInfo, setProjectDisplayInfo] = useState<Record<string, ProjectDisplayInfo>>( {} )
+  const [userDisplayDirectory, setUserDisplayDirectory] = useState<Record<string, UserDisplayInfo>>( {} )
   const [status, setStatus] = useState<'loading' | 'ready' | 'empty' | 'error'>( projectReference ? 'loading' : 'error' )
   const [errorMessage, setErrorMessage] = useState( projectReference ? '' : 'A project is required to view its contribution ranking.' )
 
@@ -32,8 +34,10 @@ function ProjectContributionPage() {
         throw new Error( 'Project could not be found.' )
       }
       const nextSummaries = await loadProjectReputation( resolvedProject.projectId )
+      const nextUserDisplayDirectory = await loadUserDisplayDirectory( nextSummaries.map( (summary) => summary.userId ) )
       if( !active ) return
       setSummaries( nextSummaries )
+      setUserDisplayDirectory( nextUserDisplayDirectory )
       setResolvedProjectId( resolvedProject.projectId )
       setProjectDisplayInfo( { [resolvedProject.projectId]: resolvedProject.displayInfo } )
       setStatus( nextSummaries.length > 0 ? 'ready' : 'empty' )
@@ -49,8 +53,7 @@ function ProjectContributionPage() {
   }, [ projectReference ] )
 
   const resolveUserLabel = (userId: string) => {
-    if( userId === user?.uid ) return 'You'
-    return `Member ···${userId.slice( -4 )}`
+    return resolveUserDisplayLabel( userId, userDisplayDirectory, user )
   }
 
   return (

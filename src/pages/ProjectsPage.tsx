@@ -92,10 +92,7 @@ function ProjectsPage() {
     if( email ) {
       return email
     }
-    if( memberUserId ) {
-      return memberUserId
-    }
-    return 'Unknown user'
+    return 'Project member'
   }, [ userDirectoryById ] )
 
   const resolveProjectLeader = useCallback( (projectId: string, leaderId: string) => {

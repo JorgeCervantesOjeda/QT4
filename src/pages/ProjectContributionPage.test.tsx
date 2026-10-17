@@ -17,6 +17,11 @@ const projectDisplayMocks = vi.hoisted( () => ( {
   resolveProjectReference: vi.fn(),
 } ) )
 
+const userDisplayMocks = vi.hoisted( () => ( {
+  loadUserDisplayDirectory: vi.fn(),
+  resolveUserDisplayLabel: vi.fn(),
+} ) )
+
 vi.mock( '../lib/reputationData', async () => {
   const actual = await vi.importActual<typeof import('../lib/reputationData')>( '../lib/reputationData' )
   return {
@@ -28,6 +33,10 @@ vi.mock( '../lib/projectDisplay', () => ( {
   formatProjectDisplayLabel: ( _projectId: string, info?: { name?: string } ) => info?.name || 'Project',
   loadProjectDisplayInfo: projectDisplayMocks.loadProjectDisplayInfo,
   resolveProjectReference: projectDisplayMocks.resolveProjectReference,
+} ) )
+vi.mock( '../lib/userDisplay', () => ( {
+  loadUserDisplayDirectory: userDisplayMocks.loadUserDisplayDirectory,
+  resolveUserDisplayLabel: userDisplayMocks.resolveUserDisplayLabel,
 } ) )
 vi.mock( '../components/AppBrand', () => ( {
   default: ( { pageTitle }: { pageTitle: string } ) => <h1>{pageTitle}</h1>,
@@ -70,6 +79,11 @@ const summary = (userId: string, totalPoints: number): ReputationSummary => ( {
 describe( 'ProjectContributionPage', () => {
   it( 'shows the project-only ranking and current-user marker', async () => {
     reputationMocks.loadProjectReputation.mockResolvedValue( [ summary( 'user-2', 8 ), summary( 'user-1', 4 ) ] )
+    userDisplayMocks.loadUserDisplayDirectory.mockResolvedValue( {
+      'user-2': { displayName: 'Ana Reviewer' },
+      'user-1': { displayName: 'Member User' },
+    } )
+    userDisplayMocks.resolveUserDisplayLabel.mockImplementation( (userId: string) => userId === 'user-1' ? 'You' : 'Ana Reviewer' )
     projectDisplayMocks.resolveProjectReference.mockResolvedValue( {
       projectId: 'project-1',
       displayInfo: { name: 'Project Alpha', shortId: 12 },
@@ -79,6 +93,8 @@ describe( 'ProjectContributionPage', () => {
     expect( await screen.findByText( 'Contribution ranking' ) ).toBeTruthy()
     expect( screen.getByText( 'You' ) ).toBeTruthy()
     expect( screen.getByText( 'Project Alpha' ) ).toBeTruthy()
+    expect( screen.getByText( 'Ana Reviewer' ) ).toBeTruthy()
+    expect( screen.queryByText( /···/u ) ).toBeNull()
     expect( screen.getByTestId( 'back-stack' ).textContent ).toBe( 'return-only' )
     expect( reputationMocks.loadProjectReputation ).toHaveBeenCalledWith( 'project-1' )
   } )
