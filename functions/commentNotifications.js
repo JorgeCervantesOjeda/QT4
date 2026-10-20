@@ -98,8 +98,16 @@ const versionNumberToString = (value) => {
 const buildProjectLabel = (projectData) =>
   `${projectData?.shortId ?? "Unassigned"} - ${projectData?.name ?? "Project"}`
 
-const buildDocumentLabel = (documentData) =>
-  `${documentData?.shortId ?? "Unassigned"} - ${documentData?.title ?? "Document"}`
+const buildDocumentLabel = (documentData, baseDocumentData) => {
+  const label = `${documentData?.shortId ?? "Unassigned"} - ${documentData?.title ?? "Document"}`
+  if( documentData?.type !== "errorReport" ) {
+    return label
+  }
+  const baseLabel = baseDocumentData
+    ? `${baseDocumentData.shortId ?? "Unassigned"} - ${baseDocumentData.title ?? "Document"}`
+    : documentData.baseDocId
+  return `Error report: ${label}${baseLabel ? ` (for document: ${baseLabel})` : ""}`
+}
 
 const buildCommentDirectUrl = ({ appOrigin, comment, commentId, thread }) => {
   const origin = ( trimSingleLine( appOrigin, 500 ) || DEFAULT_APP_ORIGIN ).replace( /\/+$/, "" )
@@ -115,8 +123,8 @@ const buildCommentDirectUrl = ({ appOrigin, comment, commentId, thread }) => {
   return origin ? `${origin}${path}` : path
 }
 
-const buildEmailText = ({ actorLabel, comment, directUrl, documentData, thread, version }) => {
-  const documentLabel = buildDocumentLabel( documentData )
+const buildEmailText = ({ actorLabel, baseDocumentData, comment, directUrl, documentData, thread, version }) => {
+  const documentLabel = buildDocumentLabel( documentData, baseDocumentData )
   return [
     "A new comment was added.",
     `Document: ${documentLabel}`,
@@ -132,8 +140,8 @@ const buildEmailText = ({ actorLabel, comment, directUrl, documentData, thread, 
   ].join( "\n" )
 }
 
-const buildEmailHtml = ({ actorLabel, comment, directUrl, documentData, thread, version }) => {
-  const documentLabel = buildDocumentLabel( documentData )
+const buildEmailHtml = ({ actorLabel, baseDocumentData, comment, directUrl, documentData, thread, version }) => {
+  const documentLabel = buildDocumentLabel( documentData, baseDocumentData )
   const issueTitle = thread?.title || "Untitled issue"
   return buildEmailDocument( {
     body: [
@@ -164,6 +172,7 @@ const getServerTimestamp = (admin) => {
 const stageNotificationEvents = async ({
   admin,
   actorLabel,
+  baseDocumentData,
   comment,
   commentId,
   db,
@@ -175,7 +184,7 @@ const stageNotificationEvents = async ({
   thread,
   version,
 }) => {
-  const documentLabel = buildDocumentLabel( documentData )
+  const documentLabel = buildDocumentLabel( documentData, baseDocumentData )
   const serverTimestamp = getServerTimestamp( admin )
   await Promise.all(
     recipients.map( (recipient) => db
@@ -233,6 +242,17 @@ const createCommentNotificationHandler = ({
       loadDocument( db, "projects", comment.projectId ),
       loadThreadComments( db, comment.threadId ),
     ] )
+    const baseDocumentData = documentData?.type === "errorReport" && documentData.baseDocId
+      ? await loadDocument( db, "documents", documentData.baseDocId )
+      : null
+    if( documentData?.type === "errorReport" && !baseDocumentData ) {
+      logger.warn( "commentNotification base document unavailable", {
+        commentId,
+        cause: "Error report base document is missing or has no baseDocId.",
+        fallback: "Use the base document ID when available and retain the error report identity.",
+        impact: "The email cannot display the base document title.",
+      } )
+    }
     const latestVersion = documentData?.latestVersionId
       ? await loadDocument( db, "versions", documentData.latestVersionId )
       : version
@@ -254,6 +274,7 @@ const createCommentNotificationHandler = ({
     await stageNotificationEvents( {
       admin,
       actorLabel,
+      baseDocumentData,
       comment,
       commentId,
       db,
@@ -283,9 +304,10 @@ const createCommentNotificationHandler = ({
       await sendTextEmail( {
         to: immediateRecipients.slice( 0, 1 ),
         cc: immediateRecipients.slice( 1 ),
-        subject: `New Comment: ${documentData?.shortId ?? "Unassigned"} - ${thread?.title || "Untitled issue"}`,
+        subject: `New Comment: ${documentData?.type === "errorReport" ? "Error report: " : ""}${documentData?.shortId ?? "Unassigned"} - ${thread?.title || "Untitled issue"}`,
         text: buildEmailText( {
           actorLabel,
+          baseDocumentData,
           comment,
           directUrl,
           documentData,
@@ -294,6 +316,7 @@ const createCommentNotificationHandler = ({
         } ),
         html: buildEmailHtml( {
           actorLabel,
+          baseDocumentData,
           comment,
           directUrl,
           documentData,

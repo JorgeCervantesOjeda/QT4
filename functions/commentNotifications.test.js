@@ -6,6 +6,7 @@ const {
   buildEmailHtml,
   createCommentNotificationHandler,
 } = require( "./commentNotifications" )
+const { buildHourlyNotificationDigest } = require( "./hourlyNotificationDigest" )
 
 const createSnapshot = (id, data) => ( {
   id,
@@ -194,6 +195,46 @@ const createAdmin = (db) => {
   return admin
 }
 
+test( "error-report identity survives notification handling and hourly digest rendering", async () => {
+  const writes = []
+  const sentEmails = []
+  const store = {
+    "documents/report-1": {
+      type: "errorReport", shortId: 13, title: "Missing evidence",
+      baseDocId: "base-1",
+    },
+    "documents/base-1": { shortId: 12, title: "Evidence matrix" },
+    "versions/report-version": { number: 100, createdBy: "reviewer" },
+    "threads/thread-1": { title: "Check evidence" },
+    "userProfiles/reviewer": {
+      email: "reviewer@example.com",
+      notificationPreferences: { commentEmailEnabled: true },
+    },
+  }
+  const handler = createCommentNotificationHandler( {
+    admin: createAdmin( createFakeDb( store, writes ) ),
+    logger: { error: assert.fail, info: () => {}, warn: assert.fail },
+    sendTextEmail: async (message) => { sentEmails.push( message ) },
+  } )
+  await handler( createEvent( "comment-1", {
+    projectId: "project-1", docId: "report-1", versionId: "report-version",
+    threadId: "thread-1", createdBy: "actor", body: "First line\r\n\r\nSecond paragraph",
+  } ) )
+
+  assert.equal( sentEmails.length, 1 )
+  assert.match( sentEmails[0].subject, /Error report: 13/u )
+  for( const content of [ sentEmails[0].text, sentEmails[0].html ] ) {
+    assert.match( content, /Error report: 13 - Missing evidence/u )
+    assert.match( content, /for document: 12 - Evidence matrix/u )
+    assert.match( content, /documents\/report-1\/versions/u )
+  }
+  assert.match( sentEmails[0].html, /First line<br><br>Second paragraph/u )
+  const events = writes.map( (write) => ( { id: write.path, ...write.data } ) )
+  const digest = buildHourlyNotificationDigest( events, "2026-10-20T15" )
+  assert.match( digest.text, /Error report: 13 - Missing evidence/u )
+  assert.match( digest.html, /for document: 12 - Evidence matrix/u )
+} )
+
 test( "handler sends immediate email only to opted-in related participants", async () => {
   const writes = []
   const sentEmails = []
@@ -318,5 +359,21 @@ test( "buildEmailHtml escapes comment content and renders a direct link", () => 
   assert.match( html, /Reviewer &lt;One&gt;/u )
   assert.match( html, /Please use &lt;strong&gt;evidence&lt;\/strong&gt;\./u )
   assert.match( html, /<a href="https:\/\/qt4\.example\.test\/documents\/doc-1\/versions\?threadId=thread-1"/u )
+  assert.match( html, /<strong>Document:<\/strong> 12 - Evidence matrix/u )
+  assert.doesNotMatch( html, /Error report:/u )
+} )
+
+// Linked integration coverage: error-report identity survives notification handling and hourly digest rendering.
+test( "buildEmailHtml escapes report and base titles while retaining the report identity", () => {
+  const html = buildEmailHtml( {
+    actorLabel: "Reviewer",
+    comment: { body: "First\r\n\r\nSecond" },
+    directUrl: "https://qt4.example.test/documents/report-1/versions",
+    documentData: { type: "errorReport", shortId: 13, title: "Report <one>", baseDocId: "base-1" },
+    baseDocumentData: { shortId: 12, title: "Base & evidence" },
+    thread: { title: "Issue" }, version: { number: 100 },
+  } )
+  assert.match( html, /Error report: 13 - Report &lt;one&gt; \(for document: 12 - Base &amp; evidence\)/u )
+  assert.match( html, /First<br><br>Second/u )
 } )
 

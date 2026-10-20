@@ -1,4 +1,4 @@
-// Table column definitions for versions, members, issues, and comments.
+// src/pages/versions/columns.tsx: Defines table columns for versions, members, issues, and comments.
 import { useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { versionNumberToString } from "../../domain/types";
@@ -199,7 +199,7 @@ const useCommentColumns = (params: CommentColumnsParams) =>
             emptyCommentReactionState;
           return (
             <span className="comment-body-with-reactions">
-              <span>{comment.body}</span>
+              <span className="comment-body">{comment.body}</span>
               {renderReactionFaces(reactionState)}
             </span>
           );

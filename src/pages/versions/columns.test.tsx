@@ -16,10 +16,12 @@ const comments: CommentSummary[] = [
 ]
 
 function CommentTable( {
+  body = comments[0].body,
   counts = { good: 0, regular: 0, bad: 0 },
   currentUserReaction = null,
   onSetCommentReaction,
 }: {
+  body?: string
   counts?: Record<CommentReactionKind, number>
   currentUserReaction?: CommentReactionKind | null
   onSetCommentReaction: ( comment: CommentSummary, reaction: CommentReactionKind ) => void
@@ -39,7 +41,7 @@ function CommentTable( {
   return (
     <DataTable
       columns={columns}
-      data={comments}
+      data={[ { ...comments[0], body } ]}
       sorting={[]}
       onSortingChange={vi.fn()}
       tableClassName="data-table--comments"
@@ -48,6 +50,15 @@ function CommentTable( {
 }
 
 describe( 'useCommentColumns', () => {
+  // Integration counterpart: comments-formatting.spec.ts checks the browser's rendered paragraphs.
+  it( 'preserves multiline comment text without interpreting markup', () => {
+    const body = 'First line\r\n\r\nSecond <strong>paragraph</strong>\nThird line'
+    const { container } = render( <CommentTable body={body} onSetCommentReaction={vi.fn()} /> )
+    const comment = container.querySelector( '.comment-body-with-reactions > span' )
+    expect( comment?.textContent ).toBe( body )
+    expect( comment?.querySelector( 'strong' ) ).toBeNull()
+  } )
+
   it( 'renders reaction faces next to the comment body without putting them in the controls', () => {
     const onSetCommentReaction = vi.fn()
 
