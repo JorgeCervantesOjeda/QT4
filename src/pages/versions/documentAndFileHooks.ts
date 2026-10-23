@@ -1,4 +1,4 @@
-// Live document and file metadata subscriptions used by the selected version file panel.
+// src/pages/versions/documentAndFileHooks.ts: Live document, base-reference and file metadata subscriptions.
 import { useEffect } from 'react'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import { doc, getDoc, getDocFromServer, onSnapshot } from 'firebase/firestore'
@@ -154,12 +154,21 @@ async function loadBaseDocumentSummary(value: {
       const baseVersionData = baseVersionSnapshot?.exists()
         ? baseVersionSnapshot.data() as Record<string, unknown>
         : {}
-      const baseProjectData = baseProjectSnapshot?.exists()
-        ? baseProjectSnapshot.data() as Record<string, unknown>
+      const resolvedBaseProjectId = value.baseProjectId
+        ?? ( baseDocData.projectId as string | undefined )
+        ?? ( baseVersionData.projectId as string | undefined )
+        ?? ''
+      const resolvedBaseProjectSnapshot = baseProjectSnapshot?.exists()
+        ? baseProjectSnapshot
+        : resolvedBaseProjectId
+          ? await getDocFromServer( doc( db, 'projects', resolvedBaseProjectId ) )
+          : null
+      const baseProjectData = resolvedBaseProjectSnapshot?.exists()
+        ? resolvedBaseProjectSnapshot.data() as Record<string, unknown>
         : null
       value.setBaseDocumentData( {
         id: baseDocSnapshot.id,
-        projectId: ( baseDocData?.projectId as string | undefined ) ?? value.baseProjectId ?? '',
+        projectId: resolvedBaseProjectId,
         projectShortId: Number.isFinite( baseProjectData?.shortId ) ? Number( baseProjectData?.shortId ) : null,
         title: ( baseDocData?.title as string | undefined ) ?? 'Untitled document',
         shortId: Number.isFinite( baseDocData?.shortId ) ? Number( baseDocData?.shortId ) : null,
