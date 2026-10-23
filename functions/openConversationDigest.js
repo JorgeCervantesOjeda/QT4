@@ -138,7 +138,9 @@ const loadOpenConversationDigestEvents = async ({ db, events, hourKey, logger })
 
     const comments = await loadThreadComments( db, threadId )
     if( comments.length === 0 ) {
-      digestEvents.push( ...threadEvents )
+      digestEvents.push( ...threadEvents.map( ( event ) => ( {
+        ...event, issueNumber: thread.issueNumber ?? event.issueNumber,
+      } ) ) )
       logger.warn( "hourlyNotificationDigest conversation fallback", {
         reason: "open_thread_without_comments",
         threadId,

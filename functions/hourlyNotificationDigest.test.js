@@ -417,3 +417,13 @@ test( 'hourly email includes the stored issue number in text and HTML', () => {
   assert.match( digest.text, /Issue: #7 - Missing evidence/u )
   assert.match( digest.html, /#7 - Missing evidence/u )
 } )
+// Covers legacy queued events whose persisted metadata predates issue numbering.
+test( 'digest fallback retains the stored issue number when no comments are returned', async () => {
+  const { loadOpenConversationDigestEvents } = require( './openConversationDigest' )
+  const result = await loadOpenConversationDigestEvents( {
+    db: createFakeDb( { threadStore: { t7: { status: 'open', issueNumber: 7 } } } ),
+    events: [ { id: 'e1', threadId: 't7', issueTitle: 'Evidence' } ],
+    hourKey: '2026-10-23T15', logger: { warn: () => {} },
+  } )
+  assert.equal( result.digestEvents[0].issueNumber, 7 )
+} )
