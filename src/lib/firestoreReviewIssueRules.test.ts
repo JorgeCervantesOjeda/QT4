@@ -1,6 +1,6 @@
 // src/lib/firestoreReviewIssueRules.test.ts
 // Verifies Firestore rules for review issue threads and comments.
-import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import {
   assertFails,
   assertSucceeds,
@@ -9,6 +9,7 @@ import {
 } from '@firebase/rules-unit-testing'
 import {
   doc,
+  runTransaction,
   setDoc,
   Timestamp,
   updateDoc,
@@ -86,11 +87,12 @@ const seedReviewDocuments = async () => {
   } )
 }
 
-const writeInitialIssue = async (overrides: { versionPatch?: Record<string, unknown>; commentPatch?: Record<string, unknown> } = {}) => {
+const writeInitialIssue = async (overrides: { versionPatch?: Record<string, unknown>; commentPatch?: Record<string, unknown>; threadPatch?: Record<string, unknown> } = {}) => {
   const firestore = testEnv.authenticatedContext( userId ).firestore()
   const batch = writeBatch( firestore )
   const now = Timestamp.fromMillis( 1500 )
   batch.set( doc( firestore, 'threads', threadId ), {
+    issueNumber: 1,
     projectId,
     docId,
     versionId,
@@ -103,6 +105,7 @@ const writeInitialIssue = async (overrides: { versionPatch?: Record<string, unkn
     createdAt: now,
     updatedAt: now,
     updatedBy: userId,
+    ...overrides.threadPatch,
   } )
   batch.set( doc( firestore, 'comments', commentId ), {
     projectId,
@@ -158,6 +161,56 @@ describeWithFirestoreEmulator( 'firestore.rules review issue creation', () => {
 
   it( 'allows a reviewer to create a thread with its initial comment atomically', async () => {
     await assertSucceeds( writeInitialIssue() )
+  } )
+
+  // Integration contract linked to reviewIssueActions and issue-ordering.spec.ts.
+  it( 'rejects a nonconsecutive or fractional issue number', async () => {
+    await assertFails( writeInitialIssue( { threadPatch: { issueNumber: 2 } } ) )
+    await assertFails( writeInitialIssue( { threadPatch: { issueNumber: 1.5 } } ) )
+  } )
+
+  it( 'keeps the issue number immutable during title changes', async () => {
+    await writeInitialIssue()
+    const firestore = testEnv.authenticatedContext( userId ).firestore()
+    await assertFails( updateDoc( doc( firestore, 'threads', threadId ), {
+      issueNumber: 2, title: 'Updated title', updatedBy: userId,
+    } ) )
+  } )
+
+  it( 'allocates consecutive numbers transactionally and restarts per version', async () => {
+    const firestore = testEnv.authenticatedContext( userId ).firestore()
+    const createNumberedIssue = ( suffix: string, targetVersionId = versionId ) => runTransaction( firestore, async ( transaction ) => {
+      const versionRef = doc( firestore, 'versions', targetVersionId )
+      const snapshot = await transaction.get( versionRef )
+      const stats = snapshot.data()!.stats
+      const issueNumber = stats.numThreads + 1
+      const timestamp = Timestamp.now()
+      const threadRef = doc( firestore, 'threads', `concurrent-${suffix}` )
+      transaction.set( threadRef, {
+        projectId, docId, versionId: targetVersionId, issueNumber,
+        title: `Issue ${suffix}`, status: 'open', createdBy: userId, commentCount: 1,
+        lastCommentAt: timestamp, lastCommentBy: userId,
+        createdAt: timestamp, updatedAt: timestamp, updatedBy: userId,
+      } )
+      transaction.set( doc( firestore, 'comments', `initial-${suffix}` ), {
+        projectId, docId, versionId: targetVersionId, threadId: threadRef.id,
+        body: 'Initial comment', createdBy: userId, isInitialIssueComment: true,
+        createdAt: timestamp, updatedAt: timestamp,
+      } )
+      transaction.update( versionRef, {
+        stats: { ...stats, numThreads: issueNumber, numOpenThreads: stats.numOpenThreads + 1, numComments: stats.numComments + 1 },
+        numThreads: issueNumber, numOpenThreads: stats.numOpenThreads + 1, numComments: stats.numComments + 1,
+        numThreadsWithTwoPlusComments: stats.numThreadsWithTwoPlusComments,
+        updatedAt: timestamp, activityAt: timestamp, updatedBy: userId,
+      } )
+      return issueNumber
+    } )
+    const numbers = [ await createNumberedIssue( 'a' ), await createNumberedIssue( 'b' ) ]
+    expect( numbers.sort() ).toEqual( [ 1, 2 ] )
+    await testEnv.withSecurityRulesDisabled( async ( context ) => {
+      await setDoc( doc( context.firestore(), 'versions', 'version-2' ), baseVersion )
+    } )
+    expect( await createNumberedIssue( 'other-version', 'version-2' ) ).toBe( 1 )
   } )
 
   it( 'rejects initial issue creation without the version comment counter increment', async () => {

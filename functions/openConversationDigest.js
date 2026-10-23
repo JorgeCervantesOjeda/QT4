@@ -87,12 +87,13 @@ const loadThreadComments = async (db, threadId) => {
 
 const isOpenThread = (thread) => thread?.status === "open" || thread?.isOpen === true
 
-const buildConversationDigestEvent = ({ comment, event, hourKey, issueTitle, actorLabel }) => ( {
+const buildConversationDigestEvent = ({ comment, event, hourKey, issueTitle, issueNumber, actorLabel }) => ( {
   ...event,
   id: `${event.id || event.threadId}-${comment.id}`,
   digestHourKey: hourKey,
   eventAtMillis: comment.createdAtMillis,
   issueTitle,
+  issueNumber,
   actorLabel,
   commentText: comment.body,
   commentExcerpt: comment.body,
@@ -181,6 +182,7 @@ const loadOpenConversationDigestEvents = async ({ db, events, hourKey, logger })
         event,
         hourKey,
         issueTitle: trimSingleLine( thread.title, 240 ) || seedEvent.issueTitle,
+        issueNumber: thread.issueNumber ?? event.issueNumber,
       } )
     } ) )
   }

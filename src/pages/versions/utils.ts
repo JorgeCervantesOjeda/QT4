@@ -1,4 +1,4 @@
-// Pure helpers for timestamp normalization, issue statistics, labels, and Firestore error classification.
+// src/pages/versions/utils.ts: Pure timestamp, issue, label and error helpers.
 import type { FileStorageProviderKind } from "../../domain/types";
 import { formatApproxCountdown } from "../../lib/reviewWindow";
 import { formatTimestamp } from "../../lib/time";
@@ -235,10 +235,13 @@ const areThreadsEqual = (left: ThreadSummary[], right: ThreadSummary[]) => {
     if (
       a.id !== b.id ||
       a.status !== b.status ||
+      a.issueNumber !== b.issueNumber ||
       a.title !== b.title ||
       a.createdBy !== b.createdBy ||
       a.commentCount !== b.commentCount ||
-      toDateMs(a.lastCommentAt) !== toDateMs(b.lastCommentAt)
+      toDateMs( a.lastCommentAt ) !== toDateMs( b.lastCommentAt ) ||
+      toDateMs( a.createdAt ) !== toDateMs( b.createdAt ) ||
+      toDateMs( a.updatedAt ) !== toDateMs( b.updatedAt )
     ) {
       return false;
     }

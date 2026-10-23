@@ -1,6 +1,7 @@
 // src/pages/versions/useVersionsDerivedModel.ts
 // Derives permissions, labels, columns, and reporting helpers for VersionsPage.
 import { useCallback, useMemo } from "react";
+import { sortThreadsByTime } from './threadOrdering';
 import { FIRST_VERSION_NUMBER, versionNumberToString } from "../../domain/types";
 import { reportAbnormalError, type MonitorDiagnosticDetails } from "../../lib/errorMonitor";
 import { mergeMonitorDiagnosticDetails } from "../../lib/monitoringDiagnostics";
@@ -67,6 +68,7 @@ const useVersionsDerivedModel = ({
     selectedFileRef,
     versionFileRefsById,
     threadsViewMode,
+    threadsSorting,
     isAdmin,
     isLeader,
     isBusy,
@@ -175,7 +177,8 @@ const useVersionsDerivedModel = ({
   const versionReportLabel = selectedVersion
     ? `${versionNumberToString(selectedVersion.number)} - ${selectedVersion.status}`
     : "";
-  const threadReportLabel = selectedThread?.title.trim() ?? "";
+  const threadReportLabel = selectedThread
+    ? `${selectedThread.issueNumber ? `#${selectedThread.issueNumber} - ` : ''}${selectedThread.title.trim()}` : '';
   const reportVersionsError = useCallback(
     (
       error2: unknown,
@@ -340,8 +343,8 @@ const useVersionsDerivedModel = ({
     setError,
   ]);
   const orderedThreads = useMemo(
-    () => (threadsViewMode === "table" ? visibleThreadRows : threads),
-    [threadsViewMode, visibleThreadRows, threads],
+    () => ( threadsViewMode === 'table' ? visibleThreadRows : sortThreadsByTime( threads, threadsSorting ) ),
+    [ threadsViewMode, visibleThreadRows, threads, threadsSorting ],
   );
   const selectedThreadIndex = useMemo(
     () =>

@@ -1080,13 +1080,17 @@ service cloud.firestore {
       allow read: if canReadReviewArtifacts(resource.data.projectId, resource.data.versionId);
       allow create: if canReviewContribute(request.resource.data.projectId, request.resource.data.versionId)
         && request.resource.data.status == 'open'
+        && request.resource.data.issueNumber is int
+        && request.resource.data.issueNumber > 0
+        && request.resource.data.issueNumber == versionNumThreads(versionDoc(request.resource.data.versionId).data) + 1
         && request.resource.data.title is string
         && request.resource.data.title.size() > 0
         && (
           isThreadCreateWithVersionStatIncrement(request.resource.data.versionId)
           || isThreadCreateWithInitialCommentVersionStatIncrement(request.resource.data.versionId)
         );
-      allow update: if (
+      allow update: if request.resource.data.get('issueNumber', null) == resource.data.get('issueNumber', null)
+        && ((
           canReviewContribute(resource.data.projectId, resource.data.versionId)
           && request.resource.data.projectId == resource.data.projectId
           && request.resource.data.versionId == resource.data.versionId
@@ -1117,7 +1121,7 @@ service cloud.firestore {
           )
         )
         || isThreadTitleUpdateAllowed()
-        || isAdminProjectIdBackfill();
+        || isAdminProjectIdBackfill());
       allow delete: if false;
     }
 

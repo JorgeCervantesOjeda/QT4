@@ -1,8 +1,9 @@
-// Issue and comment workspace for review-time collaboration on the selected version.
+// src/pages/versions/ReviewIssuesPanel.tsx: Issue and comment workspace for version reviews.
 import type { ColumnDef, OnChangeFn, SortingState } from '@tanstack/react-table'
 import type { Dispatch, ReactNode, RefObject, SetStateAction } from 'react'
 import { flushSync } from 'react-dom'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { sortThreadsByTime } from './threadOrdering'
 import DataTable from '../../components/DataTable'
 import FocusContextCarousel from '../../components/FocusContextCarousel'
 import ProgressModal from '../../components/ProgressModal'
@@ -216,6 +217,10 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
     isBusy,
   } = props
   const issueConversation = props.issueConversation
+  const orderedThreads = useMemo( () => sortThreadsByTime( threads, threadsSorting ), [ threads, threadsSorting ] )
+  const timeOrder = threadsSorting[0]
+  const selectedTimeOrder = timeOrder && [ 'createdAt', 'activityAt' ].includes( timeOrder.id )
+    ? `${timeOrder.id}:${timeOrder.desc ? 'desc' : 'asc'}` : ''
   const [showIssueComments, setShowIssueComments] = useState( false )
   const expandedConversationRef = useRef<HTMLDivElement | null>( null )
   const isSelectedIssue = (threadId: string) => threadId === effectiveSelectedThreadId && Boolean( issueConversation )
@@ -243,12 +248,30 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
       <h4>Created Issues</h4>
       <div className="actions">
         <ViewToggle label="Issue view" value={threadsViewMode} onChange={setThreadsViewMode} />
+        <label>
+          Issue order
+          <select
+            aria-label="Issue order"
+            value={selectedTimeOrder}
+            onChange={( event ) => {
+              const [ id, direction ] = event.target.value.split( ':' )
+              setThreadsSorting( id ? [ { id, desc: direction === 'desc' } ] : [] )
+            }}
+          >
+            <option value="">Default / table column order</option>
+            <option value="createdAt:desc">Created: newest first</option>
+            <option value="createdAt:asc">Created: oldest first</option>
+            <option value="activityAt:desc">Last activity: newest first</option>
+            <option value="activityAt:asc">Last activity: oldest first</option>
+          </select>
+        </label>
       </div>
+      <p className="muted">Last activity includes creation, updates and comments. Issues without a date appear last.</p>
       {threadsViewMode === 'focus' ? (
         <>
           <FocusContextCarousel
-            items={threads}
-            selectedId={effectiveSelectedThreadId ?? threads[0]?.id ?? null}
+            items={orderedThreads}
+            selectedId={effectiveSelectedThreadId ?? orderedThreads[0]?.id ?? null}
             getItemId={( thread ) => thread.id}
             getItemLabel={( thread ) => `Issue ${thread.title}`}
             ariaLabel="Review issues in focus view"
@@ -260,6 +283,7 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
               return (
                 <div className="focus-context-carousel__content">
                   <h4>{thread.title}</h4>
+                  <p className="muted">Issue ID: {thread.issueNumber ?? 'Unassigned'}</p>
                   <p className="muted">Status: {thread.status}</p>
                   {showDetail ? (
                     <>
@@ -301,7 +325,7 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
         <DataTable
           key={`qt4_table_versions_threads_${selectedVersion.id}`}
           columns={threadColumns}
-          data={threads}
+          data={orderedThreads}
           sorting={threadsSorting}
           onSortingChange={setThreadsSorting}
           onVisibleRowsChange={( nextRows ) =>
@@ -335,7 +359,7 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
         />
       ) : (
         <div className="project-grid">
-          {threads.map( ( thread ) => {
+          {orderedThreads.map( ( thread ) => {
             const commentWindowMeta = getThreadCommentWindowMeta( thread )
             return (
               <article
@@ -355,6 +379,7 @@ function ThreadBrowser( props: Pick<ReviewIssuesPanelProps,
                   onClick={() => handleSelectIssue( thread.id )}
                 >
                   <h4>{thread.title}</h4>
+                  <p className="muted">Issue ID: {thread.issueNumber ?? 'Unassigned'}</p>
                   <p className="muted">Status: {thread.status}</p>
                   <p className="muted">Created by: {formatUserLabel( thread.createdBy )}</p>
                   <p className="muted">Comments: {commentsByThread[thread.id]?.length ?? thread.commentCount}</p>

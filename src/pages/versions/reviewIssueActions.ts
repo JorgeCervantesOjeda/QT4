@@ -172,6 +172,7 @@ const createReviewIssueActions = (params: ReviewIssueActionParams) => {
             versionId: selectedVersion.id,
           });
           transaction.set(threadRef, {
+            issueNumber: currentStats.numThreads + 1,
             projectId,
             docId,
             versionId: selectedVersion.id,

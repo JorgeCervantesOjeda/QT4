@@ -1,4 +1,4 @@
-// Local view-model types for the Versions page. These summarize Firestore documents after normalization.
+// src/pages/versions/types.ts: View-model types for normalized version and issue documents.
 import type { FileStorageProviderKind } from '../../domain/types'
 import type { PropagatedErrorReportFailure } from '../../lib/propagatedErrorReports'
 
@@ -74,11 +74,14 @@ type FileRefSummary = {
 
 type ThreadSummary = {
   id: string
+  issueNumber?: number
   status: 'open' | 'closed'
   title: string
   createdBy: string
   commentCount: number
   lastCommentAt?: Date | null
+  createdAt?: Date | null
+  updatedAt?: Date | null
 }
 
 type CommentSummary = {

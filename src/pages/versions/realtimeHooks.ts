@@ -1,5 +1,6 @@
-// Firestore subscriptions for role, issue, and comment updates tied to the selected version.
+// src/pages/versions/realtimeHooks.ts: Firestore subscriptions for the selected version.
 import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
+import { parseThreadDate } from './threadOrdering'
 import {
   collection,
   doc,
@@ -16,7 +17,6 @@ import {
   areCommentsByThreadEqual,
   areThreadsEqual,
   isIndexBuildingFirestoreError,
-  toTimestampDate,
 } from './utils'
 
 type ReportVersionsError = (
@@ -206,11 +206,14 @@ const useThreadsAndCommentsSubscription = (params: {
           const data = threadSnapshot.data()
           return {
             id: threadSnapshot.id,
+            issueNumber: Number.isSafeInteger( data.issueNumber ) && data.issueNumber > 0 ? data.issueNumber : undefined,
             status: ( data.status as 'open' | 'closed' ) ?? 'open',
             title: ( data.title as string | undefined ) ?? 'Untitled issue',
             createdBy: ( data.createdBy as string | undefined ) ?? '',
             commentCount: Number( data.commentCount ?? 0 ),
-            lastCommentAt: toTimestampDate( data.lastCommentAt ),
+            lastCommentAt: parseThreadDate( data.lastCommentAt ),
+            createdAt: parseThreadDate( data.createdAt ),
+            updatedAt: parseThreadDate( data.updatedAt ),
           }
         } )
         setThreads( ( previous ) => ( areThreadsEqual( previous, nextThreads ) ? previous : nextThreads ) )

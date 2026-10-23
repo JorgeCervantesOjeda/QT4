@@ -1,5 +1,6 @@
 // functions/commentNotifications.js: Sends backend comment notifications and stages hourly digest events.
 const { FieldValue } = require( "firebase-admin/firestore" )
+const { formatIssueLabel } = require( './issueNumbering' )
 
 const { resolveNotificationPreferences } = require( "./notificationPreferences" )
 const {
@@ -129,7 +130,7 @@ const buildEmailText = ({ actorLabel, baseDocumentData, comment, directUrl, docu
     "A new comment was added.",
     `Document: ${documentLabel}`,
     `Version: ${versionNumberToString( version?.number )}`,
-    `Issue: ${thread?.title || "Untitled issue"}`,
+    `Issue: ${formatIssueLabel( thread )}`,
     `Comment author: ${actorLabel}`,
     "",
     "Comment:",
@@ -142,7 +143,7 @@ const buildEmailText = ({ actorLabel, baseDocumentData, comment, directUrl, docu
 
 const buildEmailHtml = ({ actorLabel, baseDocumentData, comment, directUrl, documentData, thread, version }) => {
   const documentLabel = buildDocumentLabel( documentData, baseDocumentData )
-  const issueTitle = thread?.title || "Untitled issue"
+  const issueTitle = formatIssueLabel( thread )
   return buildEmailDocument( {
     body: [
       '<h1 style="margin:0 0 20px;color:#172033;font-size:26px;">A new comment was added.</h1>',
@@ -205,6 +206,7 @@ const stageNotificationEvents = async ({
         actorLabel,
         documentLabel,
         issueTitle: thread?.title || "Untitled issue",
+        issueNumber: thread?.issueNumber ?? null,
         commentExcerpt: trimMultiline( comment.body, 500 ),
         directUrl,
         eventAt: serverTimestamp(),
@@ -245,6 +247,12 @@ const createCommentNotificationHandler = ({
     const baseDocumentData = documentData?.type === "errorReport" && documentData.baseDocId
       ? await loadDocument( db, "documents", documentData.baseDocId )
       : null
+    if( !Number.isSafeInteger( thread?.issueNumber ) || thread.issueNumber < 1 ) {
+      logger.warn( 'commentNotification issue number unavailable', {
+        threadId: comment.threadId, cause: 'Issue numbering migration has not assigned a valid number.',
+        fallback: 'Retain the issue title and direct link.', impact: 'The email has no numeric issue ID.',
+      } )
+    }
     if( documentData?.type === "errorReport" && !baseDocumentData ) {
       logger.warn( "commentNotification base document unavailable", {
         commentId,
@@ -304,7 +312,7 @@ const createCommentNotificationHandler = ({
       await sendTextEmail( {
         to: immediateRecipients.slice( 0, 1 ),
         cc: immediateRecipients.slice( 1 ),
-        subject: `New Comment: ${documentData?.type === "errorReport" ? "Error report: " : ""}${documentData?.shortId ?? "Unassigned"} - ${thread?.title || "Untitled issue"}`,
+        subject: `New Comment: ${documentData?.type === "errorReport" ? "Error report: " : ""}${documentData?.shortId ?? "Unassigned"} - ${formatIssueLabel( thread )}`,
         text: buildEmailText( {
           actorLabel,
           baseDocumentData,

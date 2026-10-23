@@ -238,6 +238,7 @@ test( "createHourlyNotificationDigestJob includes the complete open conversation
       "thread-1": {
         status: "open",
         title: "Missing evidence",
+        issueNumber: 7,
       },
     },
   } )
@@ -253,6 +254,7 @@ test( "createHourlyNotificationDigestJob includes the complete open conversation
   await job()
 
   assert.equal( emails.length, 1 )
+  assert.match( emails[0].text, /Issue: #7 - Missing evidence/u )
   assert.match( emails[0].text, /Earlier Author: Earlier comment from the same open conversation\./u )
   assert.match( emails[0].text, /Current User: Current comment\./u )
 } )
@@ -307,6 +309,7 @@ test( "createHourlyNotificationDigestJob sends one email per user and closed hou
   await job()
 
   assert.equal( emails.length, 1 )
+
   assert.deepEqual( emails[0].to, [ "user@example.com" ] )
   assert.match( emails[0].subject, /\[QT4\] Hourly activity summary/u )
   assert.match( emails[0].text, /Issue:/u )
@@ -402,4 +405,15 @@ test( "createHourlyNotificationDigestJob marks events skipped when digest prefer
   const eventUpdates = writes.filter( (write) => write.path === "notificationEvents/event-1" )
   assert.equal( eventUpdates.at( -1 ).data.digestStatus, "skipped" )
   assert.equal( eventUpdates.at( -1 ).data.digestSkipReason, "preference_disabled" )
+} )
+
+// Integration counterpart of numeric issue labels in immediate email and browser views.
+test( 'hourly email includes the stored issue number in text and HTML', () => {
+  const digest = buildHourlyNotificationDigest( [ {
+    id: 'numbered-event', threadId: 'thread-7', issueNumber: 7,
+    issueTitle: 'Missing evidence', commentExcerpt: 'Please add evidence.',
+    versionLabel: '1.00', documentLabel: 'Quality Plan', projectLabel: 'Project',
+  } ], '2026-10-23T15' )
+  assert.match( digest.text, /Issue: #7 - Missing evidence/u )
+  assert.match( digest.html, /#7 - Missing evidence/u )
 } )

@@ -74,6 +74,7 @@ UI 6 "Versions" actions {
   clicks "Assign author";
   clicks "Assign reviewer";
   clicks "Create issue";
+  selects "Issue order";
   clicks "Close issue";
   clicks "Reopen issue";
   clicks "Add comment";
@@ -260,6 +261,7 @@ FRAGMENT "Versions Lifecycle And Modals" {
   TRANSITION from 6 to 6 if user clicks "Assign author" AND "selected version is in 'In Creation' and user is leader or admin";
   TRANSITION from 6 to 6 if user clicks "Assign reviewer" AND "selected version is in 'In Creation' and user is selected author or leader or admin and reviewer is project member and reviewer is not selected author";
   TRANSITION from 6 to 6 if user clicks "Create issue" AND "selected version is in active review time and user can participate in review and issue title is provided";
+  TRANSITION from 6 to 6 if user selects "Issue order";
   TRANSITION from 6 to 6 if user clicks "Add comment" AND "selected issue is open and user can participate in review and comment body is provided and (selected version is in active review time or selected issue last comment is less than 1 hour old after review expiration)";
   TRANSITION from 6 to 6 if user waits "Review expiration and no comments" AND "selected version is in 'In Review' and now is after reviewEndAt and selected version has no comments and selected version becomes 'Reviewed'";
   TRANSITION from 6 to 6 if user waits "Review expiration and 1 hour since latest comment" AND "selected version is in 'In Review' and now is after reviewEndAt and latest selected version comment is at least 1 hour old and selected version becomes 'Reviewed'";

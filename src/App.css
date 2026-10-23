@@ -711,12 +711,15 @@
 }
 
 .data-table--threads {
-  --table-col-1: 10%;
-  --table-col-2: 18%;
-  --table-col-3: 9%;
-  --table-col-4: 17%;
-  --table-col-5: 10%;
-  --table-col-6: 36%;
+  --table-col-1: 8%;
+  --table-col-2: 13%;
+  --table-col-3: 7%;
+  --table-col-4: 12%;
+  --table-col-5: 8%;
+  --table-col-6: 21%;
+  --table-col-7: 13%;
+  --table-col-8: 13%;
+  --table-col-9: 5%;
 }
 
 .data-table--threads tr.thread-row--open td {
@@ -812,6 +815,8 @@
 .data-table col:nth-child(5) { width: var(--table-col-5, auto); }
 .data-table col:nth-child(6) { width: var(--table-col-6, auto); }
 .data-table col:nth-child(7) { width: var(--table-col-7, auto); }
+.data-table col:nth-child(8) { width: var(--table-col-8, auto); }
+.data-table col:nth-child(9) { width: var(--table-col-9, auto); }
 
 .dashboard-refresh {
   margin: 8px 0 0;

@@ -1,9 +1,10 @@
 // src/pages/versions/ReviewIssuesPanel.test.tsx: Verifies slow-action instrumentation in review issue AI controls.
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import { createRef, useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ReviewIssuesPanel from './ReviewIssuesPanel'
+import { useThreadColumns } from './columns'
 import type { CommentSummary, ThreadSummary, VersionSummary } from './types'
 
 const aiAssistMocks = vi.hoisted( () => ( {
@@ -131,6 +132,71 @@ const renderPanel = (overrides: Partial<ComponentProps<typeof ReviewIssuesPanel>
 }
 
 describe( 'ReviewIssuesPanel', () => {
+  // System counterpart: issue-ordering.spec.ts checks the same ID in all browser views.
+  it.each( [ 'card', 'table', 'focus' ] as const )( 'shows the permanent issue number in %s', ( threadsViewMode ) => {
+    const { result } = renderHook( () => useThreadColumns( {
+      formatUserLabel: ( userId ) => userId,
+      getThreadCommentWindowMeta: () => ( { label: 'Open' } ),
+      requestThreadStatusChangeConfirmation: vi.fn(), isBusy: false,
+    } ) )
+    renderPanel( { threadsViewMode, threadColumns: result.current,
+      threads: [ { ...selectedThread, issueNumber: 7 } ] } )
+    if( threadsViewMode === 'table' ) {
+      expect( screen.getByRole( 'cell', { name: '7' } ) ).toBeTruthy()
+    } else {
+      expect( screen.getByText( 'Issue ID: 7' ) ).toBeTruthy()
+    }
+  } )
+  // Linked to threadOrdering.test.ts and issue-ordering.spec.ts system coverage.
+  it.each( [ 'card', 'table', 'focus' ] as const )( 'offers both time criteria in %s view', ( threadsViewMode ) => {
+    const setThreadsSorting = vi.fn()
+    renderPanel( { threadsViewMode, setThreadsSorting } )
+    const control = screen.getByRole( 'combobox', { name: 'Issue order' } )
+    for( const [ value, id, desc ] of [
+      [ 'createdAt:desc', 'createdAt', true ],
+      [ 'createdAt:asc', 'createdAt', false ],
+      [ 'activityAt:desc', 'activityAt', true ],
+      [ 'activityAt:asc', 'activityAt', false ],
+    ] as const ) {
+      fireEvent.change( control, { target: { value } } )
+      expect( setThreadsSorting ).toHaveBeenLastCalledWith( [ { id, desc } ] )
+    }
+  } )
+
+  it.each( [ 'card', 'table', 'focus' ] as const )( 'renders chronological order in %s with real columns', ( threadsViewMode ) => {
+    const { result } = renderHook( () => useThreadColumns( {
+      formatUserLabel: ( userId ) => userId,
+      getThreadCommentWindowMeta: () => ( { label: 'Open' } ),
+      requestThreadStatusChangeConfirmation: vi.fn(),
+      isBusy: false,
+    } ) )
+    const threads = [
+      { ...selectedThread, createdAt: new Date( 1000 ), updatedAt: new Date( 5000 ) },
+      { ...secondThread, createdAt: new Date( 2000 ), updatedAt: new Date( 3000 ) },
+    ]
+    const { container, rerender } = renderPanel( {
+      threads, threadsViewMode, threadColumns: result.current,
+      threadsSorting: [ { id: 'createdAt', desc: true } ],
+    } )
+    const issueElements = threadsViewMode === 'table'
+      ? container.querySelectorAll( 'tbody tr:not(.data-table-row--expanded)' )
+      : container.querySelectorAll( threadsViewMode === 'card' ? 'article.project-card' : '.focus-context-carousel__content' )
+    expect( issueElements[0]?.textContent ).toContain( secondThread.title )
+    expect( issueElements[1]?.textContent ).toContain( selectedThread.title )
+    expect( screen.getByRole( 'combobox', { name: 'Issue order' } ) ).toHaveProperty( 'value', 'createdAt:desc' )
+    // A fresh render with the same inputs isolates activity ordering from creation ordering.
+    rerender( <></> )
+    const activity = renderPanel( {
+      threads, threadsViewMode, threadColumns: result.current,
+      threadsSorting: [ { id: 'activityAt', desc: true } ],
+    } )
+    const activityElements = activity.container.querySelectorAll( threadsViewMode === 'table'
+      ? 'tbody tr:not(.data-table-row--expanded)'
+      : threadsViewMode === 'card' ? 'article.project-card' : '.focus-context-carousel__content' )
+    expect( activityElements[0]?.textContent ).toContain( selectedThread.title )
+    expect( activityElements[1]?.textContent ).toContain( secondThread.title )
+  } )
+
   beforeEach( () => {
     scrollIntoViewMock.mockClear()
     Object.defineProperty( HTMLElement.prototype, 'scrollIntoView', {

@@ -1,5 +1,6 @@
 // src/pages/versions/columns.tsx: Defines table columns for versions, members, issues, and comments.
 import { useMemo } from "react";
+import { deriveThreadActivityAt } from './threadOrdering';
 import type { ColumnDef } from "@tanstack/react-table";
 import { versionNumberToString } from "../../domain/types";
 import { formatTimeAgoWithTimestamp } from "../../lib/time";
@@ -367,6 +368,29 @@ const useThreadColumns = (params: {
       {
         header: "Issue",
         accessorKey: "title",
+      },
+      {
+        header: 'Created',
+        id: 'createdAt',
+        accessorFn: ( thread ) => thread.createdAt?.getTime(),
+        sortingFn: 'basic',
+        sortUndefined: 'last',
+        cell: ( info ) => info.row.original.createdAt?.toLocaleString() ?? 'Unknown',
+      },
+      {
+        header: 'Last activity',
+        id: 'activityAt',
+        accessorFn: ( thread ) => deriveThreadActivityAt( thread )?.getTime(),
+        sortingFn: 'basic',
+        sortUndefined: 'last',
+        cell: ( info ) => deriveThreadActivityAt( info.row.original )?.toLocaleString() ?? 'Unknown',
+      },
+      {
+        header: 'Issue ID',
+        accessorKey: 'issueNumber',
+        sortingFn: 'basic',
+        sortUndefined: 'last',
+        cell: ( info ) => info.getValue<number | undefined>() ?? 'Unassigned',
       },
     ],
     [params],

@@ -425,6 +425,7 @@ describe( 'createReviewIssueActions', () => {
       text: 'Please add the evidence source used for this value.',
     } )
     expect( createdWrites[0]?.data ).toMatchObject( {
+      issueNumber: 2,
       title: 'Please add the evidence source used for this value',
       commentCount: 1,
       lastCommentBy: 'author-1',

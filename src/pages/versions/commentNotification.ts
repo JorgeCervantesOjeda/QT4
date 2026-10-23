@@ -83,6 +83,13 @@ const notifyCommentParticipants = async (
     commentBody.length > 1600
       ? `${commentBody.slice(0, 1600)}...`
       : commentBody;
+  const issueLabel = `${selectedThread.issueNumber ? `#${selectedThread.issueNumber} - ` : ''}${selectedThread.title.trim() || 'Untitled issue'}`;
+  if( !selectedThread.issueNumber ) {
+    console.warn( 'Issue email number unavailable', {
+      threadId: selectedThread.id, cause: 'Issue numbering migration has not assigned a number.',
+      fallback: 'Use the issue title and its direct link.', impact: 'The email has no numeric issue ID.',
+    } );
+  }
   try {
     params.setEmailNotifyStatus("sending");
     params.setEmailNotifyMessage("Sending comment notifications...");
@@ -93,11 +100,11 @@ const notifyCommentParticipants = async (
         Number.isFinite(documentData?.shortId)
           ? String(documentData?.shortId)
           : "Unassigned"
-      } - ${selectedThread.title.trim() || "Untitled issue"}`,
+      } - ${issueLabel}`,
       text: `A new comment was added.
 Document: ${docLabel}
 Version: ${versionNumberToString(selectedVersion.number)}
-Issue: ${selectedThread.title}
+Issue: ${issueLabel}
 Latest version author: ${params.formatUserLabel(latestVersionAuthorId)}
 Comment author: ${params.formatUserLabel(userId)}
 

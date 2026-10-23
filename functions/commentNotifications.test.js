@@ -19,6 +19,7 @@ test( "handler includes the latest version author when a comment targets an olde
   const sentEmails = []
   const store = {
     "threads/thread-1": {
+      issueNumber: 7,
       projectId: "project-1",
       docId: "doc-1",
       versionId: "version-old",
@@ -69,6 +70,11 @@ test( "handler includes the latest version author when a comment targets an olde
   } ) )
 
   assert.deepEqual( sentEmails[0].to, [ "latest@example.com" ] )
+  // Linked to issue-ordering.spec.ts: the UI and email identify the same stored number.
+  assert.match( sentEmails[0].subject, /#7/u )
+  assert.match( sentEmails[0].text, /Issue: #7 - Missing evidence/u )
+  assert.match( sentEmails[0].html, /#7 - Missing evidence/u )
+  assert.equal( writes.find( ( write ) => write.path.startsWith( 'notificationEvents/' ) ).data.issueNumber, 7 )
   assert.equal(
     writes.filter( (write) => write.path.startsWith( "notificationEvents/" ) )[0].data.userId,
     "latest-author",
@@ -205,7 +211,7 @@ test( "error-report identity survives notification handling and hourly digest re
     },
     "documents/base-1": { shortId: 12, title: "Evidence matrix" },
     "versions/report-version": { number: 100, createdBy: "reviewer" },
-    "threads/thread-1": { title: "Check evidence" },
+    "threads/thread-1": { title: "Check evidence", issueNumber: 1 },
     "userProfiles/reviewer": {
       email: "reviewer@example.com",
       notificationPreferences: { commentEmailEnabled: true },

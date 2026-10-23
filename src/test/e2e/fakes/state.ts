@@ -451,6 +451,7 @@ const createSeedState = (): FakeState => {
     timestamp: createdAt,
   } )
   withDoc( firestore, `threads/${REVIEW_GUARD_THREAD_ID}`, {
+    issueNumber: 1,
     projectId: REVIEW_GUARD_PROJECT_ID,
     docId: REVIEW_GUARD_DOCUMENT_ID,
     versionId: REVIEW_GUARD_VERSION_ID,
@@ -487,6 +488,7 @@ const createSeedState = (): FakeState => {
     updatedAt: guardResolvedAt,
   } )
   withDoc( firestore, `threads/${REVIEW_GUARD_THREAD_2_ID}`, {
+    issueNumber: 2,
     projectId: REVIEW_GUARD_PROJECT_ID,
     docId: REVIEW_GUARD_DOCUMENT_ID,
     versionId: REVIEW_GUARD_VERSION_ID,

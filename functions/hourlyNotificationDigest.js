@@ -1,4 +1,5 @@
 // functions/hourlyNotificationDigest.js: Sends per-user hourly digests for related notification events.
+const { formatIssueLabel } = require( './issueNumbering' )
 const {
   loadOpenConversationDigestEvents,
   loadUserProfile,
@@ -82,6 +83,7 @@ const normalizeEvent = (snapshot) => {
     documentLabel: trimSingleLine( data.documentLabel, 240 ) || "Document",
     versionLabel: trimSingleLine( data.versionLabel, 80 ) || "Version",
     issueTitle: trimSingleLine( data.issueTitle, 240 ) || "Untitled issue",
+    issueNumber: data.issueNumber,
     commentExcerpt: trimMultiline( data.commentExcerpt, 500 ),
     commentText,
     directUrl: trimSingleLine( data.directUrl, 1000 ),
@@ -193,7 +195,7 @@ const groupEventsForDigestText = (events, appOrigin) => {
     const issueKey = buildGroupKey( [ event.threadId, event.issueTitle ] )
     const issueGroup = getOrCreateDigestGroup( versionGroup.issuesByKey, issueKey, () => {
       const group = {
-        title: event.issueTitle,
+        title: formatIssueLabel( { title: event.issueTitle, issueNumber: event.issueNumber } ),
         issueUrl: buildIssueUrl( event, appOrigin ),
         comments: [],
       }

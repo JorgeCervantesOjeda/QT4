@@ -1,3 +1,4 @@
+// src/test/e2e/fakes/firestore.ts: In-memory Firestore API for browser system tests.
 import {
   DELETE_FIELD_SENTINEL,
   FakeTimestamp,
@@ -40,12 +41,14 @@ type QueryReference = {
 }
 
 type FakeDocumentSnapshot = {
+  metadata: { fromCache: boolean; hasPendingWrites: boolean }
   id: string
   exists: () => boolean
   data: () => Record<string, unknown>
 }
 
 type FakeQuerySnapshot = {
+  metadata: { fromCache: boolean; hasPendingWrites: boolean }
   docs: FakeDocumentSnapshot[]
   empty: boolean
   size: number
@@ -74,6 +77,7 @@ const makeDocSnapshot = (ref: DocumentReference): FakeDocumentSnapshot => {
   const data = getDocData( ref.path )
   return {
     id: ref.id,
+    metadata: { fromCache: false, hasPendingWrites: false },
     exists: () => Boolean( data ),
     data: () => ( data ? structuredCloneFallback( data ) : {} ),
   }
@@ -84,6 +88,7 @@ const makeQuerySnapshot = (target: CollectionReference | QueryReference): FakeQu
   const docs = applyQuery( queryRef ).map( (entry) => makeDocSnapshot( { kind: 'doc', path: entry.path, id: entry.id } ) )
   return {
     docs,
+    metadata: { fromCache: false, hasPendingWrites: false },
     empty: docs.length === 0,
     size: docs.length,
     forEach: (callback) => {
