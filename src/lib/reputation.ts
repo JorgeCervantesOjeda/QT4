@@ -49,6 +49,7 @@ export type ReputationSummary = {
 export type ReputationPointRule = {
   category: ReputationCategory;
   points: number;
+  pointMultiplier?: number;
   reason: string;
   sequenceKey?: ReputationSequenceKey;
 };
@@ -108,6 +109,7 @@ const POINT_RULES: Record<ReputationEventType, ReputationPointRule> = {
   goodReactionReceived: {
     category: 'collaboration',
     points: 1,
+    pointMultiplier: 0.25,
     reason: 'Received a good reaction on a comment',
     sequenceKey: 'goodReaction',
   },
@@ -175,9 +177,7 @@ export const getCommentReactionPointsDelta = (
   previousReaction: CommentReaction | null,
   nextReaction: CommentReaction,
 ): number => {
-  const previousPoints = previousReaction === 'good' ? 1 : 0;
-  const nextPoints = nextReaction === 'good' ? 1 : 0;
-  return nextPoints - previousPoints;
+  return previousReaction !== 'good' && nextReaction === 'good' ? 0.25 : 0;
 };
 
 export const deriveBadgeIds = (

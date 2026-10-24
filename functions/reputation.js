@@ -7,7 +7,7 @@ const SEQUENCE_BOUNDARY_TEMPLATES = Object.freeze( [ 1, 2, 5 ] )
 const POINT_RULES = Object.freeze( {
   threadCreated: { category: "collaboration", points: 1, reason: "Created a discussion thread", sequenceKey: "reviewParticipation" },
   commentCreated: { category: "collaboration", points: 1, reason: "Added a comment", sequenceKey: "reviewParticipation" },
-  goodReactionReceived: { category: "collaboration", points: 1, reason: "Received a good reaction on a comment", sequenceKey: "goodReaction" },
+  goodReactionReceived: { category: "collaboration", points: 1, pointMultiplier: 0.25, reason: "Received a good reaction on a comment", sequenceKey: "goodReaction" },
   reviewCompleted: { category: "review", points: 0, reason: "Completed an active review" },
   reviewAbsence: { category: "review", points: -1, reason: "Did not participate in an assigned review" },
   acceptedVersion: { category: "quality", points: 1, reason: "Created an accepted version", sequenceKey: "acceptedDocument" },
@@ -160,6 +160,7 @@ const buildReputationEvent = ({
     sourceId,
     category: rule.category,
     points: pointsOverride ?? rule.points,
+    pointMultiplier: rule.pointMultiplier ?? 1,
     reason: rule.reason,
     ...( rule.sequenceKey ? { sequenceKey: rule.sequenceKey } : {} ),
     counterField,
@@ -282,10 +283,12 @@ const getSequenceSeed = ({ currentSummary, sequenceKey, logger }) => {
 
 const resolveSequencedEvent = ({ currentSummary, event, previousEvent, previousCounter, logger }) => {
   const requestedPoints = numericValue( event.points, "points", logger )
+  const pointMultiplier = event.pointMultiplier ?? 1
   if( !event.sequenceKey ) {
+    const points = requestedPoints * pointMultiplier
     return {
-      event: { ...event, points: requestedPoints },
-      points: requestedPoints,
+      event: { ...event, basePoints: requestedPoints, pointMultiplier, points },
+      points,
       sequenceNumber: null,
       shouldWriteCounter: false,
     }
@@ -301,9 +304,10 @@ const resolveSequencedEvent = ({ currentSummary, event, previousEvent, previousC
     ? storedCounterNumber
     : getSequenceSeed( { currentSummary, sequenceKey: event.sequenceKey, logger } )
   const sequenceNumber = previousSequenceNumber || ( requestedPoints > 0 ? seed + 1 : null )
-  const points = requestedPoints > 0 && sequenceNumber
+  const basePoints = requestedPoints > 0 && sequenceNumber
     ? getSequencePoints( sequenceNumber )
     : requestedPoints
+  const points = basePoints * pointMultiplier
   const sequenceInterval = sequenceNumber ? getSequenceInterval( sequenceNumber ) : null
   const counterNumber = sequenceNumber ? Math.max( seed, sequenceNumber ) : seed
   const shouldWriteCounter = Boolean(
@@ -312,6 +316,8 @@ const resolveSequencedEvent = ({ currentSummary, event, previousEvent, previousC
   return {
     event: {
       ...event,
+      basePoints,
+      pointMultiplier,
       points,
       ...( sequenceNumber ? {
         sequenceNumber,
@@ -354,6 +360,9 @@ const applySequencedReputationEvent = async ({ admin, event, logger }) => {
     const previousEvent = readSnapshotData( eventSnapshot )
     const previousPoints = numericValue( previousEvent?.points, "points", logger )
     const requestedPoints = numericValue( event.points, "points", logger )
+    if( previousEvent && previousPoints > 0 && event.sourceType === "commentReaction" ) {
+      return false
+    }
     if( previousEvent && previousPoints > 0 && requestedPoints > 0 && !previousEvent.sequenceNumber ) {
       return false
     }
@@ -611,6 +620,10 @@ const createReactionReputationHandler = ({ admin, logger }) => async (event) => 
   const reaction = after || before
   if( !reactionId || !reaction?.commentId ) {
     logger.warn( "Skipping reaction reputation event with incomplete data.", { reactionId, reaction } )
+    return
+  }
+  // Reaction awards are permanent: neutral/negative changes and deletion never deduct points.
+  if( after?.reaction !== "good" ) {
     return
   }
   const db = getDb( admin )

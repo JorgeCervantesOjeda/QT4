@@ -91,19 +91,28 @@ await db.doc( 'commentReactions/reputation-reaction-1' ).set( {
   userId: reviewerId,
   reaction: 'good',
 } )
-await waitForDocument( memberSummaryPath, (data) => data.totalPoints === 3 && data.goodReactionCount === 1, 'good reaction reputation' )
-assert.equal( ( await readDocument( 'reputationEvents/reactionGood:reputation-reaction-1' ) ).points, 1 )
+await waitForDocument( memberSummaryPath, (data) => data.totalPoints === 2.25 && data.goodReactionCount === 1, 'good reaction reputation' )
+assert.equal( ( await readDocument( 'reputationEvents/reactionGood:reputation-reaction-1' ) ).points, 0.25 )
 
 await db.doc( 'commentReactions/reputation-reaction-1' ).update( { reaction: 'regular' } )
-await waitForDocument( memberSummaryPath, (data) => data.totalPoints === 2 && data.goodReactionCount === 0, 'reaction reversal' )
-assert.equal( ( await readDocument( 'reputationEvents/reactionGood:reputation-reaction-1' ) ).active, false )
+await sleep( 750 )
+assert.equal( ( await readDocument( memberSummaryPath ) ).totalPoints, 2.25 )
+assert.equal( ( await readDocument( memberSummaryPath ) ).goodReactionCount, 1 )
+await db.doc( 'commentReactions/reputation-reaction-1' ).update( { reaction: 'bad' } )
+await db.doc( 'commentReactions/reputation-reaction-1' ).delete()
+await db.doc( 'commentReactions/reputation-reaction-1' ).set( {
+  projectId: projectIdForTest, commentId: 'reputation-comment-1', userId: reviewerId, reaction: 'good',
+} )
+await sleep( 750 )
+assert.equal( ( await readDocument( memberSummaryPath ) ).totalPoints, 2.25 )
+assert.equal( ( await readDocument( 'reputationEvents/reactionGood:reputation-reaction-1' ) ).active, true )
 
 await db.doc( 'versions/reputation-version-1' ).update( {
   status: 'Accepted',
 } )
 
 await waitForDocument( reviewerSummaryPath, (data) => data.totalPoints === -1 && data.completedReviewCount === 0, 'reviewer reputation' )
-await waitForDocument( memberSummaryPath, (data) => data.totalPoints === 3 && data.acceptedVersionCount === 1, 'accepted version reputation' )
+await waitForDocument( memberSummaryPath, (data) => data.totalPoints === 3.25 && data.acceptedVersionCount === 1, 'accepted version reputation' )
 
 assert.equal( ( await readDocument( 'reputationEvents/reviewAbsence:reputation-version-1:user-reviewer-1' ) ).points, -1 )
 assert.equal( ( await readDocument( 'reputationEvents/acceptedVersion:reputation-version-1' ) ).points, 1 )
@@ -124,7 +133,7 @@ const secondSummary = await waitForDocument(
 assert.equal( secondSummary.totalPoints, 2 + 1 / 3 )
 assert.ok( secondSummary.badgeIds.includes( 'issue-spotter' ) )
 const firstSummary = await readDocument( memberSummaryPath )
-assert.equal( firstSummary.totalPoints, 3 )
+assert.equal( firstSummary.totalPoints, 3.25 )
 assert.equal( firstSummary.threadCount, 1 )
 assert.equal( firstSummary.badgeIds.includes( 'issue-spotter' ), false )
 assert.equal( ( await readDocument( `reputationSequenceCounters/${projectIdForTest}_${memberId}_reviewParticipation` ) ).sequenceNumber, 2 )

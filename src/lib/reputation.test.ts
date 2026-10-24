@@ -49,11 +49,11 @@ describe('contribution point policy', () => {
     expect(getSequencePoints(position)).toBe(points);
   });
 
-  it('reverses only the active good-reaction contribution', () => {
-    expect(getCommentReactionPointsDelta(null, 'good')).toBe(1);
-    expect(getCommentReactionPointsDelta('good', 'regular')).toBe(-1);
-    expect(getCommentReactionPointsDelta('regular', 'good')).toBe(1);
-    expect(getCommentReactionPointsDelta('good', 'bad')).toBe(-1);
+  it('gives reactions a quarter weight without negative reaction deductions', () => {
+    expect(getCommentReactionPointsDelta(null, 'good')).toBe(0.25);
+    expect(getCommentReactionPointsDelta('good', 'regular')).toBe(0);
+    expect(getCommentReactionPointsDelta('regular', 'good')).toBe(0.25);
+    expect(getCommentReactionPointsDelta('good', 'bad')).toBe(0);
     expect(getCommentReactionPointsDelta('bad', 'regular')).toBe(0);
   });
 });

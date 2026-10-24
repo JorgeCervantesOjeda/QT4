@@ -96,6 +96,7 @@ test( "positive reputation rules use the sequence base while special events keep
   assert.equal( POINT_RULES.threadCreated.points, 1 )
   assert.equal( POINT_RULES.commentCreated.points, 1 )
   assert.equal( POINT_RULES.goodReactionReceived.points, 1 )
+  assert.equal( POINT_RULES.goodReactionReceived.pointMultiplier, 0.25 )
   assert.equal( POINT_RULES.acceptedVersion.points, 1 )
   assert.equal( POINT_RULES.acceptedErrorReport.points, 1 )
   assert.equal( POINT_RULES.reviewCompleted.points, 0 )
@@ -193,9 +194,9 @@ test( "sequenced reactions and accepted documents use independent cumulative sch
     } )
   }
 
-  assert.equal( db.read( "reputationEvents/reactionGood:reaction-1" ).points, 1 )
-  assert.equal( db.read( "reputationEvents/reactionGood:reaction-2" ).points, 1 )
-  assert.equal( db.read( "reputationEvents/reactionGood:reaction-3" ).points, 1 / 3 )
+  assert.equal( db.read( "reputationEvents/reactionGood:reaction-1" ).points, 0.25 )
+  assert.equal( db.read( "reputationEvents/reactionGood:reaction-2" ).points, 0.25 )
+  assert.equal( db.read( "reputationEvents/reactionGood:reaction-3" ).points, 1 / 12 )
   assert.equal( db.read( "reputationEvents/reactionGood:reaction-3" ).sequenceKey, "goodReaction" )
   assert.equal( db.read( "reputationEvents/acceptedVersion:version-1" ).points, 1 )
   assert.equal( db.read( "reputationEvents/acceptedVersion:version-2" ).points, 1 )
@@ -341,7 +342,7 @@ test( "review completion rewards active assigned reviewers and penalizes inactiv
   assert.equal( db.read( "reputationSummaries/project-1_author-1" ).totalPoints, 1 )
 } )
 
-test( "changing a good reaction to a regular reaction reverses the prior contribution", async () => {
+test( "changing a good reaction preserves the previously earned points and badges", async () => {
   const db = createFakeDb( {
     "comments/comment-1": {
       projectId: "project-1",
@@ -381,9 +382,45 @@ test( "changing a good reaction to a regular reaction reverses the prior contrib
     },
   } )
 
-  assert.equal( db.read( "reputationSummaries/project-1_comment-author" ).totalPoints, 0 )
-  assert.equal( db.read( "reputationSummaries/project-1_comment-author" ).goodReactionCount, 0 )
-  assert.deepEqual( db.read( "reputationSummaries/project-1_comment-author" ).badgeIds, [] )
+  assert.equal( db.read( "reputationSummaries/project-1_comment-author" ).totalPoints, 2 )
+  assert.equal( db.read( "reputationSummaries/project-1_comment-author" ).goodReactionCount, 1 )
+  assert.deepEqual( db.read( "reputationSummaries/project-1_comment-author" ).badgeIds, [ "first-contribution" ] )
+} )
+
+// Integration: reputation_functions_emulator.mjs; system: reputation.emulator.spec.ts.
+test( "reaction changes, deletion, and retries preserve one quarter award per project", async () => {
+  const db = createFakeDb( {
+    "comments/comment-a": { projectId: "project-a", createdBy: "author" },
+    "comments/comment-b": { projectId: "project-b", createdBy: "author" },
+  } )
+  const handler = createReactionReputationHandler( { admin: createAdmin( db ), logger } )
+  for( const project of [ "a", "b" ] ) {
+    let before
+    let hasAward = false
+    for( const reaction of [ "bad", "regular", "good", "bad", "regular", undefined, "good", "good" ] ) {
+      const after = reaction ? { commentId: `comment-${project}`, reaction } : undefined
+      await handler( {
+        params: { reactionId: `reaction-${project}` },
+        data: { before: createSnapshot( `reaction-${project}`, before ), after: createSnapshot( `reaction-${project}`, after ) },
+      } )
+      hasAward = hasAward || reaction === "good"
+      if( !hasAward ) {
+        assert.equal( db.read( `reputationSummaries/project-${project}_author` ), undefined )
+      } else {
+        assert.equal( db.read( `reputationSummaries/project-${project}_author` ).totalPoints, 0.25 )
+      }
+      before = after
+    }
+    const summary = db.read( `reputationSummaries/project-${project}_author` )
+    assert.equal( summary.totalPoints, 0.25 )
+    assert.equal( summary.goodReactionCount, 1 )
+    assert.equal( summary.contributionCount, 1 )
+    assert.deepEqual( summary.badgeIds, [ "first-contribution" ] )
+    const event = db.read( `reputationEvents/reactionGood:reaction-${project}` )
+    assert.equal( event.basePoints, 1 )
+    assert.equal( event.pointMultiplier, 0.25 )
+    assert.equal( event.sequenceNumber, 1 )
+  }
 } )
 
 test( "returning a reaction to good reuses its existing sequence position", async () => {
@@ -474,7 +511,7 @@ test( "missing sequence counters are seeded from existing summary counters", asy
 
   const event = db.read( "reputationEvents/reactionGood:reaction-1" )
   assert.equal( event.sequenceNumber, 3 )
-  assert.equal( event.points, 1 / 3 )
+  assert.equal( event.points, 1 / 12 )
   assert.equal( db.read( "reputationSequenceCounters/project-1_comment-author_goodReaction" ).sequenceNumber, 3 )
 } )
 
