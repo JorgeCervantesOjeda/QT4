@@ -29,6 +29,16 @@
   gap: 4px;
 }
 
+.contribution-project-card .contribution-summary,
+.account-contribution-overview__project .contribution-summary {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.contribution-project-card .contribution-summary__dimensions,
+.account-contribution-overview__project .contribution-summary__dimensions {
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+}
+
 .contribution-summary__label {
   color: var(--qt-ink-strong);
   font-weight: 700;

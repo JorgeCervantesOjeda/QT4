@@ -131,6 +131,29 @@ test( "sequenced review participation uses the cumulative 1, 1, 1/3 schedule", a
   )
 } )
 
+// Integration counterpart: tools/reputation_functions_emulator.mjs; system: reputation.emulator.spec.ts.
+test( "one user's points, badge thresholds, and sequences stay isolated across projects", async () => {
+  const db = createFakeDb()
+  const handler = createThreadReputationHandler( { admin: createAdmin( db ), logger } )
+  for( const [projectId, countOfThreads] of [ [ "project-1", 3 ], [ "project-2", 1 ] ] ) {
+    for( let indexOfThread = 1; indexOfThread <= countOfThreads; indexOfThread += 1 ) {
+      const threadId = `${projectId}-${indexOfThread}`
+      await handler( {
+        params: { threadId },
+        data: createSnapshot( threadId, { projectId, createdBy: "user-1", versionId: `${threadId}-version` } ),
+      } )
+    }
+  }
+  const first = db.read( "reputationSummaries/project-1_user-1" )
+  const second = db.read( "reputationSummaries/project-2_user-1" )
+  assert.equal( first.totalPoints, 2 + 1 / 3 )
+  assert.equal( second.totalPoints, 1 )
+  assert.ok( first.badgeIds.includes( "issue-spotter" ) )
+  assert.deepEqual( second.badgeIds, [ "first-contribution" ] )
+  assert.equal( db.read( "reputationSequenceCounters/project-1_user-1_reviewParticipation" ).sequenceNumber, 3 )
+  assert.equal( db.read( "reputationSequenceCounters/project-2_user-1_reviewParticipation" ).sequenceNumber, 1 )
+} )
+
 test( "sequenced reactions and accepted documents use independent cumulative schedules", async () => {
   const db = createFakeDb( {
     "documents/document-1": { type: "document" },

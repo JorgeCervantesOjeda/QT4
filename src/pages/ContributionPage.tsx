@@ -1,6 +1,6 @@
 // src/pages/ContributionPage.tsx: Shows a signed-in user's project-scoped contribution history.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import AppBrand from '../components/AppBrand'
@@ -51,38 +51,6 @@ function ContributionPage() {
     }
   }, [ userId ] )
 
-  const aggregateSummary = useMemo( () => data.summaries.reduce(
-    (aggregate, summary) => ( {
-      ...aggregate,
-      totalPoints: aggregate.totalPoints + summary.totalPoints,
-      collaborationPoints: aggregate.collaborationPoints + summary.collaborationPoints,
-      reviewPoints: aggregate.reviewPoints + summary.reviewPoints,
-      qualityPoints: aggregate.qualityPoints + summary.qualityPoints,
-      contributionCount: aggregate.contributionCount + summary.contributionCount,
-      threadCount: aggregate.threadCount + summary.threadCount,
-      commentCount: aggregate.commentCount + summary.commentCount,
-      goodReactionCount: aggregate.goodReactionCount + summary.goodReactionCount,
-      completedReviewCount: aggregate.completedReviewCount + summary.completedReviewCount,
-      acceptedVersionCount: aggregate.acceptedVersionCount + summary.acceptedVersionCount,
-    } ),
-    {
-      projectId: 'all-projects',
-      userId,
-      totalPoints: 0,
-      collaborationPoints: 0,
-      reviewPoints: 0,
-      qualityPoints: 0,
-      contributionCount: 0,
-      threadCount: 0,
-      commentCount: 0,
-      goodReactionCount: 0,
-      completedReviewCount: 0,
-      acceptedVersionCount: 0,
-      badgeIds: [],
-      updatedAt: null,
-    },
-  ), [ data.summaries, userId ] )
-
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -113,11 +81,6 @@ function ContributionPage() {
                   <p className="muted">What you did, what it earned, and your progress by project.</p>
                 </div>
               </div>
-              <ContributionSummary
-                summary={aggregateSummary}
-                title="Contribution totals across projects"
-                totalLabel="Points across all projects"
-              />
             </section>
             <section className="panel stack">
               <div className="panel-header">
@@ -134,6 +97,8 @@ function ContributionPage() {
                       <strong>{formatReputationPoints( summary.totalPoints )} pts</strong>
                     </div>
                     <p className="muted">{summary.contributionCount} contributions · {summary.badgeIds.length} badges earned</p>
+                    <ContributionSummary summary={summary} title="Project contribution summary" />
+                    <BadgeGrid unlockedBadgeIds={summary.badgeIds} />
                     {getProjectContributionPath( projectDisplayInfo[summary.projectId] ) ? (
                       <Link
                         className="link"
@@ -151,25 +116,16 @@ function ContributionPage() {
             <section className="panel stack">
               <div className="panel-header">
                 <div>
-                  <h2>Your badges</h2>
-                  <p className="muted">Badges are earned separately in each project.</p>
-                </div>
-              </div>
-              {data.summaries.map( (summary) => (
-                <div className="stack" key={`badges-${summary.projectId}`}>
-                  <h3>{formatProjectDisplayLabel( summary.projectId, projectDisplayInfo[summary.projectId] )}</h3>
-                  <BadgeGrid unlockedBadgeIds={summary.badgeIds} />
-                </div>
-              ) )}
-            </section>
-            <section className="panel stack">
-              <div className="panel-header">
-                <div>
                   <h2>Recent activity</h2>
                   <p className="muted">Each row explains what changed your score.</p>
                 </div>
               </div>
-              <ContributionHistoryTable events={data.events} />
+              {data.summaries.map( (summary) => (
+                <section className="stack" key={summary.projectId}>
+                  <h3>{formatProjectDisplayLabel( summary.projectId, projectDisplayInfo[summary.projectId] )}</h3>
+                  <ContributionHistoryTable events={data.events.filter( (event) => event.projectId === summary.projectId )} />
+                </section>
+              ) )}
             </section>
           </>
         ) : null}

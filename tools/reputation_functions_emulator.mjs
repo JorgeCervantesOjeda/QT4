@@ -108,4 +108,25 @@ await waitForDocument( memberSummaryPath, (data) => data.totalPoints === 3 && da
 assert.equal( ( await readDocument( 'reputationEvents/reviewAbsence:reputation-version-1:user-reviewer-1' ) ).points, -1 )
 assert.equal( ( await readDocument( 'reputationEvents/acceptedVersion:reputation-version-1' ) ).points, 1 )
 assert.equal( ( await readDocument( 'reputationEvents/acceptedVersion:reputation-version-1' ) ).sequenceNumber, 1 )
+// Links the server isolation unit contract to the two-project browser system checks.
+for( let indexOfThread = 1; indexOfThread <= 3; indexOfThread += 1 ) {
+  await db.doc( `threads/second-reputation-thread-${indexOfThread}` ).set( {
+    projectId: 'project-e2e-second', createdBy: memberId,
+    title: 'Second project contribution', docId: 'second-document',
+    versionId: `second-version-${indexOfThread}`,
+  } )
+}
+const secondSummary = await waitForDocument(
+  `reputationSummaries/project-e2e-second_${memberId}`,
+  (data) => data.threadCount === 3,
+  'second project independent points and badges',
+)
+assert.equal( secondSummary.totalPoints, 2 + 1 / 3 )
+assert.ok( secondSummary.badgeIds.includes( 'issue-spotter' ) )
+const firstSummary = await readDocument( memberSummaryPath )
+assert.equal( firstSummary.totalPoints, 3 )
+assert.equal( firstSummary.threadCount, 1 )
+assert.equal( firstSummary.badgeIds.includes( 'issue-spotter' ), false )
+assert.equal( ( await readDocument( `reputationSequenceCounters/${projectIdForTest}_${memberId}_reviewParticipation` ) ).sequenceNumber, 2 )
+assert.equal( ( await readDocument( `reputationSequenceCounters/project-e2e-second_${memberId}_reviewParticipation` ) ).sequenceNumber, 3 )
 console.log( 'Reputation Functions emulator integration passed.' )

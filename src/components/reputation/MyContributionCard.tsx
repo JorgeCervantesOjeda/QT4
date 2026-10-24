@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/useAuth'
-import { formatReputationPoints, loadUserReputation } from '../../lib/reputationData'
+import { formatReputationPoints, loadUserReputation, type UserReputationData } from '../../lib/reputationData'
 import ProgressModal from '../ProgressModal'
+import { formatProjectDisplayLabel, loadProjectDisplayInfo, type ProjectDisplayInfo } from '../../lib/projectDisplay'
 import ContributionStatus from './ContributionStatus'
 import './reputation.css'
 
@@ -12,8 +13,8 @@ function MyContributionCard() {
   const { user } = useAuth()
   const userId = user?.uid ?? ''
   const [status, setStatus] = useState<'loading' | 'ready' | 'empty' | 'error'>( userId ? 'loading' : 'error' )
-  const [totalPoints, setTotalPoints] = useState( 0 )
-  const [projectCount, setProjectCount] = useState( 0 )
+  const [data, setData] = useState<UserReputationData>( { summaries: [], events: [] } )
+  const [projectDisplayInfo, setProjectDisplayInfo] = useState<Record<string, ProjectDisplayInfo>>( {} )
   const [errorMessage, setErrorMessage] = useState( userId ? '' : 'Sign in to view your contributions.' )
 
   useEffect( () => {
@@ -23,11 +24,11 @@ function MyContributionCard() {
         active = false
       }
     }
-    void loadUserReputation( userId ).then( (data) => {
+    void loadUserReputation( userId ).then( async (data) => {
+      const info = await loadProjectDisplayInfo( data.summaries.map( (summary) => summary.projectId ) )
       if( !active ) return
-      const nextTotal = data.summaries.reduce( (sum, summary) => sum + summary.totalPoints, 0 )
-      setTotalPoints( nextTotal )
-      setProjectCount( data.summaries.length )
+      setData( data )
+      setProjectDisplayInfo( info )
       setStatus( data.summaries.length > 0 ? 'ready' : 'empty' )
     } ).catch( (err) => {
       if( !active ) return
@@ -42,7 +43,12 @@ function MyContributionCard() {
 
   const content = useMemo( () => {
     if( status === 'ready' ) {
-      return <p className="contribution-card__metric"><strong>{formatReputationPoints( totalPoints )}</strong> points across {projectCount} project{projectCount === 1 ? '' : 's'}</p>
+      return <div className="stack">{data.summaries.map( (summary) => (
+        <article key={summary.projectId}>
+          <h3>{formatProjectDisplayLabel( summary.projectId, projectDisplayInfo[summary.projectId] )}</h3>
+          <p className="contribution-card__metric"><strong>{formatReputationPoints( summary.totalPoints )} pts</strong> · {summary.badgeIds.length} badges</p>
+        </article>
+      ) )}</div>
     }
     if( status === 'empty' ) {
       return <ContributionStatus status="empty" message="Your first contribution will appear here." />
@@ -51,7 +57,7 @@ function MyContributionCard() {
       return <ContributionStatus status="error" message={errorMessage} />
     }
     return null
-  }, [ errorMessage, projectCount, status, totalPoints ] )
+  }, [ data.summaries, errorMessage, projectDisplayInfo, status ] )
 
   return (
     <section className="panel contribution-card" aria-label="My contribution">

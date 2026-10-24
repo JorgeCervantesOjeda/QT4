@@ -66,6 +66,14 @@ const seedState = async () => {
     createdAt: timestamp,
     updatedAt: timestamp,
   } )
+  batch.set( db.doc( 'projects/project-e2e-second' ), {
+    name: 'Second Reputation Project', leaderId: member.uid, shortId: 902,
+    isActive: true, createdAt: timestamp, updatedAt: timestamp,
+  } )
+  batch.set( db.doc( 'projectMembers/project-e2e-second_user-member-1' ), {
+    projectId: 'project-e2e-second', userId: member.uid, role: 'leader',
+    email: member.email, createdAt: timestamp, updatedAt: timestamp,
+  } )
   await batch.commit()
 }
 

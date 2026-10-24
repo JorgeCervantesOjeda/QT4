@@ -1,6 +1,6 @@
 // src/pages/ContributionPage.test.tsx: Verifies personal contribution loading, empty, and ready states.
 
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
@@ -100,9 +100,9 @@ describe( 'ContributionPage', () => {
 
     expect( await screen.findByText( 'Your contribution summary' ) ).toBeTruthy()
     expect( screen.getByText( 'What you did, what it earned, and your progress by project.' ) ).toBeTruthy()
-    expect( screen.getByText( 'Points across all projects' ) ).toBeTruthy()
+    expect( screen.queryByText( 'Points across all projects' ) ).toBeNull()
     expect( screen.getByText( 'Your projects' ) ).toBeTruthy()
-    expect( screen.getByText( 'Your badges' ) ).toBeTruthy()
+    expect( screen.getByText( 'First contribution' ) ).toBeTruthy()
     expect( screen.getByText( 'Recent activity' ) ).toBeTruthy()
     expect( screen.getByRole( 'columnheader', { name: 'What happened' } ) ).toBeTruthy()
     expect( screen.getByRole( 'columnheader', { name: 'Area' } ) ).toBeTruthy()
@@ -122,5 +122,28 @@ describe( 'ContributionPage', () => {
     renderWithAuth( <ContributionPage /> )
 
     expect( await screen.findByText( 'No project contributions have been recorded yet.' ) ).toBeTruthy()
+  } )
+
+  it( 'keeps points, dimensions, and badges separate for two projects', async () => {
+    reputationMocks.loadUserReputation.mockResolvedValue( {
+      summaries: [ data.summaries[0], {
+        ...data.summaries[0], projectId: 'project-2', totalPoints: 20,
+        collaborationPoints: 20, qualityPoints: 0, badgeIds: [],
+      } ], events: data.events,
+    } )
+    reputationMocks.loadProjectDisplayInfo.mockResolvedValue( {
+      'project-1': { name: 'Quality review', shortId: 7 },
+      'project-2': { name: 'Second project', shortId: 8 },
+    } )
+    renderWithAuth( <ContributionPage /> )
+    const first = ( await screen.findAllByRole( 'heading', { name: 'Quality review' } ) )[0].closest( 'article' )!
+    const second = screen.getAllByRole( 'heading', { name: 'Second project' } )[0].closest( 'article' )!
+    expect( within( first ).getByText( '5 pts' ) ).toBeTruthy()
+    expect( within( second ).getByText( '20 pts' ) ).toBeTruthy()
+    expect( within( first ).getByText( 'First contribution' ).closest( '[data-badge-id]' )?.className ).toContain( 'badge-card--unlocked' )
+    expect( within( second ).getByText( 'First contribution' ).closest( '[data-badge-id]' )?.className ).toContain( 'badge-card--locked' )
+    expect( screen.queryByText( '25' ) ).toBeNull()
+    expect( screen.queryByText( 'Points across all projects' ) ).toBeNull()
+    expect( screen.queryByText( 'All project totals combined' ) ).toBeNull()
   } )
 } )

@@ -70,8 +70,8 @@ describe( 'AppBrand', () => {
     render( <MemoryRouter><AppBrand pageTitle="Dashboard" /></MemoryRouter> )
 
     const summary = await screen.findByLabelText( 'Account reputation summary' )
-    expect( summary.textContent ).toContain( '1.33' )
-    expect( summary.textContent ).toContain( '1 badge' )
+    expect( summary.textContent ).toContain( 'Points and badges by project' )
+    expect( summary.textContent ).not.toContain( '1.33' )
     expect( screen.getByRole( 'link', { name: 'Account' } ).getAttribute( 'href' ) ).toBe( '/account' )
   } )
 

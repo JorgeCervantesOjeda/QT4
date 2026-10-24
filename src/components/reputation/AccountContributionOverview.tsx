@@ -1,6 +1,6 @@
 // src/components/reputation/AccountContributionOverview.tsx: Shows points and badges directly in Account.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/useAuth'
 import {
@@ -8,7 +8,6 @@ import {
   loadUserReputation,
   type UserReputationData,
 } from '../../lib/reputationData'
-import type { ReputationSummary } from '../../lib/reputation'
 import { formatProjectDisplayLabel, loadProjectDisplayInfo, type ProjectDisplayInfo } from '../../lib/projectDisplay'
 import BadgeGrid from './BadgeGrid'
 import ContributionStatus from './ContributionStatus'
@@ -17,43 +16,6 @@ import ProgressModal from '../ProgressModal'
 import './reputation.css'
 
 const emptyData: UserReputationData = { summaries: [], events: [] }
-
-const createEmptySummary = (userId: string): ReputationSummary => ( {
-  projectId: 'all-projects',
-  userId,
-  totalPoints: 0,
-  collaborationPoints: 0,
-  reviewPoints: 0,
-  qualityPoints: 0,
-  contributionCount: 0,
-  threadCount: 0,
-  commentCount: 0,
-  goodReactionCount: 0,
-  completedReviewCount: 0,
-  acceptedVersionCount: 0,
-  badgeIds: [],
-  updatedAt: null,
-} )
-
-const buildAggregateSummary = (
-  summaries: ReputationSummary[],
-  userId: string,
-): ReputationSummary => summaries.reduce(
-  (aggregate, summary) => ( {
-    ...aggregate,
-    totalPoints: aggregate.totalPoints + summary.totalPoints,
-    collaborationPoints: aggregate.collaborationPoints + summary.collaborationPoints,
-    reviewPoints: aggregate.reviewPoints + summary.reviewPoints,
-    qualityPoints: aggregate.qualityPoints + summary.qualityPoints,
-    contributionCount: aggregate.contributionCount + summary.contributionCount,
-    threadCount: aggregate.threadCount + summary.threadCount,
-    commentCount: aggregate.commentCount + summary.commentCount,
-    goodReactionCount: aggregate.goodReactionCount + summary.goodReactionCount,
-    completedReviewCount: aggregate.completedReviewCount + summary.completedReviewCount,
-    acceptedVersionCount: aggregate.acceptedVersionCount + summary.acceptedVersionCount,
-  } ),
-  createEmptySummary( userId ),
-)
 
 function AccountContributionOverview() {
   const { user } = useAuth()
@@ -99,11 +61,6 @@ function AccountContributionOverview() {
     }
   }, [ userId ] )
 
-  const aggregateSummary = useMemo(
-    () => buildAggregateSummary( data.summaries, userId ),
-    [ data.summaries, userId ],
-  )
-  const badgeCount = data.summaries.reduce( (count, summary) => count + summary.badgeIds.length, 0 )
   const displayedStatus = !userId ? 'error' : loadedUserId === userId ? status : 'loading'
 
   return (
@@ -125,21 +82,6 @@ function AccountContributionOverview() {
       {displayedStatus === 'empty' ? <ContributionStatus status="empty" message="Your points and badges will appear after your first contribution." /> : null}
       {displayedStatus === 'ready' ? (
         <>
-          <ContributionSummary
-            summary={aggregateSummary}
-            title="Points across projects"
-            totalLabel="Total points across projects"
-          />
-          <div className="account-contribution-overview__metrics" aria-label="Account contribution totals">
-            <div>
-              <strong>{badgeCount}</strong>
-              <span>Project badges earned</span>
-            </div>
-            <div>
-              <strong>{data.summaries.length}</strong>
-              <span>Projects with contributions</span>
-            </div>
-          </div>
           <div className="account-contribution-overview__projects">
             {data.summaries.map( (summary) => (
               <article className="account-contribution-overview__project" key={`${summary.projectId}-${summary.userId}`}>
@@ -148,6 +90,7 @@ function AccountContributionOverview() {
                   <strong>{formatReputationPoints( summary.totalPoints )} pts</strong>
                 </div>
                 <p className="muted">{summary.badgeIds.length} badges earned in this project.</p>
+                <ContributionSummary summary={summary} title="Project contribution summary" />
                 <BadgeGrid unlockedBadgeIds={summary.badgeIds} />
               </article>
             ) )}

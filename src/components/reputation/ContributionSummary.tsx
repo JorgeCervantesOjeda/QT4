@@ -16,7 +16,7 @@ function ContributionSummary({ summary, title = 'Contribution summary', totalLab
       <div className="contribution-summary__total">
         <span className="contribution-summary__value">{formatReputationPoints( summary.totalPoints )}</span>
         <span className="contribution-summary__label">{totalLabel}</span>
-        <span className="muted">All project totals combined</span>
+        <span className="muted">Only this project is included.</span>
       </div>
       <div className="contribution-summary__dimensions">
         <div>
