@@ -16,7 +16,7 @@ test( 'member sees reputation produced by real Functions triggers', async ( { pa
 
   await expect( page.getByRole( 'heading', { name: 'Your contribution summary' } ) ).toBeVisible()
   await expect( page.getByRole( 'article' ).filter( { hasText: 'Reputation Integration Project' } ) ).toBeVisible()
-  await expect( page.getByRole( 'article' ).filter( { hasText: 'Reputation Integration Project' } ).getByText( '3.25 pts', { exact: true } ) ).toBeVisible()
+  await expect( page.getByRole( 'article' ).filter( { hasText: 'Reputation Integration Project' } ).getByText( '8.25 pts', { exact: true } ) ).toBeVisible()
   await expect( page.getByText( 'Created a discussion thread', { exact: true } ).first() ).toBeVisible()
   const first = page.getByRole( 'article' ).filter( { hasText: 'Reputation Integration Project' } )
   const second = page.getByRole( 'article' ).filter( { hasText: 'Second Reputation Project' } )
@@ -30,13 +30,13 @@ test( 'member sees reputation produced by real Functions triggers', async ( { pa
 test( 'account and dashboard keep the same two project balances separate', async ( { page } ) => {
   await login( page )
   const dashboard = page.getByRole( 'region', { name: 'My contribution', exact: true } )
-  await expect( dashboard.getByRole( 'article' ).filter( { hasText: 'Reputation Integration Project' } ).getByText( '3.25 pts', { exact: true } ) ).toBeVisible()
+  await expect( dashboard.getByRole( 'article' ).filter( { hasText: 'Reputation Integration Project' } ).getByText( '8.25 pts', { exact: true } ) ).toBeVisible()
   await expect( dashboard.getByRole( 'article' ).filter( { hasText: 'Second Reputation Project' } ).getByText( '2.33 pts', { exact: true } ) ).toBeVisible()
   await expect( page.getByText( 'Points and badges by project', { exact: true } ) ).toBeVisible()
   await page.goto( '/account' )
   const first = page.getByRole( 'article' ).filter( { hasText: 'Reputation Integration Project' } )
   const second = page.getByRole( 'article' ).filter( { hasText: 'Second Reputation Project' } )
-  await expect( first.getByText( '3.25 pts', { exact: true } ) ).toBeVisible()
+  await expect( first.getByText( '8.25 pts', { exact: true } ) ).toBeVisible()
   await expect( second.getByText( '2.33 pts', { exact: true } ) ).toBeVisible()
   await expect( first.locator( '[data-badge-id="issue-spotter"]' ) ).toHaveClass( /badge-card--locked/ )
   await expect( second.locator( '[data-badge-id="issue-spotter"]' ) ).toHaveClass( /badge-card--unlocked/ )
@@ -48,6 +48,6 @@ test( 'member sees the project-scoped ranking produced by real Firestore data', 
 
   await expect( page.getByRole( 'heading', { name: 'Contribution ranking' } ) ).toBeVisible()
   await expect( page.getByText( 'Only this project is included. There is no global ranking.' ) ).toBeVisible()
-  await expect( page.getByRole( 'listitem' ).filter( { hasText: 'You' } ).getByText( '3.25 pts' ) ).toBeVisible()
+  await expect( page.getByRole( 'listitem' ).filter( { hasText: 'You' } ).getByText( '8.25 pts' ) ).toBeVisible()
   await expect( page.getByText( 'You' ) ).toBeVisible()
 } )

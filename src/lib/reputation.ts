@@ -121,23 +121,27 @@ const POINT_RULES: Record<ReputationEventType, ReputationPointRule> = {
   reviewAbsence: {
     category: 'review',
     points: -1,
+    pointMultiplier: 0.25,
     reason: 'Did not participate in an assigned review',
   },
   acceptedVersion: {
     category: 'quality',
     points: 1,
+    pointMultiplier: 3,
     reason: 'Created an accepted version',
     sequenceKey: 'acceptedDocument',
   },
   acceptedErrorReport: {
     category: 'quality',
     points: 1,
+    pointMultiplier: 3,
     reason: 'Created an accepted error report',
     sequenceKey: 'acceptedDocument',
   },
   acceptedErrorReportPenalty: {
     category: 'quality',
     points: -2,
+    pointMultiplier: 0.5,
     reason: 'An authored version received an accepted error report',
   },
 };

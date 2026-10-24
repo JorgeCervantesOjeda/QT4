@@ -13,6 +13,13 @@ import {
 } from './reputation';
 
 describe('contribution point policy', () => {
+  // Integration: reputation_functions_emulator.mjs; system: reputation.emulator.spec.ts.
+  it.each( [
+    [ 'acceptedVersion', 3 ], [ 'acceptedErrorReport', 3 ],
+    [ 'reviewAbsence', 0.25 ], [ 'acceptedErrorReportPenalty', 0.5 ],
+  ] as const )( 'defines the approved multiplier for %s', (eventType, pointMultiplier) => {
+    expect( getContributionPoints( eventType ).pointMultiplier ).toBe( pointMultiplier );
+  } );
   it.each([
     ['threadCreated', 'collaboration', 1],
     ['commentCreated', 'collaboration', 1],

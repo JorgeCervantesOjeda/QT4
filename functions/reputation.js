@@ -9,10 +9,10 @@ const POINT_RULES = Object.freeze( {
   commentCreated: { category: "collaboration", points: 1, reason: "Added a comment", sequenceKey: "reviewParticipation" },
   goodReactionReceived: { category: "collaboration", points: 1, pointMultiplier: 0.25, reason: "Received a good reaction on a comment", sequenceKey: "goodReaction" },
   reviewCompleted: { category: "review", points: 0, reason: "Completed an active review" },
-  reviewAbsence: { category: "review", points: -1, reason: "Did not participate in an assigned review" },
-  acceptedVersion: { category: "quality", points: 1, reason: "Created an accepted version", sequenceKey: "acceptedDocument" },
-  acceptedErrorReport: { category: "quality", points: 1, reason: "Created an accepted error report", sequenceKey: "acceptedDocument" },
-  acceptedErrorReportPenalty: { category: "quality", points: -2, reason: "An authored version received an accepted error report" },
+  reviewAbsence: { category: "review", points: -1, pointMultiplier: 0.25, reason: "Did not participate in an assigned review" },
+  acceptedVersion: { category: "quality", points: 1, pointMultiplier: 3, reason: "Created an accepted version", sequenceKey: "acceptedDocument" },
+  acceptedErrorReport: { category: "quality", points: 1, pointMultiplier: 3, reason: "Created an accepted error report", sequenceKey: "acceptedDocument" },
+  acceptedErrorReportPenalty: { category: "quality", points: -2, pointMultiplier: 0.5, reason: "An authored version received an accepted error report" },
 } )
 
 const getSequenceInterval = (sequenceNumber) => {
@@ -283,7 +283,10 @@ const getSequenceSeed = ({ currentSummary, sequenceKey, logger }) => {
 
 const resolveSequencedEvent = ({ currentSummary, event, previousEvent, previousCounter, logger }) => {
   const requestedPoints = numericValue( event.points, "points", logger )
-  const pointMultiplier = event.pointMultiplier ?? 1
+  // Retries retain the original policy; older events predate multipliers and use factor 1.
+  const pointMultiplier = previousEvent
+    ? previousEvent.pointMultiplier ?? 1
+    : event.pointMultiplier ?? 1
   if( !event.sequenceKey ) {
     const points = requestedPoints * pointMultiplier
     return {

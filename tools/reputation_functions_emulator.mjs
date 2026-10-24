@@ -111,12 +111,32 @@ await db.doc( 'versions/reputation-version-1' ).update( {
   status: 'Accepted',
 } )
 
-await waitForDocument( reviewerSummaryPath, (data) => data.totalPoints === -1 && data.completedReviewCount === 0, 'reviewer reputation' )
-await waitForDocument( memberSummaryPath, (data) => data.totalPoints === 3.25 && data.acceptedVersionCount === 1, 'accepted version reputation' )
+await waitForDocument( reviewerSummaryPath, (data) => data.totalPoints === -0.25 && data.completedReviewCount === 0, 'reviewer reputation' )
+await waitForDocument( memberSummaryPath, (data) => data.totalPoints === 5.25 && data.acceptedVersionCount === 1, 'accepted version reputation' )
 
-assert.equal( ( await readDocument( 'reputationEvents/reviewAbsence:reputation-version-1:user-reviewer-1' ) ).points, -1 )
-assert.equal( ( await readDocument( 'reputationEvents/acceptedVersion:reputation-version-1' ) ).points, 1 )
+assert.equal( ( await readDocument( 'reputationEvents/reviewAbsence:reputation-version-1:user-reviewer-1' ) ).points, -0.25 )
+assert.equal( ( await readDocument( 'reputationEvents/acceptedVersion:reputation-version-1' ) ).points, 3 )
 assert.equal( ( await readDocument( 'reputationEvents/acceptedVersion:reputation-version-1' ) ).sequenceNumber, 1 )
+// Exercise all pending factors, including the shared acceptance sequence's third position.
+await db.doc( 'documents/reputation-report' ).set( {
+  projectId: projectIdForTest, type: 'errorReport', baseVersionId: 'reputation-version-1',
+} )
+await db.doc( 'versions/reputation-report-version' ).set( {
+  projectId: projectIdForTest, docId: 'reputation-report', createdBy: memberId, status: 'Reviewed',
+} )
+await db.doc( 'versions/reputation-report-version' ).update( { status: 'Accepted' } )
+await waitForDocument( memberSummaryPath, (data) => data.totalPoints === 7.25, 'accepted report plus reduced penalty' )
+assert.equal( ( await readDocument( 'reputationEvents/acceptedVersion:reputation-report-version' ) ).points, 3 )
+assert.equal( ( await readDocument( 'reputationEvents/acceptedErrorReportPenalty:reputation-report-version:reputation-version-1' ) ).points, -1 )
+await db.doc( 'versions/reputation-version-3' ).set( {
+  projectId: projectIdForTest, docId: 'reputation-document-1', createdBy: memberId, status: 'Reviewed',
+} )
+await db.doc( 'versions/reputation-version-3' ).update( { status: 'Accepted' } )
+await waitForDocument( memberSummaryPath, (data) => data.totalPoints === 8.25 && data.acceptedVersionCount === 3, 'third acceptance multiplied after fraction' )
+const fractionalAward = await readDocument( 'reputationEvents/acceptedVersion:reputation-version-3' )
+assert.equal( fractionalAward.basePoints, 1 / 3 )
+assert.equal( fractionalAward.pointMultiplier, 3 )
+assert.equal( fractionalAward.points, 1 )
 // Links the server isolation unit contract to the two-project browser system checks.
 for( let indexOfThread = 1; indexOfThread <= 3; indexOfThread += 1 ) {
   await db.doc( `threads/second-reputation-thread-${indexOfThread}` ).set( {
@@ -133,7 +153,7 @@ const secondSummary = await waitForDocument(
 assert.equal( secondSummary.totalPoints, 2 + 1 / 3 )
 assert.ok( secondSummary.badgeIds.includes( 'issue-spotter' ) )
 const firstSummary = await readDocument( memberSummaryPath )
-assert.equal( firstSummary.totalPoints, 3.25 )
+assert.equal( firstSummary.totalPoints, 8.25 )
 assert.equal( firstSummary.threadCount, 1 )
 assert.equal( firstSummary.badgeIds.includes( 'issue-spotter' ), false )
 assert.equal( ( await readDocument( `reputationSequenceCounters/${projectIdForTest}_${memberId}_reviewParticipation` ) ).sequenceNumber, 2 )

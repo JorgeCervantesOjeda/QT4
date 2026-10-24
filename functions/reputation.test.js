@@ -102,6 +102,10 @@ test( "positive reputation rules use the sequence base while special events keep
   assert.equal( POINT_RULES.reviewCompleted.points, 0 )
   assert.equal( POINT_RULES.reviewAbsence.points, -1 )
   assert.equal( POINT_RULES.acceptedErrorReportPenalty.points, -2 )
+  assert.equal( POINT_RULES.acceptedVersion.pointMultiplier, 3 )
+  assert.equal( POINT_RULES.acceptedErrorReport.pointMultiplier, 3 )
+  assert.equal( POINT_RULES.reviewAbsence.pointMultiplier, 0.25 )
+  assert.equal( POINT_RULES.acceptedErrorReportPenalty.pointMultiplier, 0.5 )
 } )
 
 test( "sequenced review participation uses the cumulative 1, 1, 1/3 schedule", async () => {
@@ -198,9 +202,9 @@ test( "sequenced reactions and accepted documents use independent cumulative sch
   assert.equal( db.read( "reputationEvents/reactionGood:reaction-2" ).points, 0.25 )
   assert.equal( db.read( "reputationEvents/reactionGood:reaction-3" ).points, 1 / 12 )
   assert.equal( db.read( "reputationEvents/reactionGood:reaction-3" ).sequenceKey, "goodReaction" )
-  assert.equal( db.read( "reputationEvents/acceptedVersion:version-1" ).points, 1 )
-  assert.equal( db.read( "reputationEvents/acceptedVersion:version-2" ).points, 1 )
-  assert.equal( db.read( "reputationEvents/acceptedVersion:version-3" ).points, 1 / 3 )
+  assert.equal( db.read( "reputationEvents/acceptedVersion:version-1" ).points, 3 )
+  assert.equal( db.read( "reputationEvents/acceptedVersion:version-2" ).points, 3 )
+  assert.equal( db.read( "reputationEvents/acceptedVersion:version-3" ).points, 1 )
   assert.equal( db.read( "reputationEvents/acceptedVersion:version-3" ).sequenceKey, "acceptedDocument" )
 } )
 
@@ -338,8 +342,8 @@ test( "review completion rewards active assigned reviewers and penalizes inactiv
 
   assert.equal( db.read( "reputationSummaries/project-1_reviewer-1" ).totalPoints, 0 )
   assert.equal( db.read( "reputationSummaries/project-1_reviewer-1" ).completedReviewCount, 1 )
-  assert.equal( db.read( "reputationSummaries/project-1_reviewer-2" ).totalPoints, -1 )
-  assert.equal( db.read( "reputationSummaries/project-1_author-1" ).totalPoints, 1 )
+  assert.equal( db.read( "reputationSummaries/project-1_reviewer-2" ).totalPoints, -0.25 )
+  assert.equal( db.read( "reputationSummaries/project-1_author-1" ).totalPoints, 3 )
 } )
 
 test( "changing a good reaction preserves the previously earned points and badges", async () => {
@@ -557,6 +561,45 @@ test( "retrying a historical positive event does not recalculate its points", as
   assert.equal( db.read( "reputationSequenceCounters/project-1_comment-author_goodReaction" ), undefined )
 } )
 
+test( "retries preserve historical acceptance and absence awards without applying new factors", async () => {
+  const db = createFakeDb( {
+    "documents/old-document": { type: "document" },
+    "reputationEvents/acceptedVersion:old-version": {
+      projectId: "project-1", userId: "author", points: 1 / 3, active: true,
+      sequenceKey: "acceptedDocument", sequenceNumber: 3,
+    },
+    "reputationSummaries/project-1_author": {
+      projectId: "project-1", userId: "author", totalPoints: 1 / 3,
+      qualityPoints: 1 / 3, contributionCount: 3, acceptedVersionCount: 3,
+    },
+    "reputationEvents/reviewAbsence:old-review:reviewer": {
+      projectId: "project-1", userId: "reviewer", points: -1, active: true,
+    },
+    "reputationSummaries/project-1_reviewer": {
+      projectId: "project-1", userId: "reviewer", totalPoints: -1, reviewPoints: -1,
+    },
+  } )
+  const handler = createVersionReputationHandler( { admin: createAdmin( db ), logger } )
+  await handler( {
+    params: { versionId: "old-version" },
+    data: {
+      before: createSnapshot( "old-version", { status: "Reviewed" } ),
+      after: createSnapshot( "old-version", { status: "Accepted", projectId: "project-1", docId: "old-document", createdBy: "author" } ),
+    },
+  } )
+  await handler( {
+    params: { versionId: "old-review" },
+    data: {
+      before: createSnapshot( "old-review", { status: "In Review" } ),
+      after: createSnapshot( "old-review", { status: "Reviewed", projectId: "project-1", reviewerIds: [ "reviewer" ] } ),
+    },
+  } )
+  assert.equal( db.read( "reputationSummaries/project-1_author" ).totalPoints, 1 / 3 )
+  assert.equal( db.read( "reputationEvents/acceptedVersion:old-version" ).points, 1 / 3 )
+  assert.equal( db.read( "reputationSummaries/project-1_reviewer" ).totalPoints, -1 )
+  assert.equal( db.read( "reputationEvents/reviewAbsence:old-review:reviewer" ).points, -1 )
+} )
+
 test( "accepting an error report credits the author with the quality bonus", async () => {
   const db = createFakeDb( {
     "documents/error-report-1": { type: "errorReport", baseVersionId: "base-version-1" },
@@ -584,8 +627,8 @@ test( "accepting an error report credits the author with the quality bonus", asy
     },
   } )
 
-  assert.equal( db.read( "reputationSummaries/project-1_author-1" ).qualityPoints, 1 )
-  assert.equal( db.read( "reputationSummaries/project-1_author-1" ).totalPoints, 1 )
-  assert.equal( db.read( "reputationSummaries/project-1_base-author-1" ).qualityPoints, -2 )
-  assert.equal( db.read( "reputationSummaries/project-1_base-author-1" ).totalPoints, -2 )
+  assert.equal( db.read( "reputationSummaries/project-1_author-1" ).qualityPoints, 3 )
+  assert.equal( db.read( "reputationSummaries/project-1_author-1" ).totalPoints, 3 )
+  assert.equal( db.read( "reputationSummaries/project-1_base-author-1" ).qualityPoints, -1 )
+  assert.equal( db.read( "reputationSummaries/project-1_base-author-1" ).totalPoints, -1 )
 } )
